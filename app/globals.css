@@ -66,6 +66,13 @@
     font-feature-settings: "cv11", "ss01";
     letter-spacing: -0.005em;
     text-rendering: optimizeLegibility;
+    /* Defensive clip on the horizontal axis. If any descendant ever
+       slips a few pixels past the viewport (a long unbreakable URL,
+       a wide chip row, a brand-new component), the page won't gain
+       a sideways scrollbar on phones. `clip` is preferred over
+       `hidden` because it doesn't establish a scroll/clip context
+       for fixed/sticky positioned elements (header, mobile drawer). */
+    overflow-x: clip;
   }
 }
 

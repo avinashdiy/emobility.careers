@@ -1,10 +1,17 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
-import { getPulseCounters, getFeaturedCandidates } from "@/lib/pulse";
+import {
+  getPulseCounters,
+  getFeaturedCandidates,
+  getTopHiringCompanies,
+  getHottestSkills,
+  getRecentHires,
+} from "@/lib/pulse";
 import {
   getTopPayingRolesByTier,
   formatLakhs,
@@ -12,177 +19,364 @@ import {
 } from "@/lib/salary-compass";
 import { Avatar } from "@/components/ui/avatar";
 
+/**
+ * Home page — framed as a daily snapshot of the EV industry rather
+ * than a SaaS landing page. Every section is grounded in live data
+ * (open roles, companies hiring, hot skills, recent hires, salary
+ * medians, featured candidates) so a first-time visitor sees proof of
+ * life, not marketing copy. The funnel still works — every lens
+ * eventually leads to "post a job", "find a role", or "submit a
+ * salary" — but the page reads first as a place worth being on.
+ */
+
 // Render the home page on every request so the live counters stay
 // fresh and visitors see real momentum, not a stale snapshot.
 export const dynamic = "force-dynamic";
 
-const EV_DOMAINS = [
-  { slug: "battery-tech", name: "Battery Tech", emoji: "🔋", count: "120+ jobs" },
-  { slug: "charging-infra", name: "Charging Infra", emoji: "⚡", count: "85+ jobs" },
-  { slug: "powertrain", name: "Powertrain", emoji: "⚙️", count: "70+ jobs" },
-  { slug: "motor-control", name: "Motor & Control", emoji: "🌀", count: "60+ jobs" },
-  { slug: "vehicle-engineering", name: "Vehicle Engineering", emoji: "🚗", count: "95+ jobs" },
-  { slug: "fleet-mobility", name: "Fleet & Mobility", emoji: "🛵", count: "40+ jobs" },
+export const metadata: Metadata = {
+  title: "The address of EV in India · Jobs, salaries, people, pulse",
+  description:
+    "Where India's EV industry hires, gets hired, and reads what's happening — every day. Live snapshot of jobs, salaries, companies, and the people moving the industry.",
+  openGraph: {
+    title: "The address of EV in India",
+    description:
+      "Where India's EV industry hires, gets hired, and reads what's happening — every day.",
+    type: "website",
+    siteName: "eMobility Careers",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "The address of EV in India",
+    description:
+      "Where India's EV industry hires, gets hired, and reads what's happening — every day.",
+  },
+};
+
+const ACTION_PILLS: { href: string; emoji: string; label: string; tone: "primary" | "secondary" }[] = [
+  { href: "/employer", emoji: "🎯", label: "I'm hiring", tone: "primary" },
+  { href: "/jobs", emoji: "🔍", label: "I'm looking", tone: "primary" },
+  { href: "/salaries", emoji: "💰", label: "Check a salary", tone: "secondary" },
+  { href: "/pulse", emoji: "📊", label: "Read the pulse", tone: "secondary" },
+  { href: "/roast", emoji: "🔥", label: "Roast my resume", tone: "secondary" },
 ];
 
+// Hand-curated topic tiles — kept as a small browse-by-domain shelf.
+// Counts are intentionally illustrative (live data sits up in the
+// pulse and salary sections); these tiles are about discovery, not
+// claim-making.
+const EV_DOMAINS = [
+  { slug: "battery-tech", name: "Battery", emoji: "🔋" },
+  { slug: "charging-infra", name: "Charging", emoji: "⚡" },
+  { slug: "powertrain", name: "Powertrain", emoji: "⚙️" },
+  { slug: "motor-control", name: "Motor & Power", emoji: "🌀" },
+  { slug: "vehicle-engineering", name: "Vehicle", emoji: "🚗" },
+  { slug: "fleet-mobility", name: "Fleet", emoji: "🛵" },
+  { slug: "software-iot", name: "Software & IoT", emoji: "💻" },
+  { slug: "manufacturing", name: "Manufacturing", emoji: "🏭" },
+];
+
+/**
+ * IST-formatted human date (e.g. "Wednesday, April 29, 2026") for the
+ * masthead. Anchors the page in time — implicit signal that the page
+ * is updated daily.
+ */
+function todayInIST(): string {
+  return new Intl.DateTimeFormat("en-IN", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    timeZone: "Asia/Kolkata",
+  }).format(new Date());
+}
+
+function relativeWhen(ms: number): string {
+  const diff = Date.now() - ms;
+  const m = Math.floor(diff / 60_000);
+  if (m < 60) return `${Math.max(1, m)}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return `${d}d ago`;
+}
+
 export default async function HomePage() {
-  const [locale, pulse, featured, engineerSalaries, technicianSalaries] = await Promise.all([
+  const [
+    locale,
+    pulse,
+    featured,
+    engineerSalaries,
+    technicianSalaries,
+    hiringCompanies,
+    hotSkills,
+    recentHires,
+    wallCompanies,
+  ] = await Promise.all([
     getLocale(),
     getPulseCounters(),
     getFeaturedCandidates(5),
     getTopPayingRolesByTier("ENGINEER", 5),
     getTopPayingRolesByTier("TECHNICIAN", 5),
+    getTopHiringCompanies(5),
+    getHottestSkills(8),
+    getRecentHires(5),
+    // Same shape as top-hiring; we pull a wider slice for the logo
+    // wall so the "everyone is here" feel scales with the platform.
+    getTopHiringCompanies(40),
   ]);
 
-  // Live counters replace the prior hard-coded "12,500+ / 650+ / …" set.
-  // We fall back to a "—" when the DB returns zero so a brand-new
-  // install doesn't show false zeros to the first visitor; once the
-  // platform has a heartbeat, the real values surface.
-  const STATS: { value: string; label: string }[] = [
-    { value: pulse.openJobs > 0 ? `${pulse.openJobs.toLocaleString()}` : "—", label: t("stats.openRoles", locale) },
-    { value: pulse.activeCompanies > 0 ? `${pulse.activeCompanies.toLocaleString()}` : "—", label: t("stats.companies", locale) },
-    { value: pulse.verifiedPros > 0 ? `${pulse.verifiedPros.toLocaleString()}` : "—", label: t("stats.activeCandidates", locale) },
-    { value: pulse.hiresLast7d > 0 ? `${pulse.hiresLast7d.toLocaleString()} / wk` : "DIYguru", label: pulse.hiresLast7d > 0 ? "Hires this week" : t("stats.diyguru", locale) },
-  ];
+  const dateStr = todayInIST();
+
   return (
     <>
-      {/* ─── Hero ─── */}
+      {/* ─── Hero — editorial masthead ─── */}
       <section className="emce-hero-gradient text-white">
-        <div className="container py-20 md:py-24">
-          {/* Live "Pulse" pill — clickable, dynamic. Replaces the
-              static hero pill with proof-of-life: "X jobs added today".
-              Even when zero new today we still link out so visitors can
-              see the broader heartbeat. */}
+        <div className="container py-16 md:py-20">
+          {/* Live ticker pill — sets tone before any copy. The
+              animated dot reads as "this page is alive". The full
+              date + "added today" segments are hidden on phones so
+              the pill stays inside a 360-px viewport; md+ shows the
+              full ticker. */}
           <Link
             href="/pulse"
-            className="emce-pill mb-6 transition hover:bg-white/15"
+            className="emce-pill mb-6 max-w-full transition hover:bg-white/15"
           >
-            <span aria-hidden className="relative flex h-2 w-2">
+            <span aria-hidden className="relative flex h-2 w-2 shrink-0">
               <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emce-mid opacity-75" />
               <span className="relative inline-flex h-2 w-2 rounded-full bg-emce-mid" />
             </span>
-            <span>
-              {pulse.jobsAddedToday > 0
-                ? `Live · ${pulse.jobsAddedToday} EV ${pulse.jobsAddedToday === 1 ? "role" : "roles"} added today`
-                : "Live · the EV industry pulse"}
+            <span className="min-w-0 truncate tabular-nums">
+              <strong>LIVE</strong>
+              <span className="hidden md:inline">
+                <span className="mx-2 opacity-50">·</span>
+                {dateStr}
+              </span>
+              {pulse.openJobs > 0 && (
+                <>
+                  <span className="mx-2 opacity-50">·</span>
+                  {pulse.openJobs.toLocaleString()} open roles
+                </>
+              )}
+              {pulse.jobsAddedToday > 0 && (
+                <span className="hidden md:inline">
+                  <span className="mx-2 opacity-50">·</span>
+                  {pulse.jobsAddedToday} added today
+                </span>
+              )}
             </span>
-            <span aria-hidden>→</span>
+            <span aria-hidden className="shrink-0">→</span>
           </Link>
-          <h1 className="text-hero max-w-3xl text-white">
-            {t("hero.title.lead", locale)}{" "}
-            <span className="text-emce-mid">{t("hero.title.accent", locale)}</span>
+
+          <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-emce-mid">
+            ✦ The address of EV in India
+          </div>
+          <h1 className="mt-3 max-w-4xl text-4xl font-extrabold leading-[1.05] tracking-tight text-white md:text-5xl lg:text-6xl">
+            Where the EV industry{" "}
+            <span className="text-emce-mid">hires, gets hired,</span>
+            <br className="hidden md:block" /> and reads what&apos;s happening.
           </h1>
           <p className="mt-5 max-w-2xl text-base text-white/85 md:text-lg">
-            {t("hero.subtitle", locale)}
+            A daily snapshot of India&apos;s EV industry — jobs across battery,
+            charging, motors, vehicles and software; salaries you can
+            actually verify; the people moving the work; the signal you
+            need before your next move.
           </p>
 
-          <div className="mt-8 flex flex-wrap gap-3">
-            <Button asChild size="lg" variant="accent">
-              <Link href="/jobs">{t("cta.findJob", locale)}</Link>
-            </Button>
-            <Button asChild size="lg" variant="outline" className="border-white text-white hover:bg-white/10 hover:text-white">
-              <Link href="/employer">{t("cta.hireTalent", locale)}</Link>
-            </Button>
-            {/* Free, no-signup viral hook. Sits next to the primary CTAs
-                so curious visitors who aren't ready to commit have an
-                action to take that builds platform value. */}
-            <Button asChild size="lg" variant="outline" className="border-emce-mid bg-emce-mid/10 text-emce-mid hover:bg-emce-mid/20 hover:text-emce-mid">
-              <Link href="/roast">🔥 Roast my resume — free</Link>
-            </Button>
+          {/* "What brings you here" action row — replaces the "Find a job"
+              hard CTA. Five intents, equal weight visually so candidates,
+              employers and curious browsers all see themselves. */}
+          <div className="mt-8 flex flex-wrap gap-2">
+            {ACTION_PILLS.map((p) => (
+              <Button
+                key={p.href}
+                asChild
+                size="lg"
+                variant={p.tone === "primary" ? "accent" : "outline"}
+                className={
+                  p.tone === "primary"
+                    ? ""
+                    : "border-white/40 bg-white/5 text-white hover:bg-white/15 hover:text-white"
+                }
+              >
+                <Link href={p.href}>
+                  <span className="mr-2" aria-hidden>{p.emoji}</span>
+                  {p.label}
+                </Link>
+              </Button>
+            ))}
           </div>
-
-          {/* Quick search */}
-          <form action="/jobs" className="mt-10 flex flex-col gap-2 rounded-lg bg-white/10 p-2 backdrop-blur md:flex-row md:items-center">
-            <input
-              name="q"
-              placeholder={t("search.placeholder.q", locale)}
-              className="flex-1 rounded-md bg-white px-4 py-3 text-emce-text placeholder:text-emce-text-muted focus:outline-none"
-            />
-            <input
-              name="location"
-              placeholder={t("search.placeholder.location", locale)}
-              className="w-full rounded-md bg-white px-4 py-3 text-emce-text placeholder:text-emce-text-muted focus:outline-none md:w-56"
-            />
-            <Button type="submit" size="lg" variant="accent">
-              {t("search.button", locale)}
-            </Button>
-          </form>
         </div>
       </section>
 
-      {/* ─── Stats strip ─── */}
-      <section className="border-y border-emce-border bg-white">
-        <div className="container grid grid-cols-2 gap-6 py-8 md:grid-cols-4">
-          {STATS.map((s) => (
-            <div key={s.label} className="text-center md:text-left">
-              <div className="text-2xl font-extrabold text-emce-dark md:text-3xl">{s.value}</div>
-              <div className="mt-1 text-xs uppercase tracking-wide text-emce-text-muted">
-                {s.label}
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ─── Featured This Week ─── */}
-      {featured.length > 0 && (
-        <section className="container py-16">
-          <div className="mb-6 flex items-end justify-between">
-            <div>
-              <Badge variant="success" className="mb-2">✨ Featured this week</Badge>
-              <h2 className="text-dashboard text-emce-text md:text-3xl">
-                EV pros worth watching
+      {/* ─── Logo wall — typography-first, "everyone is here" ─── */}
+      {wallCompanies.length > 0 && (
+        <section className="border-y border-emce-border bg-white">
+          <div className="container py-14">
+            <div className="text-center">
+              <Badge variant="default" className="mb-3">⚡ The roster</Badge>
+              <h2 className="text-2xl font-extrabold tracking-tight text-emce-darkest md:text-3xl">
+                {pulse.activeCompanies > 0
+                  ? `${pulse.activeCompanies.toLocaleString()} EV companies hiring on emobility.careers`
+                  : "Companies hiring on emobility.careers"}
               </h2>
-              <p className="mt-1 text-sm text-emce-text-sec">
-                Editorial picks · open to work · DIYguru-verified bias.
+              <p className="mx-auto mt-2 max-w-2xl text-sm text-emce-text-sec">
+                From OEMs and battery makers to charging networks and EV
+                fleets — the full Indian EV stack lives here. Click any
+                name to see open roles + the company page.
               </p>
             </div>
-            <Link href="/pulse" className="hidden text-sm font-bold text-emce-dark hover:underline md:block">
-              See full Pulse →
-            </Link>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {featured.map((c) => (
+
+            <ul className="mx-auto mt-8 grid max-w-5xl grid-cols-2 gap-x-6 gap-y-3 text-center sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              {wallCompanies.map((c) => (
+                <li key={c.slug}>
+                  <Link
+                    href={`/company/${c.slug}`}
+                    className="block truncate text-sm font-bold text-emce-darkest transition hover:text-emce-dark"
+                    title={`${c.name} · ${c.openCount} open ${c.openCount === 1 ? "role" : "roles"}`}
+                  >
+                    {c.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+
+            <div className="mt-8 text-center">
               <Link
-                key={c.slug}
-                href={`/${c.slug}`}
-                className="group flex flex-col items-center rounded-lg border border-emce-border bg-white p-4 text-center transition hover:border-emce-mid hover:shadow-emce-hover"
+                href="/companies"
+                className="text-sm font-bold text-emce-dark hover:underline"
               >
-                <Avatar
-                  src={c.profilePhotoUrl}
-                  name={c.name}
-                  size="lg"
-                />
-                <p className="mt-3 line-clamp-1 font-bold text-emce-text group-hover:text-emce-dark">
-                  {c.name}
-                </p>
-                {c.headline && (
-                  <p className="mt-0.5 line-clamp-2 text-hint text-emce-text-sec">
-                    {c.headline}
-                  </p>
-                )}
-                <p className="mt-2 text-hint text-emce-text-muted">
-                  {c.totalExperienceYears} yrs experience
-                </p>
-                {c.isDIYguruVerified && (
-                  <Badge variant="verified" className="mt-2 text-[10px]">
-                    ⭐ DIYguru
-                  </Badge>
-                )}
+                Browse all companies →
               </Link>
-            ))}
+            </div>
           </div>
         </section>
       )}
 
+      {/* ─── Today's pulse — three-column live snapshot ─── */}
+      <section className="container py-16">
+        <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <Badge variant="success" className="mb-2">📊 Today&apos;s pulse</Badge>
+            <h2 className="text-dashboard text-emce-text md:text-3xl">
+              What&apos;s hiring, what&apos;s hot, who just landed.
+            </h2>
+            <p className="mt-1 max-w-2xl text-sm text-emce-text-sec">
+              Real signal across the platform — companies hiring most this
+              week, the skills employers are leaning on, and a stream of
+              recent hires (anonymised by candidate request).
+            </p>
+          </div>
+          <Link href="/pulse" className="shrink-0 text-sm font-bold text-emce-dark hover:underline">
+            See full Pulse →
+          </Link>
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-3">
+          {/* Hiring this week */}
+          <Card className="overflow-hidden p-0">
+            <div className="border-b border-emce-border bg-emce-darkest px-5 py-4 text-white">
+              <div className="text-section font-extrabold">🏢 Hiring this week</div>
+              <div className="text-hint opacity-80">Open roles right now</div>
+            </div>
+            {hiringCompanies.length === 0 ? (
+              <div className="px-5 py-10 text-center text-sm text-emce-text-sec">
+                No open roles yet — be the first to post.
+              </div>
+            ) : (
+              <ul className="divide-y divide-emce-border">
+                {hiringCompanies.map((c) => (
+                  <li key={c.slug}>
+                    <Link
+                      href={`/company/${c.slug}`}
+                      className="grid grid-cols-[1fr_auto] items-center gap-3 px-5 py-3 transition hover:bg-emce-light-soft/60"
+                    >
+                      <div className="line-clamp-1 text-sm font-bold text-emce-text">
+                        {c.name}
+                      </div>
+                      <div className="text-xs font-bold tabular-nums text-emce-dark">
+                        {c.openCount} open
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          {/* Hot skills */}
+          <Card className="overflow-hidden p-0">
+            <div className="border-b border-emce-border bg-emce-mid px-5 py-4 text-emce-darkest">
+              <div className="text-section font-extrabold">🔥 Hot skills</div>
+              <div className="text-hint opacity-80">Most-requested in the last 30 days</div>
+            </div>
+            {hotSkills.length === 0 ? (
+              <div className="px-5 py-10 text-center text-sm text-emce-text-sec">
+                Skill leaderboard fills up as roles are posted.
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-1.5 p-5">
+                {hotSkills.map((s) => (
+                  <Link
+                    key={s.slug}
+                    href={`/jobs?q=${encodeURIComponent(s.name)}`}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-emce-border bg-white px-3 py-1 text-xs font-bold text-emce-text transition hover:border-emce-mid hover:bg-emce-light-soft"
+                  >
+                    <span>{s.name}</span>
+                    <span className="tabular-nums text-emce-text-muted">
+                      · {s.jobCount}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* Recent hires — proof the loop closes */}
+          <Card className="overflow-hidden p-0">
+            <div className="border-b border-emce-border bg-emce-light-soft px-5 py-4 text-emce-darkest">
+              <div className="text-section font-extrabold">✨ Recent hires</div>
+              <div className="text-hint opacity-80">Loop closed</div>
+            </div>
+            {recentHires.length === 0 ? (
+              <div className="px-5 py-10 text-center text-sm text-emce-text-sec">
+                The first hires through the platform will surface here.
+              </div>
+            ) : (
+              <ul className="divide-y divide-emce-border">
+                {recentHires.map((h, i) => (
+                  <li key={i} className="px-5 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-emce-mid text-xs font-extrabold text-emce-darkest">
+                        {h.initial}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="line-clamp-1 text-sm font-bold text-emce-text">
+                          {h.jobTitle}{" "}
+                          <span className="font-normal text-emce-text-sec">
+                            at {h.companyName}
+                          </span>
+                        </div>
+                        <div className="text-hint text-emce-text-muted">
+                          {relativeWhen(h.whenMs)}
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+      </section>
+
       {/* ─── Salary Compass spotlight (levels.fyi-style) ─── */}
       {(engineerSalaries.length > 0 || technicianSalaries.length > 0) && (
         <section className="container py-16">
-          <div className="mb-6 flex items-end justify-between">
+          <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
               <Badge variant="default" className="mb-2">💰 Salary Compass · India</Badge>
               <h2 className="text-dashboard text-emce-text md:text-3xl">
-                Top EV salaries · 2026 medians
+                What India&apos;s EV pays · 2026 medians
               </h2>
               <p className="mt-1 max-w-xl text-sm text-emce-text-sec">
                 Median CTC across verified, anonymous submissions —
@@ -190,10 +384,7 @@ export default async function HomePage() {
                 technicians. Submit one to unlock the full database.
               </p>
             </div>
-            <Link
-              href="/salaries"
-              className="hidden text-sm font-bold text-emce-dark hover:underline md:block"
-            >
+            <Link href="/salaries" className="shrink-0 text-sm font-bold text-emce-dark hover:underline">
               See full Compass →
             </Link>
           </div>
@@ -214,38 +405,84 @@ export default async function HomePage() {
               emptyHint="More technician submissions needed before public medians can show."
             />
           </div>
+        </section>
+      )}
 
-          <div className="mt-6 flex justify-center md:hidden">
-            <Link href="/salaries" className="text-sm font-bold text-emce-dark hover:underline">
-              See full Compass →
-            </Link>
+      {/* ─── Featured This Week ─── */}
+      {featured.length > 0 && (
+        <section className="border-y border-emce-border bg-emce-light-soft/30">
+          <div className="container py-16">
+            <div className="mb-6 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <Badge variant="success" className="mb-2">✨ Featured this week</Badge>
+                <h2 className="text-dashboard text-emce-text md:text-3xl">
+                  EV pros worth watching
+                </h2>
+                <p className="mt-1 text-sm text-emce-text-sec">
+                  Editorial picks · open to work · DIYguru-verified bias.
+                </p>
+              </div>
+              <Link href="/pulse" className="shrink-0 text-sm font-bold text-emce-dark hover:underline">
+                See full Pulse →
+              </Link>
+            </div>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+              {featured.map((c) => (
+                <Link
+                  key={c.slug}
+                  href={`/${c.slug}`}
+                  className="group flex flex-col items-center rounded-lg border border-emce-border bg-white p-4 text-center transition hover:border-emce-mid hover:shadow-emce-hover"
+                >
+                  <Avatar src={c.profilePhotoUrl} name={c.name} size="lg" />
+                  <p className="mt-3 line-clamp-1 font-bold text-emce-text group-hover:text-emce-dark">
+                    {c.name}
+                  </p>
+                  {c.headline && (
+                    <p className="mt-0.5 line-clamp-2 text-hint text-emce-text-sec">
+                      {c.headline}
+                    </p>
+                  )}
+                  <p className="mt-2 text-hint text-emce-text-muted">
+                    {c.totalExperienceYears} yrs experience
+                  </p>
+                  {c.isDIYguruVerified && (
+                    <Badge variant="verified" className="mt-2 text-[10px]">
+                      ⭐ DIYguru
+                    </Badge>
+                  )}
+                </Link>
+              ))}
+            </div>
           </div>
         </section>
       )}
 
-      {/* ─── EV domains ─── */}
+      {/* ─── Browse by topic ─── */}
       <section className="container py-16">
-        <div className="mb-8 flex items-end justify-between">
+        <div className="mb-8 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
             <Badge variant="default" className="mb-2">{t("domains.tag", locale)}</Badge>
             <h2 className="text-dashboard text-emce-text md:text-3xl">
-              {t("domains.title", locale)}
+              Browse by topic
             </h2>
+            <p className="mt-1 text-sm text-emce-text-sec">
+              Eight slices that cover the full EV stack. Each opens a
+              filtered view of jobs, companies and verified people.
+            </p>
           </div>
-          <Link href="/jobs" className="hidden text-sm font-bold text-emce-dark hover:underline md:block">
+          <Link href="/jobs" className="shrink-0 text-sm font-bold text-emce-dark hover:underline">
             {t("domains.allCategories", locale)}
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-6">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {EV_DOMAINS.map((d) => (
             <Link key={d.slug} href={`/jobs?domain=${d.slug}`}>
-              <Card className="h-full">
-                <div className="mb-3 grid h-11 w-11 place-items-center rounded-md bg-emce-light-soft text-2xl">
+              <Card className="h-full transition hover:border-emce-mid hover:shadow-emce-hover">
+                <div className="mb-3 grid h-10 w-10 place-items-center rounded-md bg-emce-light-soft text-xl">
                   {d.emoji}
                 </div>
                 <div className="text-section text-emce-text">{d.name}</div>
-                <div className="mt-1 text-hint text-emce-text-sec">{d.count}</div>
               </Card>
             </Link>
           ))}
@@ -287,8 +524,32 @@ export default async function HomePage() {
         </Card>
       </section>
 
+      {/* ─── Final CTA strip ─── */}
+      <section className="border-y border-emce-border bg-emce-darkest text-white">
+        <div className="container py-12 text-center">
+          <h2 className="text-2xl font-extrabold tracking-tight md:text-3xl">
+            Become part of India&apos;s EV story.
+          </h2>
+          <p className="mx-auto mt-2 max-w-xl text-sm text-white/75">
+            Sign up free. Post a role. Submit a salary. Roast your resume.
+            Every action helps the next person navigate the industry.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-3">
+            <Button asChild size="lg" variant="accent">
+              <Link href="/signup">Join free</Link>
+            </Button>
+            <Button asChild size="lg" variant="outline" className="border-white/40 bg-white/5 text-white hover:bg-white/15 hover:text-white">
+              <Link href="/employer">Post a role</Link>
+            </Button>
+            <Button asChild size="lg" variant="outline" className="border-white/40 bg-white/5 text-white hover:bg-white/15 hover:text-white">
+              <Link href="/digest">📱 WhatsApp digest</Link>
+            </Button>
+          </div>
+        </div>
+      </section>
+
       {/* ─── DIYguru strip ─── */}
-      <section className="border-y border-emce-border bg-emce-light-soft">
+      <section className="border-b border-emce-border bg-emce-light-soft">
         <div className="container flex flex-col items-center gap-4 py-8 text-center md:flex-row md:justify-between md:text-left">
           <div className="flex items-center gap-3">
             <Badge variant="verified">⭐ {t("diyguru.verified", locale)}</Badge>

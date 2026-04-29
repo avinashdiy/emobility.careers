@@ -6,7 +6,6 @@ import { HeaderSearch } from "@/components/layout/HeaderSearch";
 import { DiscoverMenu } from "@/components/layout/DiscoverMenu";
 import { HeaderUserMenu } from "@/components/layout/HeaderUserMenu";
 import { Logo } from "@/components/brand/Logo";
-import { IconMark } from "@/components/brand/IconMark";
 import { CompleteProfileBanner } from "@/components/profile/CompleteProfileBanner";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -121,15 +120,17 @@ export async function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-emce-border bg-white text-emce-text">
       <div className="container flex h-14 items-center gap-3 py-2 md:gap-4 md:py-2.5">
-        {/* Brand mark — wordmark on md+ (the logo PNG already includes the icon),
-            collapses to icon-only on phones to keep the nav row tight, the same
-            way LinkedIn shows the "in" mark on mobile. */}
+        {/* Brand mark — full wordmark at every breakpoint, but a
+            tighter `sm` size on phones so it fits next to the rest of
+            the nav. Earlier we collapsed to an icon-only mark on
+            mobile, but that read as a missing logo to first-time
+            visitors who didn't recognise it as the brand. */}
         <Link href={user ? "/feed" : "/"} className="flex shrink-0 items-center" aria-label="Home">
+          <span className="md:hidden">
+            <Logo size="sm" priority />
+          </span>
           <span className="hidden md:inline">
             <Logo size="md" priority />
-          </span>
-          <span className="md:hidden">
-            <IconMark size="md" priority />
           </span>
         </Link>
 

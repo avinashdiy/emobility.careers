@@ -1,115 +1,173 @@
 import { ImageResponse } from "next/og";
-import { getSettings } from "@/lib/settings";
 import { brandLogoDataUrl } from "@/lib/og/brand-asset";
+import { getPulseCounters } from "@/lib/pulse";
 
 export const runtime = "nodejs";
-// Render dynamically — DB-backed getSettings() can't reach a DB during build,
-// so SSG would fall back to defaults. Per-request rendering keeps the image
-// in sync with whatever admins edit in /admin/settings.
+// Render dynamically so the live counters stay in sync with the
+// platform — every WhatsApp / LinkedIn / X unfurl shows the real
+// "X open roles, Y companies hiring" snapshot at share-time, not a
+// frozen number from build day.
 export const dynamic = "force-dynamic";
-export const alt = "eMobility Careers — India's #1 EV-only career platform";
+export const alt = "The address of EV in India — emobility.careers";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
 /**
- * Default Open Graph image rendered for the home page (and any route that
- * doesn't have its own `opengraph-image.tsx`). Used by WhatsApp, LinkedIn,
- * X/Twitter, and every other unfurler when the site URL is shared.
+ * Default Open Graph image — the share-card every link unfurl resolves
+ * to when emobility.careers is posted on WhatsApp, LinkedIn, X, etc.
  *
- * Site name + tagline are admin-editable via /admin/settings — read here so
- * the share preview stays in sync without a redeploy.
+ * The card is poster-style on purpose — it's the first impression of
+ * the platform for anyone who didn't seek it out, and it has to
+ * communicate "this is the address of the EV industry in India" in
+ * one glance, not "this is a job board". Live counters at the bottom
+ * (real open-role and company counts pulled at share-time) prove the
+ * page is alive without forcing the viewer to click first.
  */
 export default async function HomeOG() {
-  // Read the admin-set identity. Cached for ~30s in lib/settings, so even
-  // sharing a few URLs in quick succession only hits the DB once.
-  const s = await getSettings("site.name", "site.tagline").catch(() => ({} as Record<string, string>));
-  const siteName = s["site.name"] || "eMobility Careers";
-  const tagline = s["site.tagline"] || "EV careers, supercharged.";
+  // Live counters at share-time. We swallow errors so a broken DB
+  // never blocks an unfurl — the poster still ships, just without the
+  // numbers strip.
+  const pulse = await getPulseCounters().catch(() => null);
 
   return new ImageResponse(
     (
       <div
         style={{
           display: "flex",
+          flexDirection: "column",
           width: "100%",
           height: "100%",
           padding: 64,
-          background: "linear-gradient(160deg, #1e2d2a 0%, #374a47 40%, #3d5e58 100%)",
+          background:
+            "linear-gradient(155deg, #0e1a17 0%, #1e2d2a 38%, #2f4843 70%, #3d5e58 100%)",
           color: "white",
           fontFamily: "system-ui, sans-serif",
-          flexDirection: "column",
         }}
       >
-        {/* Header — wordmark logo (icon + text combined) on a white pill,
-            so the dark-teal type inside the PNG remains legible against
-            the dark hero gradient. Per brand rule: don't pair the wordmark
-            with a separate icon. */}
-        <div style={{ display: "flex", alignItems: "center" }}>
+        {/* Top row — wordmark + "live" pill on the right */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+          }}
+        >
           <div style={{ display: "flex", background: "white", padding: "12px 18px", borderRadius: 14 }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img src={brandLogoDataUrl()} alt="eMobility Careers" width={224} height={56} />
           </div>
-        </div>
-
-        {/* Pill — "India's #1 EV-only career platform" */}
-        <div style={{ marginTop: 60, display: "flex" }}>
           <div
             style={{
               display: "flex",
               alignItems: "center",
-              gap: 8,
+              gap: 10,
+              border: "1px solid rgba(193, 255, 180, 0.4)",
               background: "rgba(193, 255, 180, 0.12)",
-              border: "1px solid rgba(193, 255, 180, 0.3)",
               color: "#c1ffb4",
-              padding: "10px 20px",
+              padding: "10px 16px",
               borderRadius: 999,
-              fontSize: 22,
-              fontWeight: 600,
+              fontSize: 18,
+              fontWeight: 700,
+              letterSpacing: "0.05em",
             }}
           >
-            <span style={{ fontSize: 26 }}>⚡</span>
-            <span>India's #1 EV-only career platform</span>
+            <span
+              style={{
+                display: "flex",
+                width: 10,
+                height: 10,
+                borderRadius: 999,
+                background: "#8fd299",
+              }}
+            />
+            <span>LIVE · UPDATED DAILY</span>
           </div>
         </div>
 
-        {/* Hero — "EV careers, supercharged." */}
-        <div style={{ marginTop: 28, display: "flex" }}>
-          <div style={{ fontSize: 84, fontWeight: 800, lineHeight: 1.05, letterSpacing: "-0.02em" }}>
-            EV careers,
-            <br />
-            <span style={{ color: "#8fd299" }}>supercharged.</span>
-          </div>
-        </div>
-
-        {/* Subtitle */}
+        {/* Eyebrow — sets the framing before the H1 lands */}
         <div
           style={{
-            marginTop: 26,
+            marginTop: 56,
             display: "flex",
-            fontSize: 24,
-            lineHeight: 1.4,
-            color: "rgba(255,255,255,0.85)",
-            maxWidth: "92%",
+            color: "#8fd299",
+            fontSize: 20,
+            fontWeight: 800,
+            letterSpacing: "0.2em",
+            textTransform: "uppercase",
           }}
         >
-          Find your next role in battery tech, charging infrastructure, powertrain, motors, and EV manufacturing — or hire vetted technicians and engineers.
+          ✦ The address of EV in India
         </div>
 
-        {/* Footer URL */}
+        {/* Hero — the line everyone sees on WhatsApp / LinkedIn first */}
+        <div style={{ marginTop: 18, display: "flex" }}>
+          <div
+            style={{
+              fontSize: 76,
+              fontWeight: 800,
+              lineHeight: 1.04,
+              letterSpacing: "-0.02em",
+            }}
+          >
+            Where the EV industry
+            <br />
+            <span style={{ color: "#c1ffb4" }}>hires, gets hired,</span>
+            <br />
+            and reads what&apos;s happening.
+          </div>
+        </div>
+
+        {/* What's-here strip — chips spelling out the four lenses */}
         <div
           style={{
             marginTop: "auto",
             display: "flex",
+            flexWrap: "wrap",
+            gap: 10,
+          }}
+        >
+          {["Jobs", "Salaries", "Companies", "People", "Industry Pulse"].map((s) => (
+            <span
+              key={s}
+              style={{
+                background: "rgba(255,255,255,0.1)",
+                padding: "10px 22px",
+                borderRadius: 999,
+                fontSize: 22,
+                fontWeight: 600,
+                color: "rgba(255,255,255,0.92)",
+              }}
+            >
+              {s}
+            </span>
+          ))}
+        </div>
+
+        {/* Footer — live counters + URL */}
+        <div
+          style={{
+            marginTop: 28,
+            display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
             paddingTop: 24,
-            borderTop: "1px solid rgba(255,255,255,0.15)",
+            borderTop: "1px solid rgba(255,255,255,0.18)",
           }}
         >
-          <div style={{ fontSize: 22, color: "rgba(255,255,255,0.7)" }}>
-            {siteName} · {tagline}
+          <div style={{ display: "flex", fontSize: 22, color: "rgba(255,255,255,0.78)" }}>
+            {pulse && pulse.openJobs > 0 ? (
+              <span>
+                {pulse.openJobs.toLocaleString()} open roles ·{" "}
+                {pulse.activeCompanies.toLocaleString()} companies hiring
+                {pulse.verifiedPros > 0 && (
+                  <> · {pulse.verifiedPros.toLocaleString()} DIYguru-verified</>
+                )}
+              </span>
+            ) : (
+              <span>India&apos;s EV industry · Pulse · Salaries · People · Jobs</span>
+            )}
           </div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: "#c1ffb4" }}>
+          <div style={{ fontSize: 24, fontWeight: 800, color: "#c1ffb4" }}>
             emobility.careers
           </div>
         </div>
