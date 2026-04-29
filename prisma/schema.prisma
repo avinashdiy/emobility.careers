@@ -44,6 +44,27 @@ model User {
   updatedAt       DateTime      @updatedAt
   lastLoginAt     DateTime?
 
+  // Anti-spam signals captured at signup. signupIp + signupUserAgent give
+  // moderators something to triage by when a wave of fake accounts shows
+  // up (e.g. "every account from 1.2.3.4 in the last hour, suspend").
+  // failedLoginCount + lockedUntil drive a temporary lockout after N bad
+  // password attempts so credential-stuffing slows itself down.
+  signupIp         String?
+  signupUserAgent  String?  @db.Text
+  failedLoginCount Int       @default(0)
+  lockedUntil      DateTime?
+
+  // First-login product-tour state. Null until the candidate finishes (or
+  // explicitly skips) the welcome walkthrough. The site-header surfaces
+  // the tour while this is null AND profileCompleteness < 90.
+  productTourCompletedAt DateTime?
+
+  // Placement-officer access flag — admin-grantable. When true, /tpo
+  // becomes reachable for this user even though their `role` is not
+  // ADMIN. Lets DIYguru placement coordinators run cohort dashboards
+  // without seeing the rest of /admin (moderation, settings, etc.).
+  isPlacementOfficer Boolean @default(false)
+
   accounts            Account[]
   sessions            Session[]
   candidateProfile    CandidateProfile?
@@ -68,6 +89,7 @@ model User {
   posts               Post[]         @relation("PostAuthor")
   postReactions       PostReaction[]
   postComments        PostComment[]
+  pollVotes           PollVote[]     @relation("PollVoter")
 
   // Mentorship
   mentorProfile      MentorProfile?
@@ -85,6 +107,20 @@ model User {
   competitionRegistrations    CompetitionRegistration[] @relation("CompetitionLeader")
   competitionTeamMemberships  CompetitionTeamMember[]   @relation("CompetitionMember")
   competitionJudgeAssignments CompetitionJudge[]        @relation("CompetitionJudge")
+
+  // TPO / placement
+  cohortsCreated Cohort[]
+
+  // Verified-company badge audit — records each Experience row this
+  // recruiter approved. Reverse of Experience.verifiedBy.
+  experienceVerifications Experience[] @relation("ExperienceVerifier")
+
+  // WhatsApp daily-digest subscriptions linked to this user (when they
+  // subscribed while signed in).
+  whatsappDigests WhatsAppDigestSubscription[] @relation("DigestSubscriber")
+
+  // FeaturedSlot rows this admin curated.
+  featuredSlotsCurated FeaturedSlot[] @relation("FeaturedCurator")
 
   @@index([role, status])
 }
@@ -137,10 +173,11 @@ model EVDomain {
   isActive    Boolean  @default(true)
   createdAt   DateTime @default(now())
 
-  skills           Skill[]
-  candidateDomains CandidateEVDomain[]
-  jobDomains       JobEVDomain[]
-  salaryBenchmarks SalaryBenchmark[]
+  skills            Skill[]
+  candidateDomains  CandidateEVDomain[]
+  jobDomains        JobEVDomain[]
+  salaryBenchmarks  SalaryBenchmark[]
+  salarySubmissions SalarySubmission[]
 }
 
 model Skill {
@@ -283,10 +320,26 @@ model CandidateProfile {
   labExposureTags   String[]  @default([])
   capstoneProject   Json?
 
+  // Optional Cohort link. A "primary cohort" — the course/batch this
+  // candidate graduated from. Set when an admin or TPO claims a roster
+  // entry against the candidate. Drives the TPO dashboard's per-cohort
+  // funnel + placement-rate breakdown.
+  cohortId          String?
+  cohort            Cohort?   @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+
   // Onboarding & parsing state
   onboardingCompletedAt DateTime?
   resumeParsedAt        DateTime?
   resumeParseDraft      Json?
+
+  // Profile-completeness — denormalised %0..100, recomputed on every
+  // profile-edit server action so we can filter, sort, and gate apply
+  // without scanning every profile relation. Two thresholds drive product
+  // gates: 50% unlocks feed/jobs browsing, 90% unlocks job applications.
+  // The breakdown of which sections are filled lives in
+  // `lib/profile-completeness.ts` so the gauge UI can show "+8% if you
+  // add 1 experience" hints without re-querying.
+  profileCompleteness   Int       @default(0)
 
   // Social graph (LinkedIn-style)
   personType          PersonType @default(PROFESSIONAL)
@@ -322,6 +375,7 @@ model CandidateProfile {
   jobAlerts          JobAlert[]
   documents          CandidateDocument[]
   assessmentAttempts AssessmentAttempt[]
+  featuredSlots      FeaturedSlot[]
 
   @@index([profileMode, availabilityStatus, openToWork])
   @@index([isDIYguruVerified])
@@ -366,26 +420,50 @@ model Experience {
   description String?          @db.Text
   createdAt   DateTime         @default(now())
 
+  // ─── Verification ───────────────────────────────────────────
+  // A Verified Company badge ("✓ Engineer at Ather") lights up when one
+  // of three things proves the candidate actually worked here:
+  //   • EMAIL_DOMAIN  — they verified an OTP sent to an email matching
+  //                     Company.emailDomains.
+  //   • RECRUITER_APPROVAL — a verified employer at the same company
+  //                          approved the claim.
+  //   • ADMIN          — manual override for legacy / edge cases.
+  // Stamped on the Experience row directly (not a separate table) since
+  // there's never more than one verification per row, and the audit
+  // fields (`verifiedEmail`, `verifiedByUserId`) capture how it was earned.
+  verifiedAt        DateTime?
+  verifiedMethod    ExperienceVerifyMethod?
+  verifiedEmail     String?
+  verifiedByUserId  String?
+  verifiedBy        User?    @relation("ExperienceVerifier", fields: [verifiedByUserId], references: [id], onDelete: SetNull)
+
   @@index([companyId])
+  @@index([candidateId, verifiedAt])
+}
+
+enum ExperienceVerifyMethod {
+  EMAIL_DOMAIN
+  RECRUITER_APPROVAL
+  ADMIN
 }
 
 model Education {
-  id              String           @id @default(cuid())
-  candidateId     String
-  candidate       CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  id             String           @id @default(cuid())
+  candidateId    String
+  candidate      CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   // Always required as plain text. Optional institutionId promotes the entry
   // to a structured link with logo + alumni listing. The user can opt out
   // and leave it as text only.
-  institution     String
-  institutionId   String?
-  institutionRef  Institution?     @relation(fields: [institutionId], references: [id], onDelete: SetNull)
-  degree          String?
-  field           String?
-  startYear       Int?
-  endYear         Int?
-  grade           String?
-  description     String?          @db.Text
-  createdAt       DateTime         @default(now())
+  institution    String
+  institutionId  String?
+  institutionRef Institution?     @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  degree         String?
+  field          String?
+  startYear      Int?
+  endYear        Int?
+  grade          String?
+  description    String?          @db.Text
+  createdAt      DateTime         @default(now())
 
   @@index([institutionId])
 }
@@ -481,6 +559,13 @@ model Company {
   linkedinUrl        String?
   twitterUrl         String?
   facebookUrl        String?
+  // Email-domain allowlist for the "Verified Company" badge flow.
+  // When a candidate verifies an OTP sent to e.g. anita@ather.com and
+  // ather.com is in this list, every Experience row of theirs that has
+  // companyId = this company's id auto-stamps as verified. Multiple
+  // domains are supported because companies use ather.com / atherenergy.com /
+  // ather.co etc. interchangeably.
+  emailDomains       String[]            @default([])
   verificationStatus CompanyVerification @default(UNVERIFIED)
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
@@ -493,6 +578,7 @@ model Company {
   webhooks       Webhook[]
   apiKeys        ApiKey[]
   campusDrives   CampusDrive[]
+  salarySubmissions SalarySubmission[] @relation("SalaryCompany")
   // Social: people who represent this company (founders / PMs)
   reps           CandidateProfile[]    @relation("CompanyRep")
   // One-way follows on the company page
@@ -556,6 +642,19 @@ enum JobStatus {
   CLOSED
 }
 
+/// Who can see + apply to this job. The default `PUBLIC` is the regular
+/// open posting. `DIYGURU_ONLY` hides the listing from non-DIYguru-
+/// verified candidates and blocks `applyToJob` server-side for them —
+/// this is the channel emobility.careers uses to route the 8-10 daily
+/// employer requirements exclusively to DIYguru students. `INVITE_ONLY`
+/// is a future hook for jobs that recruiters share via direct invite
+/// only (no public browse, no apply unless invited).
+enum JobAudience {
+  PUBLIC
+  DIYGURU_ONLY
+  INVITE_ONLY
+}
+
 enum EmploymentType {
   FULL_TIME
   PART_TIME
@@ -601,7 +700,16 @@ model JobPosting {
   salaryMin        Decimal?       @db.Decimal(12, 2)
   salaryMax        Decimal?       @db.Decimal(12, 2)
   salaryCurrency   String         @default("INR")
+  // Salary disclosure rule: `salaryHidden` is opt-in by default for
+  // PUBLIC jobs. For DIYGURU_ONLY jobs the createJob/updateJob server
+  // actions force this to `false` regardless of what the form sends —
+  // students shouldn't apply blind.
   salaryHidden     Boolean        @default(false)
+  // Visibility audience. PUBLIC = visible everywhere; DIYGURU_ONLY =
+  // visible + applicable only to DIYguru-verified candidates; INVITE_ONLY
+  // = no browse listing, only reachable via direct invite. Defaults to
+  // PUBLIC so existing jobs round-trip cleanly through the migration.
+  audience         JobAudience    @default(PUBLIC)
   status           JobStatus      @default(DRAFT)
   applicationUrl   String?
   applicationEmail String?
@@ -634,6 +742,7 @@ model JobPosting {
   @@index([status, publishedAt])
   @@index([companyId, status])
   @@index([profileMode, workMode])
+  @@index([audience, status])
 }
 
 model JobEVDomain {
@@ -843,6 +952,12 @@ model Assessment {
   passingScore Float          @default(60)
   durationMins Int?
   isLibrary    Boolean        @default(false)
+  // Pre-placement gate. When true on at least one assessment for a job,
+  // the ATS blocks any forward stage transition (INTERVIEW / OFFER /
+  // HIRED) until the candidate has an AssessmentAttempt with
+  // `score >= passingScore` for that assessment. See
+  // server/ats/actions.ts → moveStage for enforcement.
+  gateAdvance  Boolean        @default(false)
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
@@ -1019,9 +1134,175 @@ model DIYguruRoster {
   claimedAt       DateTime?
   createdAt       DateTime           @default(now())
 
+  // First-class cohort link — see model Cohort below. Optional because
+  // legacy roster rows imported before cohorts existed should still
+  // round-trip; new uploads always attach a cohort at admin-time.
+  cohortId        String?
+  cohort          Cohort?            @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+
   @@unique([importBatchId, email])
   @@index([email])
   @@index([studentId])
+  @@index([cohortId])
+}
+
+/// WhatsApp daily digest subscription — "5 fresh EV jobs delivered to
+/// phones, not inboxes". The country runs on WhatsApp; daily emails are
+/// dead in Tier 2/3. The flow:
+///
+///   1. Visitor enters phone + filters at /digest. We create a row with
+///      status=PENDING and send a confirmation message via WA Cloud API.
+///   2. On successful send we flip to ACTIVE (we trust the user owns the
+///      number; unsubscribe is one tap from any digest message).
+///   3. The whatsapp-digest worker ticks every morning, pulls 5 fresh
+///      OPEN jobs matching each subscription's filters, sends via WA.
+///   4. Send failures auto-PAUSE after 5 in a row so we don't burn
+///      Cloud API credits on dead numbers.
+enum WhatsAppSubscriptionStatus {
+  PENDING
+  ACTIVE
+  PAUSED
+  UNSUBSCRIBED
+}
+
+model WhatsAppDigestSubscription {
+  id                  String                       @id @default(cuid())
+  // E.164-normalised phone number — the unique key. Multiple users can
+  // share a number (family device) so we don't link against User.phone.
+  phone               String                       @unique
+  // Optional link to a User account. Set when a signed-in user
+  // subscribes; null when the subscriber came in via the public /digest
+  // form anonymously.
+  userId              String?
+  user                User?                        @relation("DigestSubscriber", fields: [userId], references: [id], onDelete: SetNull)
+  // Filter prefs — empty = all jobs.
+  evDomainSlugs       String[]                     @default([])
+  location            String?
+  profileMode         ProfileMode?
+  status              WhatsAppSubscriptionStatus   @default(PENDING)
+  confirmedAt         DateTime?
+  // Last successful digest send + the URL-safe token used in the
+  // unsubscribe link inside each message. We rotate this on every send
+  // so a leaked link only unsubscribes the next batch.
+  lastSentAt          DateTime?
+  unsubscribeToken    String                       @unique
+  // Auto-pause guardrail: count consecutive WA send failures. 5 strikes
+  // and the worker flips status to PAUSED.
+  failedSendsInARow   Int                          @default(0)
+  createdAt           DateTime                     @default(now())
+  updatedAt           DateTime                     @updatedAt
+
+  @@index([status, lastSentAt])
+}
+
+/// "Featured This Week" — five candidates spotlighted weekly on Pulse +
+/// the home page. Curated by admins; gives candidates an aspirational
+/// reason to fill their profile + a recruiter audience for the platform.
+///
+/// `weekStart` is the Monday of the week (00:00 IST). Slots are
+/// `position` 1..5 — UI honours the order.
+model FeaturedSlot {
+  id              String           @id @default(cuid())
+  candidateId     String
+  candidate       CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  weekStart       DateTime
+  position        Int
+  // Editorial copy — admin curates. Falls back to the candidate's
+  // headline at render time.
+  spotlightReason String?
+  // Optional override image — used for promotional images / posters.
+  imageUrl        String?
+  featuredById    String?
+  featuredBy      User?            @relation("FeaturedCurator", fields: [featuredById], references: [id], onDelete: SetNull)
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+
+  @@unique([weekStart, position])
+  @@index([weekStart, isActive])
+}
+
+/// AI Resume Roast result — the no-signup viral hook. Anyone uploads a
+/// resume, the AI scores it on EV-specific dimensions (battery exposure,
+/// charging knowledge, motor & power electronics, software, etc.), and we
+/// persist the score so the result URL is shareable as
+/// /roast/[id]. Each row also gets an OG image at the same path so the
+/// LinkedIn / WhatsApp unfurl shows the actual score, not a stock image.
+///
+/// Privacy: we never store the raw resume bytes — only the parsed text
+/// hashes + the score. Roast records aren't tied to a User by default; an
+/// `anonId` cookie lets returning users reach their previous roasts. When
+/// a roaster signs up, we link the row via `claimedByUserId`.
+model ResumeRoast {
+  id            String   @id @default(cuid())
+  // Anonymous browser cookie ID — lets a visitor see "your past roasts"
+  // before they sign up. Optional because some roasts are admin-tools.
+  anonId        String?
+  // Once the visitor signs up, link the roast to them so it shows on
+  // /me/profile as "your most recent roast" with a fix-it CTA.
+  claimedByUserId String?
+  // 0..100 overall — the headline number on the share card.
+  scoreOverall  Int
+  // Per-domain breakdown (battery / charging / motors / software /
+  // experience / clarity). JSON because the rubric may evolve.
+  scoreBreakdown Json
+  // 3-5 specific actionable items, structured as { title, body, severity }.
+  feedback      Json
+  // The resume text length in chars — used as a sanity signal in the
+  // admin moderation view; never the raw text itself.
+  textLength    Int
+  // IP at time of roast — abuse triage only. Auto-purge after 30 days.
+  ip            String?
+  createdAt     DateTime @default(now())
+
+  @@index([anonId])
+  @@index([claimedByUserId])
+  @@index([createdAt])
+}
+
+/// A *cohort* is a named DIYguru course-batch — e.g. "EV Powertrain Mar 2025".
+/// Lets the TPO dashboard slice placement metrics by group, and lets students
+/// filter by their batch on their public profile.
+///
+/// DIYguruRoster.cohortId is optional + set when an admin imports a CSV (or
+/// backfilled later). CandidateProfile.cohortId is copied forward when a
+/// roster entry is claimed, so candidate-by-cohort queries don't need a
+/// join through DIYguruRoster.
+///
+/// Status governs the TPO dashboard's filter: ACTIVE = currently placing,
+/// ARCHIVED = wrapped up, hidden by default.
+enum CohortStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+model Cohort {
+  id          String       @id @default(cuid())
+  slug        String       @unique
+  name        String       // "EV Powertrain — Mar 2025"
+  courseName  String       // "EV Powertrain"
+  courseSlug  String?      // "ev-powertrain"
+  // ISO-8601 batch identifier, e.g. "2025-03". Helps sort + group.
+  batchCode   String?
+  startDate   DateTime?
+  endDate     DateTime?
+  // Free-text owner — for v1, the institution can be a string ("DIYguru
+  // Pune Lab"). Later we may relate this to the `Institution` table.
+  institution String?
+  description String?      @db.Text
+  // Expected total seats / actual graduates — used by the TPO dashboard
+  // to show a "claimed %" against the roster.
+  capacity    Int?
+  status      CohortStatus @default(ACTIVE)
+  createdById String?
+  createdBy   User?        @relation(fields: [createdById], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  rosterEntries DIYguruRoster[]
+  candidates    CandidateProfile[]
+
+  @@index([status, courseSlug])
+  @@index([batchCode])
 }
 
 // ─── KYC / verification ─────────────────────────────────────
@@ -1092,6 +1373,67 @@ model VerificationRequest {
   @@index([status])
 }
 
+// ─── Institutions (schools, colleges, universities) ─────────
+//
+// Companion to `Company` for the academic side. Candidates can attach an
+// Education entry to a known Institution (Education.institutionId), which
+// upgrades the entry to a structured link with logo + alumni listing on
+// the institution page. If the institution isn't on the platform yet,
+// candidates can create a new one inline — admin reviews/dedupes later
+// (similar to Company verification flow).
+//
+// Why a separate model from Company? Different shape (board / affiliation /
+// established year / program count), different discoverability surface
+// (alumni vs employees), different KYC reviewer (academic admin not company
+// admin).
+
+enum InstitutionType {
+  UNIVERSITY
+  COLLEGE
+  SCHOOL // K-12
+  ITI // Industrial Training Institute (India)
+  POLYTECHNIC
+  RESEARCH_INSTITUTE
+  TRAINING_CENTER
+  OTHER
+}
+
+enum InstitutionVerification {
+  UNVERIFIED // user-created, awaiting admin review
+  PENDING // admin review in progress
+  VERIFIED // confirmed by admin
+  REJECTED // duplicate or fake — hidden from search
+}
+
+model Institution {
+  id                 String                  @id @default(cuid())
+  slug               String                  @unique
+  name               String
+  type               InstitutionType         @default(COLLEGE)
+  shortName          String? // common abbreviation (e.g. "IIT Delhi")
+  city               String?
+  state              String?
+  country            String                  @default("IN")
+  website            String?
+  logoUrl            String?
+  bannerUrl          String?
+  about              String?                 @db.Text
+  foundedYear        Int?
+  affiliation        String? // affiliating university / accreditation board
+  // The user who first added this institution (when self-served). Helps
+  // admin trace user-created entries during review.
+  createdById        String?
+  verificationStatus InstitutionVerification @default(UNVERIFIED)
+  verifiedAt         DateTime?
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  educationLinks Education[]
+
+  @@index([verificationStatus, name])
+  @@index([type, city])
+}
+
 // ─── Campus drives (DIYguru / college hiring) ───────────────
 
 enum CampusDriveStatus {
@@ -1114,6 +1456,9 @@ enum CampusCandidateStatus {
 
 model CampusDrive {
   id             String            @id @default(cuid())
+  // URL-safe identifier used by the public landing page at /campus/[slug].
+  // Generated server-side from the title + company; unique across drives.
+  slug           String?           @unique
   companyId      String
   company        Company           @relation(fields: [companyId], references: [id])
   title          String
@@ -1125,8 +1470,17 @@ model CampusDrive {
   contactName    String?
   contactEmail   String?
   contactPhone   String?
+  // Free-form intro shown on the landing page hero. Markdown-friendly so
+  // the host can paste pitch copy with paragraphs + lists.
+  description    String?           @db.Text
+  // Optional banner used as the landing-page hero — falls back to the
+  // company logo on a hero gradient when null.
+  bannerImageUrl String?
   maxCandidates  Int?
   status         CampusDriveStatus @default(DRAFT)
+  // Auto-filled with `${APP_URL}/campus/${slug}` when slug is set; the
+  // free-text fallback is preserved for legacy drives that already
+  // pointed at an external Unstop / Naukri page.
   landingPageUrl String?
   createdAt      DateTime          @default(now())
   updatedAt      DateTime          @updatedAt
@@ -1185,6 +1539,59 @@ model SalaryBenchmark {
   lastUpdated  DateTime @default(now())
 
   @@index([evDomainId, role, location])
+}
+
+/// Salary Compass — Levels.fyi for India's EV industry. Anonymous
+/// crowd-sourced compensation submissions. The viral mechanic:
+///   1. Visitor lands on /salaries, sees teaser data with locked details.
+///   2. Submits one salary anonymously → unlocks the full database for
+///      30 days (cookie-driven).
+///   3. Submission is admin-moderated before going live (PENDING by default).
+/// Aggregations only — never per-row display, never names.
+enum SalarySubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model SalarySubmission {
+  id              String                 @id @default(cuid())
+  // Optional FK to Company. Free-text companyName is always required so
+  // submissions for unlisted companies still aggregate.
+  companyId       String?
+  company         Company?               @relation("SalaryCompany", fields: [companyId], references: [id], onDelete: SetNull)
+  companyName     String
+  jobTitle        String
+  evDomainId      String?
+  evDomain        EVDomain?              @relation(fields: [evDomainId], references: [id], onDelete: SetNull)
+  profileMode     ProfileMode            @default(EXPERIENCED)
+  yearsExp        Int
+  location        String?
+  // Total CTC in lakhs (INR-default). Stored as Float (not Decimal)
+  // because aggregation maths needs JS doubles and we never use these
+  // for billing precision.
+  ctcLakhs        Float
+  // Optional split — base / bonus / esop in lakhs. Recruiters love this
+  // breakdown; we ask but don't require it.
+  baseLakhs       Float?
+  bonusLakhs      Float?
+  esopLakhs       Float?
+  currency        String                 @default("INR")
+  status          SalarySubmissionStatus @default(PENDING)
+  // Anonymity: only set when the submitter explicitly opts in via the
+  // "Tag this to my profile" toggle on the form. Default null.
+  submittedByUserId String?
+  // Anti-spam audit fields. Cookie ID lets us honour "one submission per
+  // browser per day" without auth.
+  ip              String?
+  cookieId        String?
+  reviewedAt      DateTime?
+  reviewedById    String?
+  createdAt       DateTime               @default(now())
+
+  @@index([companyId, status])
+  @@index([status, createdAt])
+  @@index([cookieId])
 }
 
 // ─── Webhooks & API keys (enterprise) ───────────────────────
@@ -1288,6 +1695,30 @@ model Follow {
   @@index([followeeCompanyId])
 }
 
+enum PostKind {
+  TEXT // default — body only, optional `mediaUrls` for legacy
+  IMAGE // 1+ image attachments, body is caption
+  VIDEO // single uploaded video file (≤10MB)
+  EMBED // YouTube / Vimeo / Instagram / LinkedIn video URL
+  DOCUMENT // single PDF / DOCX / PPTX (≤10MB)
+  ARTICLE // long-form, with title + cover image
+  POLL // attached Poll (free or paid response)
+}
+
+enum EmbedProvider {
+  YOUTUBE
+  VIMEO
+  INSTAGRAM
+  LINKEDIN
+  TWITTER
+}
+
+enum PostAttachmentType {
+  IMAGE
+  VIDEO
+  DOCUMENT
+}
+
 enum PostVisibility {
   PUBLIC // shows on the global feed and tag pages
   CONNECTIONS // 1st-degree connections only
@@ -1328,12 +1759,102 @@ model Post {
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
-  reactions PostReaction[]
-  comments  PostComment[]
+  // ─── Rich content (LinkedIn-style) ─────────────────────────
+  // Posts can carry attachments (images / video / document), an embed (a
+  // third-party video URL), an inline poll, or article-form (cover + title).
+  // `kind` is the primary classifier; the other fields are nullable and
+  // populated only for that kind. `mediaUrls` (legacy String[]) stays for
+  // back-compat — new uploads go through `attachments` instead.
+  kind              PostKind       @default(TEXT)
+  // ARTICLE
+  articleTitle      String?
+  articleCoverUrl   String?
+  // EMBED
+  embedUrl          String?
+  embedProvider     EmbedProvider?
+  embedTitle        String?
+  embedThumbnailUrl String?
+
+  reactions   PostReaction[]
+  comments    PostComment[]
+  attachments PostAttachment[]
+  poll        Poll?
 
   @@index([authorId, createdAt])
   @@index([visibility, createdAt])
   @@index([hashtags])
+  @@index([kind, createdAt])
+}
+
+// Generic attachment row — one image / video / document file in MinIO.
+// Multiple per Post for image carousels (LinkedIn allows up to 9 images).
+model PostAttachment {
+  id        String             @id @default(cuid())
+  postId    String
+  post      Post               @relation(fields: [postId], references: [id], onDelete: Cascade)
+  type      PostAttachmentType
+  url       String // public MinIO/S3 URL
+  fileName  String
+  mime      String
+  byteSize  Int
+  // Type-specific metadata in JSON: image dims, video duration, doc page
+  // count. Optional — readers tolerate missing fields.
+  meta      Json?
+  order     Int                @default(0)
+  createdAt DateTime           @default(now())
+
+  @@index([postId, order])
+}
+
+model Poll {
+  id             String   @id @default(cuid())
+  postId         String   @unique
+  post           Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  question       String
+  // Polls auto-close at this point — voting after this is rejected by the
+  // server action. UI continues to show the totals.
+  closesAt       DateTime
+  // When true, voters can pick more than one option (LinkedIn doesn't but
+  // we surface the toggle). Default false.
+  multipleChoice Boolean  @default(false)
+  totalVotes     Int      @default(0)
+  createdAt      DateTime @default(now())
+
+  options PollOption[]
+  votes   PollVote[]
+}
+
+model PollOption {
+  id     String @id @default(cuid())
+  pollId String
+  poll   Poll   @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  text   String
+  order  Int    @default(0)
+  // Denormalised count, kept fresh by the vote action.
+  votes  Int    @default(0)
+
+  voteRows PollVote[]
+
+  @@index([pollId, order])
+}
+
+model PollVote {
+  id        String     @id @default(cuid())
+  pollId    String
+  poll      Poll       @relation(fields: [pollId], references: [id], onDelete: Cascade)
+  optionId  String
+  option    PollOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User       @relation("PollVoter", fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime   @default(now())
+
+  // One row per (poll, user, option). Single-choice polls enforce
+  // uniqueness on (poll, user) at the action level by deleting prior votes
+  // before inserting. Multi-choice polls allow multiple option rows per
+  // user; the (poll, user, option) tuple stays unique.
+  @@unique([pollId, userId, optionId])
+  @@index([pollId])
+  @@index([userId])
 }
 
 model PostReaction {

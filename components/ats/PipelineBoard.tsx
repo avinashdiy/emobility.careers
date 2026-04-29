@@ -16,6 +16,8 @@ import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
 import { ApplicationStage } from "@prisma/client";
 import { moveStage, bulkMoveStage } from "@/server/ats/actions";
+import { BulkWhatsAppDialog } from "@/components/employer/BulkWhatsAppDialog";
+import { SelectionBar } from "@/components/ui/selection-bar";
 import Link from "next/link";
 
 const STAGE_ORDER: ApplicationStage[] = [
@@ -55,6 +57,11 @@ export interface PipelineApp {
     headline: string | null;
     profilePhotoUrl: string | null;
     isDIYguruVerified: boolean;
+    /** Visibility-gated phone — null when contactVisibility is PRIVATE
+        or no number is on file. The bulk-WhatsApp dialog disables rows
+        without a phone instead of hiding them, so the recruiter can see
+        which candidates fell through. */
+    phone: string | null;
   };
 }
 
@@ -115,28 +122,59 @@ export function PipelineBoard({
 
   return (
     <DndContext sensors={sensors} onDragEnd={handleDragEnd}>
-      {selected.size > 0 && (
-        <div className="sticky top-2 z-10 mb-3 flex flex-col gap-2 rounded-lg border border-emce-mid bg-emce-light-soft p-3 sm:flex-row sm:items-center sm:gap-3">
-          <span className="text-sm font-bold text-emce-text">
-            {selected.size} selected
-          </span>
-          <NativeSelect
-            className="sm:w-44"
-            defaultValue=""
-            onChange={(e) => {
-              if (e.target.value) bulkMove(e.target.value as ApplicationStage);
-            }}
-          >
-            <option value="">Move to stage…</option>
-            {STAGE_ORDER.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-            <option value="REJECTED">REJECTED</option>
-          </NativeSelect>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setSelected(new Set())}>Clear selection</Button>
-        </div>
-      )}
-      <div className="grid gap-3 overflow-x-auto pb-4" style={{ gridTemplateColumns: `repeat(${STAGE_ORDER.length}, minmax(220px, 1fr))` }}>
+      <SelectionBar
+        count={selected.size}
+        onClear={() => setSelected(new Set())}
+        variant="sticky"
+      >
+        <NativeSelect
+          className="sm:w-44"
+          defaultValue=""
+          onChange={(e) => {
+            if (e.target.value) bulkMove(e.target.value as ApplicationStage);
+          }}
+        >
+          <option value="">Move to stage…</option>
+          {STAGE_ORDER.map((s) => (
+            <option key={s} value={s}>{s}</option>
+          ))}
+          <option value="REJECTED">REJECTED</option>
+        </NativeSelect>
+        {/* WhatsApp the selected candidates (deep-link bulk launcher).
+            Renders only when at least one selected candidate has a
+            visible phone — otherwise it'd be a dead button. */}
+        <BulkWhatsAppDialog
+          candidates={items
+            .filter((i) => selected.has(i.id))
+            .map((i) => ({
+              id: i.candidate.id,
+              firstName: i.candidate.firstName,
+              lastName: i.candidate.lastName,
+              phone: i.candidate.phone,
+            }))}
+        />
+      </SelectionBar>
+      {/* On phones the 7-column horizontal kanban becomes unusable —
+          forces sideways scroll plus drag-drop is impractical on touch.
+          Below `lg` we stack stages vertically and rely on the
+          checkbox-then-bulk-move flow that's already wired into the
+          SelectionBar above. The hint below makes that explicit so
+          first-time mobile users don't try to drag. */}
+      <p className="mb-3 text-hint text-emce-text-sec lg:hidden">
+        On mobile, tap the checkbox on each card and use the
+        <strong> Move to stage… </strong>
+        bar that appears at the top to move candidates between stages.
+        Drag-and-drop works best on desktop.
+      </p>
+      <div
+        className="flex flex-col gap-3 pb-4 lg:grid lg:overflow-x-auto"
+        style={{
+          // grid-template-columns is ignored when display is flex
+          // (mobile) and only kicks in once `lg:grid` flips display
+          // back to grid at the lg breakpoint.
+          gridTemplateColumns: `repeat(${STAGE_ORDER.length}, minmax(220px, 1fr))`,
+        }}
+      >
         {STAGE_ORDER.map((stage) => (
           <Column key={stage} stage={stage} apps={columns[stage]} jobId={jobId} selected={selected} onToggle={toggleSelect} />
         ))}
@@ -162,7 +200,11 @@ function Column({ stage, apps, jobId, selected, onToggle }: {
   return (
     <div
       ref={setNodeRef}
-      className={`flex min-h-[400px] flex-col rounded-lg border border-emce-border bg-white/60 p-2 transition ${isOver ? "ring-2 ring-emce-mid" : ""}`}
+      // 400px min-height applies only on lg+ where columns sit
+      // side-by-side (uniform column heights look intentional). Below
+      // lg the columns are stacked, so an empty stage of 400px is just
+      // a wasteful gap — let it size to its content instead.
+      className={`flex flex-col rounded-lg border border-emce-border bg-white/60 p-2 transition lg:min-h-[400px] ${isOver ? "ring-2 ring-emce-mid" : ""}`}
     >
       <div className={`mb-2 rounded-md px-2 py-1.5 ${STAGE_COLOR[stage]}`}>
         <div className="flex items-center justify-between">

@@ -46,6 +46,11 @@ function buildGroups(counts: Counts): Group[] {
         { href: "/admin/users", label: "All users", icon: Users },
         { href: "/admin/employers", label: "Employers", icon: Briefcase, badge: counts.companies },
         { href: "/admin/diyguru", label: "DIYguru roster", icon: School, badge: counts.diyguru },
+        // The full TPO console (cohorts, funnel, unplaced students) lives
+        // at /tpo. ADMINs always have access; trusted DIYguru staff can
+        // also reach it via the User.isPlacementOfficer flag granted on
+        // /admin/users below.
+        { href: "/tpo", label: "Placement (TPO)", icon: BarChart3 },
       ],
     },
     {
@@ -73,12 +78,21 @@ function buildGroups(counts: Counts): Group[] {
         { href: "/admin/content", label: "Posts & comments", icon: MessageSquare },
         { href: "/admin/messages", label: "Messages (moderation)", icon: MessageSquare },
         { href: "/admin/skills", label: "Skills & domains", icon: Tag },
+        // Salary Compass moderation — anonymous submissions land
+        // PENDING; admin approves/rejects to publish to /salaries.
+        { href: "/admin/salaries", label: "Salary submissions", icon: Tag },
       ],
     },
     {
       title: "Operations",
       items: [
         { href: "/admin/broadcasts", label: "Broadcasts", icon: Megaphone },
+        // Featured This Week curation — five candidate spotlights surfaced
+        // on the home + Pulse pages every week.
+        { href: "/admin/featured", label: "Featured this week", icon: Megaphone },
+        // WhatsApp digest console — manage subscribers, send test
+        // messages, and trigger an on-demand digest tick.
+        { href: "/admin/whatsapp", label: "WhatsApp digest", icon: MessageSquare },
         { href: "/admin/audit", label: "Audit log", icon: ScrollText },
       ],
     },

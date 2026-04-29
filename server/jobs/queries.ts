@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { Prisma, JobStatus } from "@prisma/client";
+import { Prisma, JobStatus, JobAudience } from "@prisma/client";
 
 export interface JobsFilter {
   q?: string;
@@ -8,6 +8,10 @@ export interface JobsFilter {
   workMode?: string;
   profileMode?: string;
   diyguruOnly?: boolean;
+  /** Whether the viewing candidate is DIYguru-verified — drives the
+      audience filter so DIYGURU_ONLY jobs only surface for verified
+      students. Pass `null` (default) for anonymous browsing. */
+  viewerIsDIYguru?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -17,8 +21,16 @@ export async function searchJobs(filter: JobsFilter) {
   const pageSize = filter.pageSize ?? 20;
   const skip = (page - 1) * pageSize;
 
+  // Audience gate. PUBLIC is always visible; DIYGURU_ONLY only surfaces
+  // when the viewer is a verified DIYguru student (or admin / employer
+  // viewing in preview); INVITE_ONLY never appears in browse.
+  const audienceClause: Prisma.JobPostingWhereInput = filter.viewerIsDIYguru
+    ? { audience: { in: [JobAudience.PUBLIC, JobAudience.DIYGURU_ONLY] } }
+    : { audience: JobAudience.PUBLIC };
+
   const where: Prisma.JobPostingWhereInput = {
     status: JobStatus.OPEN,
+    ...audienceClause,
   };
 
   if (filter.q) {

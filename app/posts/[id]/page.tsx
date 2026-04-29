@@ -5,7 +5,7 @@ import { PostCard, type FeedPostShape } from "@/components/social/PostCard";
 import { CommentSection } from "@/components/social/CommentSection";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
-import { getPost } from "@/server/social/queries";
+import { getPost, getViewerPollVotes } from "@/server/social/queries";
 import type { Metadata } from "next";
 import { env } from "@/lib/env";
 
@@ -67,11 +67,18 @@ export default async function PostDetail({
     }
   }
 
+  const viewerVotes = await getViewerPollVotes([{ poll: post.poll ? { id: post.poll.id } : null }], session?.user?.id ?? null);
+  const viewerPollVotes = post.poll ? viewerVotes[post.poll.id] ?? [] : [];
+
   return (
     <>
       <SiteHeader />
       <div className="container max-w-3xl py-6">
-        <PostCard post={post as unknown as FeedPostShape} viewerId={session?.user?.id ?? null} showComments={false} />
+        <PostCard
+          post={{ ...(post as unknown as FeedPostShape), viewerPollVotes }}
+          viewerId={session?.user?.id ?? null}
+          showComments={false}
+        />
         <div className="mt-3 rounded-lg border border-emce-border bg-white p-4 shadow-emce">
           <h2 className="text-section text-emce-text">Comments</h2>
           <div className="mt-4">

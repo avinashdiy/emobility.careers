@@ -50,6 +50,9 @@ export function HeaderEditor({ profile }: { profile: CandidateProfile }) {
         <div>
           <Label htmlFor="phone">Phone</Label>
           <Input id="phone" name="phone" type="tel" defaultValue={profile.phone ?? ""} />
+          <p className="mt-1 text-hint text-emce-text-muted">
+            Recruiters can reach you on WhatsApp via this number — visibility is controlled in <strong>Privacy</strong> below.
+          </p>
         </div>
         <div>
           <Label htmlFor="linkedinUrl">LinkedIn URL</Label>

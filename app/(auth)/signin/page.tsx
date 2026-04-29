@@ -2,6 +2,7 @@ import { Card } from "@/components/ui/card";
 import { SignInTabs } from "@/components/auth/SignInTabs";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
+import { turnstilePublicKey } from "@/lib/anti-spam";
 
 export const metadata = { title: "Sign in" };
 
@@ -19,6 +20,7 @@ export default async function SignInPage({
       <div className="mt-6">
         <SignInTabs
           next={sp.next}
+          turnstileSiteKey={turnstilePublicKey}
           passwordTabLabel={t("auth.signin.passwordTab", locale)}
           passwordLabels={{
             email: t("auth.signin.email", locale),

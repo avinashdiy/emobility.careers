@@ -9,6 +9,74 @@ import { notificationsQueue } from "@/lib/queues";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { ApplicationStage, NoteVisibility } from "@prisma/client";
 
+/**
+ * Stages that are "past the assessment". Forward transitions into any
+ * of these are blocked until every gating Assessment for the job has a
+ * passing AssessmentAttempt for the candidate. The gate doesn't apply to
+ * REJECTED / WITHDRAWN — recruiters still need to drop unfit candidates
+ * regardless of whether they took the test.
+ */
+const POST_ASSESSMENT_STAGES: ApplicationStage[] = [
+  ApplicationStage.INTERVIEW,
+  ApplicationStage.OFFER,
+  ApplicationStage.HIRED,
+];
+
+/**
+ * Returns the pre-placement gate status for an application:
+ *   - `gated: false`             → no assessments require a pass.
+ *   - `gated: true, passed: T`   → at least one gating assessment exists,
+ *                                  and `T` is whether all of them have
+ *                                  passed attempts.
+ *   - `missing` lists the assessment titles the candidate still owes a
+ *                                  passing score on, for the recruiter
+ *                                  error message.
+ */
+async function getAssessmentGateStatus(applicationId: string): Promise<
+  | { gated: false }
+  | { gated: true; passed: boolean; missing: string[] }
+> {
+  const app = await db.application.findUnique({
+    where: { id: applicationId },
+    select: {
+      candidateId: true,
+      job: {
+        select: {
+          assessments: {
+            where: { gateAdvance: true },
+            select: { id: true, title: true, passingScore: true },
+          },
+        },
+      },
+    },
+  });
+  if (!app) return { gated: false };
+  const gating = app.job.assessments;
+  if (gating.length === 0) return { gated: false };
+
+  // Best attempt per assessment for this application's candidate.
+  const attempts = await db.assessmentAttempt.findMany({
+    where: {
+      assessmentId: { in: gating.map((a) => a.id) },
+      candidateId: app.candidateId,
+      score: { not: null },
+    },
+    select: { assessmentId: true, score: true },
+  });
+  const bestByAssessment = new Map<string, number>();
+  for (const a of attempts) {
+    const prev = bestByAssessment.get(a.assessmentId) ?? -1;
+    if ((a.score ?? -1) > prev) bestByAssessment.set(a.assessmentId, a.score ?? -1);
+  }
+
+  const missing: string[] = [];
+  for (const g of gating) {
+    const best = bestByAssessment.get(g.id) ?? -1;
+    if (best < g.passingScore) missing.push(g.title);
+  }
+  return { gated: true, passed: missing.length === 0, missing };
+}
+
 async function requireEmployerForApplication(applicationId: string) {
   const session = await auth();
   if (!session?.user) redirect("/signin");
@@ -40,6 +108,25 @@ export async function moveStage(formData: FormData) {
   await rateLimitOrThrow(`ats:${session.user.id}`, "ats");
 
   if (application.stage === toStage) return;
+
+  // Pre-placement test gate. If the job has any gating Assessments and
+  // the recruiter is moving forward past ASSESSMENT, the candidate must
+  // have a passing attempt for each. We bounce the recruiter back to the
+  // application detail page with a specific error so they can see which
+  // assessment is unmet (instead of failing silently).
+  if (POST_ASSESSMENT_STAGES.includes(toStage)) {
+    const gate = await getAssessmentGateStatus(id);
+    if (gate.gated && !gate.passed) {
+      const list = gate.missing.slice(0, 2).join(", ");
+      const more = gate.missing.length > 2 ? ` (+${gate.missing.length - 2} more)` : "";
+      redirect(
+        `/employer/applications/${id}?error=` +
+          encodeURIComponent(
+            `Pre-placement test required: ${list}${more}. Wait for the candidate to pass before advancing.`,
+          ),
+      );
+    }
+  }
 
   await db.$transaction([
     db.application.update({

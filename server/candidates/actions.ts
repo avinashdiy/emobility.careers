@@ -12,6 +12,7 @@ import { resumeParseQueue, embeddingsQueue, resumeDraftQueue } from "@/lib/queue
 import { parseResume } from "@/lib/ai/resume-parser";
 import { logger } from "@/lib/logger";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { recalcCompleteness } from "@/lib/profile-completeness";
 import {
   ProfileMode,
   AvailabilityStatus,
@@ -324,6 +325,7 @@ export async function applyResumeDraft() {
   });
 
   await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
+  await recalcCompleteness(profile.id);
   revalidatePath("/me");
   revalidatePath("/me/profile");
   redirect("/onboarding/preferences");
@@ -361,6 +363,7 @@ export async function savePreferences(formData: FormData) {
       onboardingCompletedAt: new Date(),
     },
   });
+  await recalcCompleteness(profile.id);
   revalidatePath("/me");
   redirect("/me");
 }
@@ -389,6 +392,7 @@ export async function saveHeader(formData: FormData) {
   });
   await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
   await enqueueResumeDraft(profile.id);
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -396,7 +400,10 @@ export async function saveHeader(formData: FormData) {
 const experienceSchema = z.object({
   id: z.string().optional(),
   title: z.string().min(1),
-  company: z.string().min(1),
+  company: z.string().min(1), // free-text fallback (always required)
+  // Optional FK to a Company entity. The EntityPicker on the editor side
+  // posts the id when the user picked or created an entry; otherwise empty.
+  companyId: z.string().optional().nullable(),
   location: z.string().optional().nullable(),
   startDate: z.string().min(7), // YYYY-MM
   endDate: z.string().optional().nullable(),
@@ -408,10 +415,13 @@ export async function saveExperience(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = experienceSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return;
-  const { id, startDate, endDate, current, ...rest } = parsed.data;
+  const { id, startDate, endDate, current, companyId, ...rest } = parsed.data;
   const data = {
     ...rest,
     candidateId: profile.id,
+    // Empty string from the hidden input means "no FK" — coerce to null so
+    // Prisma doesn't try to look up an empty cuid.
+    companyId: companyId && companyId.length > 0 ? companyId : null,
     startDate: new Date(`${startDate}-01`),
     endDate: !current && endDate ? new Date(`${endDate}-01`) : null,
     current: Boolean(current),
@@ -428,6 +438,7 @@ export async function saveExperience(formData: FormData) {
   }
   await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
   await enqueueResumeDraft(profile.id);
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
 }
 
@@ -437,12 +448,16 @@ export async function deleteExperience(formData: FormData) {
   if (typeof id !== "string") return;
   await db.experience.deleteMany({ where: { id, candidateId: profile.id } });
   await enqueueResumeDraft(profile.id);
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
 }
 
 const educationSchema = z.object({
   id: z.string().optional(),
   institution: z.string().min(1),
+  // Optional FK — same pattern as Experience.companyId. Empty string from
+  // the hidden input means "no link, store as text only".
+  institutionId: z.string().optional().nullable(),
   degree: z.string().optional().nullable(),
   field: z.string().optional().nullable(),
   startYear: z.coerce.number().int().min(1950).max(2100).optional().nullable(),
@@ -454,17 +469,22 @@ export async function saveEducation(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = educationSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return;
-  const { id, ...rest } = parsed.data;
+  const { id, institutionId, ...rest } = parsed.data;
+  const data = {
+    ...rest,
+    institutionId: institutionId && institutionId.length > 0 ? institutionId : null,
+  };
   if (id) {
     const result = await db.education.updateMany({
       where: { id, candidateId: profile.id },
-      data: rest,
+      data,
     });
     if (result.count === 0) return;
   } else {
-    await db.education.create({ data: { ...rest, candidateId: profile.id } });
+    await db.education.create({ data: { ...data, candidateId: profile.id } });
   }
   await enqueueResumeDraft(profile.id);
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
 }
 
@@ -474,6 +494,7 @@ export async function deleteEducation(formData: FormData) {
   if (typeof id !== "string") return;
   await db.education.deleteMany({ where: { id, candidateId: profile.id } });
   await enqueueResumeDraft(profile.id);
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
 }
 
@@ -523,6 +544,7 @@ export async function uploadAvatar(formData: FormData) {
     where: { id: profile.id },
     data: { profilePhotoUrl: publicUrl("avatars", key) },
   });
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
   revalidatePath("/me");
   revalidatePath(`/${profile.slug}`);
@@ -678,6 +700,7 @@ export async function setLanguages(formData: FormData) {
     where: { id: profile.id },
     data: { languagesSpoken: langs },
   });
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -716,6 +739,7 @@ export async function addSkillToProfile(formData: FormData) {
   });
   await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
   await enqueueResumeDraft(profile.id);
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -728,6 +752,7 @@ export async function removeSkillFromProfile(formData: FormData) {
   });
   await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
   await enqueueResumeDraft(profile.id);
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -763,6 +788,7 @@ export async function saveCertification(formData: FormData) {
     await db.certification.create({ data: { ...data, candidateId: profile.id } });
   }
   await enqueueResumeDraft(profile.id);
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -772,6 +798,7 @@ export async function deleteCertification(formData: FormData) {
   const id = z.string().parse(formData.get("id"));
   await db.certification.deleteMany({ where: { id, candidateId: profile.id } });
   await enqueueResumeDraft(profile.id);
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -808,6 +835,7 @@ export async function saveProject(formData: FormData) {
     await db.project.create({ data: { ...data, candidateId: profile.id } });
   }
   await enqueueResumeDraft(profile.id);
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -817,6 +845,7 @@ export async function deleteProject(formData: FormData) {
   const id = z.string().parse(formData.get("id"));
   await db.project.deleteMany({ where: { id, candidateId: profile.id } });
   await enqueueResumeDraft(profile.id);
+  await recalcCompleteness(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }

@@ -42,35 +42,54 @@ export default async function ATSPage({
           headline: true,
           profilePhotoUrl: true,
           isDIYguruVerified: true,
+          phone: true,
+          contactVisibility: true,
+          user: { select: { phone: true } },
         },
       },
     },
   });
 
-  const board: PipelineApp[] = applications.map((a) => ({
-    id: a.id,
-    stage: a.stage,
-    rating: a.rating,
-    matchScore: a.matchScore,
-    source: a.source,
-    appliedAt: a.appliedAt.toISOString(),
-    candidate: a.candidate,
-  }));
+  const board: PipelineApp[] = applications.map((a) => {
+    // For ATS-context phones we're more permissive than for cold
+    // talent search — candidates have applied to this job, so an
+    // employer-only contact share is implicit (LinkedIn does the
+    // same). PRIVATE still blocks the number.
+    const phoneVisible = a.candidate.contactVisibility !== "PRIVATE";
+    return {
+      id: a.id,
+      stage: a.stage,
+      rating: a.rating,
+      matchScore: a.matchScore,
+      source: a.source,
+      appliedAt: a.appliedAt.toISOString(),
+      candidate: {
+        id: a.candidate.id,
+        slug: a.candidate.slug,
+        firstName: a.candidate.firstName,
+        lastName: a.candidate.lastName,
+        headline: a.candidate.headline,
+        profilePhotoUrl: a.candidate.profilePhotoUrl,
+        isDIYguruVerified: a.candidate.isDIYguruVerified,
+        phone: phoneVisible ? a.candidate.phone ?? a.candidate.user.phone ?? null : null,
+      },
+    };
+  });
 
   return (
     <EmployerShell>
       <div className="container max-w-7xl py-6">
-        <div className="mb-4 flex items-center justify-between">
-          <div>
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="min-w-0">
             <Link href={`/employer/jobs/${id}`} className="text-hint font-bold text-emce-text-sec hover:text-emce-dark">
               ← Job detail
             </Link>
             <h1 className="mt-1 text-dashboard text-emce-text">{job.title} — ATS</h1>
             <p className="text-hint text-emce-text-sec">
-              {job._count.applications} applications · drag cards across stages to move them.
+              {job._count.applications} applications · drag cards across stages on desktop, or use the checkbox + bulk-move bar on mobile.
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
             <Button asChild variant="outline" size="sm">
               <Link href={`/employer/jobs/${id}/matches`}>AI matches</Link>
             </Button>

@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { getSettings } from "@/lib/settings";
+import { brandLogoDataUrl } from "@/lib/og/brand-asset";
 
 export const runtime = "nodejs";
 // Render dynamically — DB-backed getSettings() can't reach a DB during build,
@@ -39,11 +40,14 @@ export default async function HomeOG() {
           flexDirection: "column",
         }}
       >
-        {/* Header — logo + brand */}
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <div style={{ background: "#8fd299", color: "#1e2d2a", padding: "10px 14px", borderRadius: 12, fontWeight: 800, fontSize: 28 }}>eM</div>
-          <div style={{ fontWeight: 800, fontSize: 32 }}>
-            eMobility<span style={{ color: "#8fd299" }}>.careers</span>
+        {/* Header — wordmark logo (icon + text combined) on a white pill,
+            so the dark-teal type inside the PNG remains legible against
+            the dark hero gradient. Per brand rule: don't pair the wordmark
+            with a separate icon. */}
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <div style={{ display: "flex", background: "white", padding: "12px 18px", borderRadius: 14 }}>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={brandLogoDataUrl()} alt="eMobility Careers" width={224} height={56} />
           </div>
         </div>
 

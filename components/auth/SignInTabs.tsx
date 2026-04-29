@@ -9,6 +9,7 @@ interface Props {
   passwordLabels: React.ComponentProps<typeof SignInForm>["labels"];
   magicLinkLabels: { tab: string; email: string; button: string; pending: string; help: string };
   passwordTabLabel: string;
+  turnstileSiteKey?: string | null;
 }
 
 /**
@@ -16,7 +17,7 @@ interface Props {
  * state — no URL change, no extra navigation. Each tab keeps its own form
  * state independently.
  */
-export function SignInTabs({ next, passwordLabels, magicLinkLabels, passwordTabLabel }: Props) {
+export function SignInTabs({ next, passwordLabels, magicLinkLabels, passwordTabLabel, turnstileSiteKey }: Props) {
   const [tab, setTab] = useState<"password" | "magic">("password");
 
   return (
@@ -50,6 +51,7 @@ export function SignInTabs({ next, passwordLabels, magicLinkLabels, passwordTabL
             emailLabel={magicLinkLabels.email}
             buttonLabel={magicLinkLabels.button}
             pendingLabel={magicLinkLabels.pending}
+            turnstileSiteKey={turnstileSiteKey}
           />
         </div>
       )}

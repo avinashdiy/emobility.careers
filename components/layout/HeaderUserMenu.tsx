@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, LogOut, Settings, User as UserIcon, Briefcase, GraduationCap, Trophy, Eye } from "lucide-react";
+import { ChevronDown, LogOut, Settings, User as UserIcon, Briefcase, GraduationCap, Trophy, Eye, BarChart3 } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 
@@ -14,6 +14,10 @@ export interface UserMenuViewerData {
   publicSlug: string | null;
   isMentor: boolean;
   isVerified: boolean;
+  /** Admin-grantable flag from `User.isPlacementOfficer`. When true, the
+      "TPO" group is rendered with the /tpo dashboard link, even though
+      the user's `role` is not ADMIN. */
+  isPlacementOfficer: boolean;
 }
 
 /**
@@ -118,6 +122,18 @@ export function HeaderUserMenu({ user }: { user: UserMenuViewerData }) {
               <Item href="/admin" label="Admin dashboard" />
               <Item href="/admin/mentors" label="Mentor KYC" />
               <Item href="/admin/competitions" label="Competition moderation" />
+            </Group>
+          )}
+
+          {/* TPO group — visible to ADMINs and to candidates flagged as
+              placement officers. The /tpo dashboard surfaces cohort
+              funnels, drop-offs, and unplaced students for DIYguru
+              placement coordinators. */}
+          {(user.role === "ADMIN" || user.isPlacementOfficer) && (
+            <Group title="Placement (TPO)">
+              <Item href="/tpo" icon={<BarChart3 className="h-4 w-4" />} label="Placement dashboard" />
+              <Item href="/tpo/cohorts" label="Cohorts" />
+              <Item href="/tpo/unplaced" label="Unplaced students" />
             </Group>
           )}
 

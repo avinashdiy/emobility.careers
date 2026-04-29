@@ -99,8 +99,13 @@ const config: Config = {
         sm: "calc(var(--radius) - 8px)",
       },
       boxShadow: {
-        emce: "0 2px 12px rgba(55, 74, 71, 0.06)",
-        "emce-hover": "0 8px 28px rgba(143, 210, 153, 0.12)",
+        // LinkedIn-style "1px ring + tiny lift" — what makes their cards look
+        // weightless. The first layer is a hairline border simulated as a
+        // shadow (sharper than a real border at 1× DPR), the second is the
+        // 2px diffused lift. Was a heavier 12px blur which read as "sticker".
+        emce: "0 0 0 1px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.04)",
+        "emce-hover": "0 0 0 1px rgba(0, 0, 0, 0.08), 0 4px 8px rgba(0, 0, 0, 0.06)",
+        "emce-lg": "0 0 0 1px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.08)",
         "emce-modal": "0 24px 80px rgba(0, 0, 0, 0.2)",
       },
       backgroundImage: {

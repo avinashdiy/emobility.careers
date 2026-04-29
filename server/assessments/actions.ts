@@ -23,6 +23,11 @@ const assessmentCreateSchema = z.object({
   passingScore: z.coerce.number().min(0).max(100).default(60),
   durationMins: z.coerce.number().int().min(1).max(180).optional(),
   questionsJson: z.string(),
+  // When true, this assessment becomes a *gating* test — the ATS blocks
+  // forward stage transitions (INTERVIEW / OFFER / HIRED) until the
+  // candidate has a passing AssessmentAttempt. Enforced in
+  // server/ats/actions.ts → moveStage.
+  gateAdvance: z.coerce.boolean().optional(),
 });
 
 export async function createAssessment(formData: FormData) {
@@ -63,6 +68,7 @@ export async function createAssessment(formData: FormData) {
       passingScore: parsed.data.passingScore,
       durationMins: parsed.data.durationMins,
       questions: questions as Prisma.InputJsonValue,
+      gateAdvance: Boolean(parsed.data.gateAdvance),
     },
   });
 

@@ -46,6 +46,13 @@ export function SignInForm({ next, labels }: { next?: string; labels?: Labels })
 
       <form action={formAction} className="space-y-3" noValidate>
         <input type="hidden" name="next" value={next ?? "/me"} />
+        {/* Honeypot — silent reject for blind form fillers. */}
+        <div aria-hidden="true" className="sr-only" style={{ position: "absolute", left: "-10000px" }}>
+          <label>
+            Website (leave blank)
+            <input type="text" name="website" tabIndex={-1} autoComplete="off" defaultValue="" />
+          </label>
+        </div>
         <div>
           <Label htmlFor="email">{L.email}</Label>
           <Input

@@ -52,6 +52,13 @@ const envSchema = z.object({
 
   WHATSAPP_PHONE_NUMBER_ID: z.string().optional(),
   WHATSAPP_ACCESS_TOKEN: z.string().optional(),
+  // Pre-approved Meta Business "utility" template name for the daily
+  // digest. Must be approved in WhatsApp Manager before the worker can
+  // send (Cloud API rejects free-form messages outside the 24h customer-
+  // care window). The template body should expose 5 placeholders for the
+  // rendered job lines + an unsubscribe link.
+  WHATSAPP_DIGEST_TEMPLATE: z.string().default("ev_jobs_daily_digest"),
+  WHATSAPP_DIGEST_LANGUAGE: z.string().default("en"),
 
   SOKETI_APP_ID: z.string().default("emce"),
   SOKETI_APP_KEY: z.string().default("emce_pusher_key"),

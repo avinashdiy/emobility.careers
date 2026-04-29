@@ -9,11 +9,14 @@ import { db } from "@/lib/db";
  * Verification compares the hash, then atomically deletes the token (single use).
  */
 
-export type TokenPurpose = "email-verify" | "password-reset";
+export type TokenPurpose = "email-verify" | "password-reset" | "experience-verify";
 
 const PURPOSE_TTL_MS: Record<TokenPurpose, number> = {
   "email-verify": 24 * 60 * 60 * 1000,    // 24h
   "password-reset": 1 * 60 * 60 * 1000,   // 1h
+  // Experience verification — same generous 24h window as email verify;
+  // the candidate is clicking from an inbox they may not check daily.
+  "experience-verify": 24 * 60 * 60 * 1000,
 };
 
 function hash(token: string): string {

@@ -5,6 +5,9 @@ import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { HeaderSearch } from "@/components/layout/HeaderSearch";
 import { DiscoverMenu } from "@/components/layout/DiscoverMenu";
 import { HeaderUserMenu } from "@/components/layout/HeaderUserMenu";
+import { Logo } from "@/components/brand/Logo";
+import { IconMark } from "@/components/brand/IconMark";
+import { CompleteProfileBanner } from "@/components/profile/CompleteProfileBanner";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { t } from "@/lib/i18n";
@@ -25,7 +28,7 @@ export async function SiteHeader() {
   const [session, locale] = await Promise.all([auth(), getLocale()]);
   const user = session?.user;
 
-  const [unreadNotifs, pendingInvites, viewerCard] = user
+  const [unreadNotifs, pendingInvites, viewerCard, viewerUser] = user
     ? await Promise.all([
         db.notification.count({
           where: { userId: user.id, channel: "IN_APP", readAt: null },
@@ -43,16 +46,37 @@ export async function SiteHeader() {
             isDIYguruVerified: true,
           },
         }),
+        // Pull the placement-officer flag so the user menu can surface
+        // the /tpo dashboard for trusted DIYguru staff who aren't
+        // ADMIN-tier. Cheap query — single bool by primary key.
+        db.user.findUnique({
+          where: { id: user.id },
+          select: { isPlacementOfficer: true },
+        }),
       ])
-    : [0, 0, null];
+    : [0, 0, null, null];
 
   const isMentor = user
     ? Boolean(await db.mentorProfile.findUnique({ where: { userId: user.id }, select: { id: true } }))
     : false;
+  const isPlacementOfficer = !!viewerUser?.isPlacementOfficer;
 
   const fullName = viewerCard ? `${viewerCard.firstName} ${viewerCard.lastName ?? ""}`.trim() : (user?.name ?? "");
 
   const PUBLIC_NAV = [
+    // Pulse goes first — it's the platform's most viral, public surface
+    // and its prominence here primes the brand as "the address of EV
+    // careers" rather than "yet another job board".
+    { href: "/pulse", label: "Pulse" },
+    // Roast — public, no-auth viral hook (free EV resume scoring).
+    // Sits next to Pulse so both viral surfaces lead the nav.
+    { href: "/roast", label: "🔥 Roast" },
+    // Salary Compass — Levels.fyi for India EV. Public teasers; users
+    // unlock the full database by submitting one anonymously.
+    { href: "/salaries", label: "💰 Salaries" },
+    // WhatsApp daily digest — high-conversion CTA aimed at India's
+    // mobile-first job-seeker. Skips the inbox entirely.
+    { href: "/digest", label: "📱 Digest" },
     { href: "/jobs", label: t("nav.findJobs", locale) },
     { href: "/competitions", label: t("nav.competitions", locale) },
     { href: "/mentors", label: t("nav.mentors", locale) },
@@ -74,8 +98,18 @@ export async function SiteHeader() {
           { href: "/me/applications", label: "My applications" },
           { href: "/me/sessions", label: "My mentorship sessions" },
           { href: "/me/competitions", label: "My competitions" },
-          ...(user.role === "EMPLOYER" ? [{ href: "/employer", label: t("nav.dashboard", locale) }] : []),
+          ...(user.role === "EMPLOYER"
+            ? [
+                { href: "/employer", label: t("nav.dashboard", locale) },
+                { href: "/employer/drives", label: "Campus drives" },
+              ]
+            : []),
           ...(user.role === "ADMIN" ? [{ href: "/admin", label: t("nav.admin", locale) }] : []),
+          // /tpo for admins + DIYguru placement officers — same gate the
+          // user-menu dropdown uses.
+          ...(user.role === "ADMIN" || isPlacementOfficer
+            ? [{ href: "/tpo", label: "Placement (TPO)" }]
+            : []),
           { href: "/api/auth/signout", label: t("nav.signOut", locale) },
         ]
       : [
@@ -87,12 +121,15 @@ export async function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 w-full border-b border-emce-border bg-white text-emce-text">
       <div className="container flex h-14 items-center gap-3 py-2 md:gap-4 md:py-2.5">
-        <Link href={user ? "/feed" : "/"} className="flex shrink-0 items-center gap-2" aria-label="Home">
-          <span className="grid h-8 w-8 place-items-center rounded-md bg-emce-mid font-extrabold text-emce-darkest">
-            eM
+        {/* Brand mark — wordmark on md+ (the logo PNG already includes the icon),
+            collapses to icon-only on phones to keep the nav row tight, the same
+            way LinkedIn shows the "in" mark on mobile. */}
+        <Link href={user ? "/feed" : "/"} className="flex shrink-0 items-center" aria-label="Home">
+          <span className="hidden md:inline">
+            <Logo size="md" priority />
           </span>
-          <span className="hidden text-sm font-extrabold tracking-tight text-emce-text md:inline">
-            eMobility<span className="text-emce-mid-muted">.careers</span>
+          <span className="md:hidden">
+            <IconMark size="md" priority />
           </span>
         </Link>
 
@@ -139,6 +176,7 @@ export async function SiteHeader() {
                   publicSlug: viewerCard?.slug ?? null,
                   isMentor,
                   isVerified: viewerCard?.isDIYguruVerified ?? false,
+                  isPlacementOfficer,
                 }}
               />
             ) : (
@@ -155,6 +193,9 @@ export async function SiteHeader() {
           </div>
         </div>
       </div>
+      {/* Profile-completeness reminder strip — short-circuits server-side
+          when the user is signed-out / on auth routes / already ≥ 90%. */}
+      <CompleteProfileBanner />
     </header>
   );
 }

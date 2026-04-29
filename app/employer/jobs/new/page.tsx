@@ -130,6 +130,23 @@ export default async function NewJobPage({
               Hide salary publicly (still used for matching)
             </label>
 
+            {/* Audience selector. DIYGURU_ONLY routes the role to verified
+                students only AND forces salary disclosure (the
+                checkbox above is server-overridden for that audience).
+                The on-page hint reminds the recruiter so the salary
+                fields are filled before submitting. */}
+            <div className="sm:col-span-2">
+              <Label htmlFor="audience">Who can apply?</Label>
+              <NativeSelect id="audience" name="audience" defaultValue="PUBLIC">
+                <option value="PUBLIC">Public — any candidate (default)</option>
+                <option value="DIYGURU_ONLY">DIYguru students only — exclusive listing</option>
+                <option value="INVITE_ONLY">Invite-only — recruiters reach out directly</option>
+              </NativeSelect>
+              <p className="mt-1 text-hint text-emce-text-muted">
+                <strong>DIYguru-only</strong> jobs go to verified students. <strong>Salary disclosure is mandatory</strong> on these — the "Hide salary" toggle above is overridden so students don't apply blind.
+              </p>
+            </div>
+
             <div className="sm:col-span-2">
               <Label htmlFor="description">Description</Label>
               <Textarea id="description" name="description" rows={6} required minLength={20} placeholder="Describe the role, your team, and what success looks like." />

@@ -83,6 +83,11 @@ export default async function JobAssessmentsPage({
                       <p className="text-hint text-emce-text-sec">
                         {a.type} · pass at {a.passingScore}% · {a._count.attempts} attempts
                       </p>
+                      {a.gateAdvance && (
+                        <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-emce-orange-light px-2 py-0.5 text-[10px] font-bold text-emce-orange">
+                          🚧 Pre-placement gate · blocks forward stage advance until passed
+                        </p>
+                      )}
                     </div>
                     <Badge variant="default">{a.type}</Badge>
                   </div>
@@ -123,6 +128,20 @@ export default async function JobAssessmentsPage({
               <Label htmlFor="durationMins">Duration (minutes, optional)</Label>
               <Input id="durationMins" name="durationMins" type="number" min="1" max="180" />
             </div>
+            <label className="sm:col-span-2 flex items-start gap-2 rounded-md bg-emce-orange-light/60 p-3 text-sm">
+              <input
+                type="checkbox"
+                name="gateAdvance"
+                value="true"
+                className="mt-0.5 h-4 w-4 accent-emce-orange"
+              />
+              <span>
+                <strong className="block text-emce-text">Pre-placement gate</strong>
+                <span className="text-emce-text-sec">
+                  Block this candidate from moving past the Assessment stage until they have an attempt with score ≥ passing score. Use for sanity-check tests you don't want to bypass.
+                </span>
+              </span>
+            </label>
             <div className="sm:col-span-2">
               <Label htmlFor="questionsJson">Questions JSON</Label>
               <Textarea id="questionsJson" name="questionsJson" rows={10} required defaultValue={sampleMCQ} />

@@ -11,9 +11,14 @@ import { setJobStatus } from "@/server/admin/actions";
 
 export const metadata = { title: "Job moderation" };
 
-export default async function AdminJobsPage() {
+export default async function AdminJobsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ notice?: string; error?: string }>;
+}) {
   const session = await auth();
   if (session?.user?.role !== "ADMIN") redirect("/403");
+  const sp = await searchParams;
 
   const jobs = await db.jobPosting.findMany({
     orderBy: { createdAt: "desc" },
@@ -24,7 +29,28 @@ export default async function AdminJobsPage() {
   return (
     <AdminShell>
       <div className="container max-w-5xl py-10">
-        <h1 className="text-dashboard text-emce-text">Job moderation</h1>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <h1 className="text-dashboard text-emce-text">Job moderation</h1>
+          <Button asChild className="w-full sm:w-auto">
+            <Link href="/admin/jobs/new">+ Post a job (admin)</Link>
+          </Button>
+        </div>
+        <p className="mt-1 text-sm text-emce-text-sec">
+          Post on behalf of an existing company, or create one inline.
+          Tick <em>Apply URL</em> to make the listing route candidates
+          straight to the employer&apos;s career page.
+        </p>
+
+        {sp.notice && (
+          <div className="mt-4 rounded-md bg-emce-light-soft p-3 text-sm text-emce-text">
+            {sp.notice}
+          </div>
+        )}
+        {sp.error && (
+          <div className="mt-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+            {sp.error}
+          </div>
+        )}
         <ul className="mt-6 space-y-2">
           {jobs.map((j) => (
             <li key={j.id}>

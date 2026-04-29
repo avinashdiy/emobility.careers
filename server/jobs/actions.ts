@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { notificationsQueue } from "@/lib/queues";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { COMPLETENESS_THRESHOLDS } from "@/lib/profile-completeness";
 import { ApplicationSource, ApplicationStage } from "@prisma/client";
 
 export async function applyToJob(formData: FormData) {
@@ -34,12 +35,47 @@ export async function applyToJob(formData: FormData) {
     redirect(`/jobs/${jobId}?error=` + encodeURIComponent("Verify your email before applying. Check /me for the link."));
   }
 
+  // Profile-completeness gate — applications require ≥90% complete. The
+  // calculated value is denormalised on the row, kept fresh by every
+  // profile-edit action via recalcCompleteness().
+  if (profile.profileCompleteness < COMPLETENESS_THRESHOLDS.APPLY) {
+    redirect(
+      `/me/profile?incomplete=apply&pct=${profile.profileCompleteness}&jobId=${jobId}`,
+    );
+  }
+
   const job = await db.jobPosting.findUnique({
     where: { id: jobId },
     include: { company: true, postedBy: true },
   });
   if (!job || job.status !== "OPEN") {
     redirect(`/jobs/${jobId}?error=` + encodeURIComponent("This job is no longer accepting applications"));
+  }
+
+  // Audience gate — DIYGURU_ONLY jobs are blocked at apply time for
+  // candidates without isDIYguruVerified. The job detail page also
+  // hides DIYGURU_ONLY listings from non-students, so this is
+  // belt-and-braces for direct URL hits.
+  if (
+    job.audience === "DIYGURU_ONLY" &&
+    !profile.isDIYguruVerified &&
+    session.user.role !== "ADMIN"
+  ) {
+    redirect(
+      `/jobs/${jobId}?error=` +
+        encodeURIComponent(
+          "This role is reserved for DIYguru-verified students. Get verified at /diyguru and try again.",
+        ),
+    );
+  }
+  if (job.audience === "INVITE_ONLY") {
+    // INVITE_ONLY needs an existing AI_INVITED application (created via
+    // bulkInviteCandidates from the recruiter's matches list). If we
+    // got here without one, reject.
+    redirect(
+      `/jobs/${jobId}?error=` +
+        encodeURIComponent("This role is invite-only — recruiters reach out directly."),
+    );
   }
 
   const existing = await db.application.findUnique({

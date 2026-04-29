@@ -65,7 +65,49 @@ const POST_INCLUDE = {
     select: { type: true, userId: true },
     take: 5, // for "Liked by X, Y, and 12 others" UI
   },
+  attachments: {
+    orderBy: { order: "asc" },
+    select: {
+      id: true,
+      type: true,
+      url: true,
+      fileName: true,
+      mime: true,
+      byteSize: true,
+      meta: true,
+      order: true,
+    },
+  },
+  poll: {
+    include: {
+      options: { orderBy: { order: "asc" } },
+    },
+  },
 } as const;
+
+/**
+ * Given a list of feed posts and a viewer, return a map from pollId →
+ * the optionIds the viewer has voted on. Kept out of POST_INCLUDE so we
+ * don't pull every PollVote across every post — one batched query.
+ */
+export async function getViewerPollVotes(
+  posts: { poll: { id: string } | null }[],
+  viewerId: string | null,
+): Promise<Record<string, string[]>> {
+  if (!viewerId) return {};
+  const pollIds = posts.map((p) => p.poll?.id).filter((x): x is string => !!x);
+  if (pollIds.length === 0) return {};
+  const rows = await db.pollVote.findMany({
+    where: { pollId: { in: pollIds }, userId: viewerId },
+    select: { pollId: true, optionId: true },
+  });
+  const out: Record<string, string[]> = {};
+  for (const r of rows) {
+    if (!out[r.pollId]) out[r.pollId] = [];
+    out[r.pollId].push(r.optionId);
+  }
+  return out;
+}
 
 function feedPostInclude() {
   return db.post.findFirst({ include: POST_INCLUDE });

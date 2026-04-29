@@ -43,8 +43,11 @@ export async function rateLimit(
 
 /** Helpers for common limits. */
 export const limits = {
-  signin: { limit: 10, windowMs: 60_000 },        // 10/min per IP
-  signup: { limit: 5, windowMs: 60 * 60_000 },    // 5/hour per IP
+  signin: { limit: 10, windowMs: 60_000 },        // 10/min per email
+  signinIp: { limit: 30, windowMs: 15 * 60_000 }, // 30/15min per IP — credential-stuffing brake
+  signup: { limit: 5, windowMs: 60 * 60_000 },    // 5/hour per email
+  signupIp: { limit: 5, windowMs: 60 * 60_000 },  // 5/hour per IP — caps account creation regardless of email rotation
+  magicLinkIp: { limit: 8, windowMs: 60 * 60_000 }, // 8/hour per IP — caps SES burn-through
   apply: { limit: 30, windowMs: 60 * 60_000 },    // 30 applications/hour per user
   message: { limit: 60, windowMs: 60_000 },       // 60 messages/min per user
   resumeUpload: { limit: 5, windowMs: 60_000 },   // 5 uploads/min per user
@@ -52,6 +55,7 @@ export const limits = {
   ats: { limit: 120, windowMs: 60_000 },          // 120 ATS mutations/min per user
   invite: { limit: 20, windowMs: 60 * 60_000 },   // 20 invites/hour per user
   saveItem: { limit: 60, windowMs: 60_000 },      // saved jobs / candidates
+  bulkInMail: { limit: 200, windowMs: 24 * 60 * 60_000 }, // 200 cold-outreach messages / 24h per recruiter — caps abuse
 } as const;
 
 export async function rateLimitOrThrow(key: string, preset: keyof typeof limits) {

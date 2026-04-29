@@ -6,8 +6,13 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { Badge } from "@/components/ui/badge";
+import { Logo } from "@/components/brand/Logo";
 import { withdrawApplication } from "@/server/jobs/actions";
 import { relativeTime } from "@/lib/utils";
+import { getCandidateApplicationStats } from "@/lib/applications-stats";
+import { ApplicationTracker } from "@/components/candidate/ApplicationTracker";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 
 export const metadata = { title: "My applications" };
 
@@ -37,49 +42,55 @@ export default async function MyApplications({
 
   const sp = await searchParams;
 
-  const applications = await db.application.findMany({
-    where: { candidateId: profile.id },
-    orderBy: { appliedAt: "desc" },
-    include: {
-      job: {
-        include: { company: { select: { name: true, slug: true, logoUrl: true } } },
+  const [applications, stats] = await Promise.all([
+    db.application.findMany({
+      where: { candidateId: profile.id },
+      orderBy: { appliedAt: "desc" },
+      include: {
+        job: {
+          include: { company: { select: { name: true, slug: true, logoUrl: true } } },
+        },
       },
-    },
-  });
+    }),
+    getCandidateApplicationStats(profile.id),
+  ]);
 
   return (
     <div className="min-h-screen bg-emce-light-bg">
       <header className="border-b border-emce-border bg-white">
         <div className="container flex h-14 items-center justify-between">
-          <Link href="/" className="flex items-center gap-2 font-extrabold text-emce-text">
-            <span className="grid h-7 w-7 place-items-center rounded-md bg-emce-mid text-emce-darkest">eM</span>
-            <span>eMobility Careers</span>
+          <Link href="/" aria-label="Home" className="flex items-center">
+            <Logo size="md" />
           </Link>
           <Button asChild variant="ghost" size="sm"><Link href="/me">Dashboard</Link></Button>
         </div>
       </header>
 
-      <main className="container max-w-4xl py-10">
-        <h1 className="text-dashboard text-emce-text">My applications</h1>
-        <p className="mt-1 text-sm text-emce-text-sec">{applications.length} total</p>
+      <main className="container max-w-4xl space-y-6 py-10">
+        <PageHeader
+          title="My applications"
+          subtitle={`${applications.length} total`}
+        />
+
+        {applications.length > 0 && <ApplicationTracker stats={stats} />}
 
         {sp.notice && (
-          <div className="mt-4 rounded-md bg-emce-light-soft p-3 text-sm text-emce-dark">{sp.notice}</div>
+          <div className="rounded-md bg-emce-light-soft p-3 text-sm text-emce-dark">{sp.notice}</div>
         )}
 
         {applications.length === 0 ? (
-          <Card className="mt-6 p-10 text-center">
-            <div className="text-4xl">📨</div>
-            <h2 className="mt-3 text-section text-emce-text">No applications yet</h2>
-            <p className="mt-1 text-hint text-emce-text-sec">
-              Browse jobs and apply with your profile in one click.
-            </p>
-            <Button asChild className="mt-4">
-              <Link href="/jobs">Find jobs →</Link>
-            </Button>
-          </Card>
+          <EmptyState
+            icon="📨"
+            title="No applications yet"
+            body="Browse jobs and apply with your profile in one click."
+            action={
+              <Button asChild>
+                <Link href="/jobs">Find jobs →</Link>
+              </Button>
+            }
+          />
         ) : (
-          <ul className="mt-6 space-y-3">
+          <ul className="space-y-3">
             {applications.map((a) => {
               const stageInfo = STAGE_LABELS[a.stage] ?? STAGE_LABELS.APPLIED;
               return (

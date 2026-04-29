@@ -123,14 +123,36 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const user = await db.user.findUnique({ where: { email } });
         if (!user?.passwordHash) return null;
-
-        const ok = await argon2.verify(user.passwordHash, password);
-        if (!ok) return null;
         if (user.status !== "ACTIVE") return null;
 
+        // Hard lockout — if the cool-off window is still active, the
+        // signinAction wrapper has already rejected. This is belt-and-
+        // braces in case a caller hits this path directly.
+        if (user.lockedUntil && user.lockedUntil > new Date()) return null;
+
+        const ok = await argon2.verify(user.passwordHash, password);
+        if (!ok) {
+          // Increment failed-login counter. After 10 failures lock the
+          // account for 15 minutes — the user can wait, or reset password
+          // (which clears the lock implicitly via the password-update
+          // path; we also clear it on successful sign-in below).
+          const next = (user.failedLoginCount ?? 0) + 1;
+          const lockedUntil = next >= 10 ? new Date(Date.now() + 15 * 60_000) : user.lockedUntil ?? null;
+          await db.user.update({
+            where: { id: user.id },
+            data: { failedLoginCount: next, lockedUntil },
+          }).catch(() => {});
+          return null;
+        }
+
+        // Successful auth — clear the lockout state and stamp last-login.
         await db.user.update({
           where: { id: user.id },
-          data: { lastLoginAt: new Date() },
+          data: {
+            lastLoginAt: new Date(),
+            failedLoginCount: 0,
+            lockedUntil: null,
+          },
         });
 
         return {

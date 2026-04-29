@@ -21,6 +21,7 @@ export const QueueNames = {
   MentorshipReminders: "mentorship-reminders",
   CompetitionTicks: "competition-ticks",
   ResumeDraft: "resume-draft",
+  WhatsAppDigest: "whatsapp-digest",
 } as const;
 
 export type ResumeParseJob = {
@@ -49,6 +50,7 @@ export type InterviewReminderJob = { tick: true };
 export type MentorshipReminderJob = { tick: true };
 export type CompetitionTickJob = { tick: true };
 export type ResumeDraftJob = { candidateId: string };
+export type WhatsAppDigestJob = { tick: true };
 
 export const resumeParseQueue = new Queue<ResumeParseJob>(QueueNames.ResumeParse, baseOpts);
 export const embeddingsQueue = new Queue<EmbeddingsJob>(QueueNames.Embeddings, baseOpts);
@@ -67,3 +69,4 @@ export const resumeDraftQueue = new Queue<ResumeDraftJob>(QueueNames.ResumeDraft
     attempts: 2,
   },
 });
+export const whatsappDigestQueue = new Queue<WhatsAppDigestJob>(QueueNames.WhatsAppDigest, baseOpts);

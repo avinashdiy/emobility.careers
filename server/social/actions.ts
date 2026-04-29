@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { notificationsQueue } from "@/lib/queues";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { audit } from "@/lib/audit";
+import { requireEmailVerified } from "@/lib/anti-spam";
 import {
   ConnectionStatus,
   PostVisibility,
@@ -17,6 +18,23 @@ import {
 async function requireUser() {
   const session = await auth();
   if (!session?.user) redirect("/signin");
+  return session;
+}
+
+/**
+ * Bouncer for actions that an unverified-email account should not be able
+ * to perform: posting, commenting, connection requests, messaging, etc.
+ * Lets verified users + admins through, redirects everyone else to the
+ * verify-email page so the action becomes harmless instead of a silent
+ * failure.
+ */
+async function requireUserVerified() {
+  const session = await requireUser();
+  try {
+    await requireEmailVerified(session.user.id);
+  } catch {
+    redirect("/verify-email?required=1");
+  }
   return session;
 }
 
@@ -47,7 +65,7 @@ const postCreateSchema = z.object({
 });
 
 export async function createPost(formData: FormData): Promise<void> {
-  const session = await requireUser();
+  const session = await requireUserVerified();
   await rateLimitOrThrow(`post:${session.user.id}`, "message");
 
   const parsed = postCreateSchema.safeParse(Object.fromEntries(formData));
@@ -153,7 +171,7 @@ const reactionSchema = z.object({
 });
 
 export async function togglePostReaction(formData: FormData): Promise<void> {
-  const session = await requireUser();
+  const session = await requireUserVerified();
   const parsed = reactionSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return;
   await rateLimitOrThrow(`react:${session.user.id}`, "ats");
@@ -210,7 +228,7 @@ const commentSchema = z.object({
 });
 
 export async function addComment(formData: FormData): Promise<void> {
-  const session = await requireUser();
+  const session = await requireUserVerified();
   await rateLimitOrThrow(`comment:${session.user.id}`, "message");
   const parsed = commentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return;
@@ -293,7 +311,7 @@ const connectRequestSchema = z.object({
 });
 
 export async function requestConnection(formData: FormData): Promise<void> {
-  const session = await requireUser();
+  const session = await requireUserVerified();
   await rateLimitOrThrow(`connect:${session.user.id}`, "saveItem");
   const parsed = connectRequestSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return;
@@ -415,7 +433,7 @@ export async function removeConnection(formData: FormData): Promise<void> {
 // ─── Follows ───────────────────────────────────────────────
 
 export async function followUser(formData: FormData): Promise<void> {
-  const session = await requireUser();
+  const session = await requireUserVerified();
   const followeeId = z.string().parse(formData.get("userId"));
   if (followeeId === session.user.id) return;
   await rateLimitOrThrow(`follow:${session.user.id}`, "saveItem");
@@ -469,7 +487,7 @@ export async function unfollowUser(formData: FormData): Promise<void> {
 }
 
 export async function followCompany(formData: FormData): Promise<void> {
-  const session = await requireUser();
+  const session = await requireUserVerified();
   const companyId = z.string().parse(formData.get("companyId"));
   await rateLimitOrThrow(`follow:${session.user.id}`, "saveItem");
   const existing = await db.follow.findUnique({
@@ -506,7 +524,7 @@ export async function unfollowCompany(formData: FormData): Promise<void> {
 // ─── Quick utility: share a job to the feed ────────────────
 
 export async function shareJobToFeed(formData: FormData): Promise<void> {
-  const session = await requireUser();
+  const session = await requireUserVerified();
   const jobId = z.string().parse(formData.get("jobId"));
   const note = String(formData.get("note") ?? "").slice(0, 1000);
   const job = await db.jobPosting.findUnique({

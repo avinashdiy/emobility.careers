@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { CompactFooter } from "@/components/layout/compact-footer";
+import { Logo } from "@/components/brand/Logo";
 
 /**
  * Session-aware footer wrapper.
@@ -24,13 +25,12 @@ export async function SiteFooter() {
     <footer className="mt-24 border-t border-emce-border bg-emce-darkest text-emce-light-soft">
       <div className="container grid gap-10 py-12 md:grid-cols-4">
         <div>
-          <div className="flex items-center gap-2">
-            <span className="grid h-8 w-8 place-items-center rounded-md bg-emce-mid font-extrabold text-emce-darkest">
-              eM
-            </span>
-            <span className="text-base font-extrabold">
-              eMobility<span className="text-emce-mid">.careers</span>
-            </span>
+          {/* Logo PNG was designed for light backgrounds (dark teal type).
+              The marketing footer is dark teal too, so we host it inside a
+              white pill — same pattern LinkedIn uses on its dark promo
+              surfaces. No separate light variant needed. */}
+          <div className="inline-block rounded-md bg-white px-3 py-1.5">
+            <Logo size="md" />
           </div>
           <p className="mt-3 text-sm text-emce-light-soft/70">
             India&apos;s specialised hiring platform for the electric mobility industry.

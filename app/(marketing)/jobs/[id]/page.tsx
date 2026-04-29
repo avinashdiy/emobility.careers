@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { applyToJob, saveJob } from "@/server/jobs/actions";
+import { getJobResponseStats } from "@/lib/sla";
+import { ResponseTimePill } from "@/components/recruiter/ResponseTimePill";
 import { ReportJobButton } from "@/components/jobs/ReportJobButton";
 import { jobPostingJsonLd } from "@/lib/seo/job-schema";
 import { breadcrumbJsonLd } from "@/lib/seo/schemas";
@@ -74,6 +76,63 @@ export default async function PublicJobDetail({
     },
   });
   if (!job) notFound();
+  // DIYGURU_ONLY listings are reserved for verified students. We 404
+  // for anyone else — that's strictly more private than redirecting
+  // since the URL itself doesn't leak (and admins / employers viewing
+  // their own job still see it via the employer console).
+  if (job.audience === "DIYGURU_ONLY") {
+    const session = await auth();
+    let allow = false;
+    if (session?.user) {
+      if (session.user.role === "ADMIN") allow = true;
+      else if (session.user.role === "EMPLOYER") {
+        const employer = await db.employerProfile.findUnique({
+          where: { userId: session.user.id },
+          select: { companyId: true },
+        });
+        if (employer?.companyId === job.companyId) allow = true;
+      } else {
+        const profile = await db.candidateProfile.findUnique({
+          where: { userId: session.user.id },
+          select: { isDIYguruVerified: true },
+        });
+        if (profile?.isDIYguruVerified) allow = true;
+      }
+    }
+    if (!allow) notFound();
+  }
+  if (job.audience === "INVITE_ONLY") {
+    // INVITE_ONLY is browsable only via the application URL someone has
+    // already received (still rendered via this route). For now, mirror
+    // DIYGURU_ONLY's logic and require either an existing application
+    // or admin/employer ownership. Candidates without an application
+    // hit a 404.
+    const session = await auth();
+    let allow = false;
+    if (session?.user) {
+      if (session.user.role === "ADMIN") allow = true;
+      else if (session.user.role === "EMPLOYER") {
+        const employer = await db.employerProfile.findUnique({
+          where: { userId: session.user.id },
+          select: { companyId: true },
+        });
+        if (employer?.companyId === job.companyId) allow = true;
+      } else {
+        const profile = await db.candidateProfile.findUnique({
+          where: { userId: session.user.id },
+          select: { id: true },
+        });
+        if (profile) {
+          const app = await db.application.findUnique({
+            where: { jobId_candidateId: { jobId: id, candidateId: profile.id } },
+            select: { id: true },
+          });
+          if (app) allow = true;
+        }
+      }
+    }
+    if (!allow) notFound();
+  }
   if (job.status !== "OPEN") {
     return (
       <div className="container max-w-2xl py-20 text-center">
@@ -94,13 +153,24 @@ export default async function PublicJobDetail({
     data: { viewsCount: { increment: 1 } },
   }).catch(() => {});
 
+  // Recruiter response-time pill data — falls back to company-level
+  // signal when the job itself is too new (see getJobResponseStats).
+  const responseStats = await getJobResponseStats(id);
+
   const session = await auth();
   let alreadyApplied = false;
+  // Cache the candidate's completeness so the apply CTA can reflect the
+  // 90% gate without making the user click through to find out it'll
+  // bounce them. The pct is also passed into the message so they know
+  // exactly how far they are.
+  let candidateCompleteness: number | null = null;
   if (session?.user && session.user.role === "CANDIDATE") {
     const profile = await db.candidateProfile.findUnique({
       where: { userId: session.user.id },
+      select: { id: true, profileCompleteness: true },
     });
     if (profile) {
+      candidateCompleteness = profile.profileCompleteness;
       const existing = await db.application.findUnique({
         where: { jobId_candidateId: { jobId: id, candidateId: profile.id } },
       });
@@ -159,10 +229,18 @@ export default async function PublicJobDetail({
                 </span>
               )}
             </div>
-            <div className="mt-3 flex flex-wrap gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {job.audience === "DIYGURU_ONLY" && (
+                <Badge variant="verified" className="text-[11px]">
+                  ⭐ DIYguru exclusive
+                </Badge>
+              )}
               <Badge variant="default">{job.profileMode}</Badge>
               <Badge variant="default">{job.seniorityLevel}</Badge>
               <Badge variant="default">{job.employmentType.replace("_", " ")}</Badge>
+              {/* Recruiter response-time signal — only renders when we
+                  have ≥5 samples in the last 90 days. */}
+              <ResponseTimePill stats={responseStats} />
               {!job.salaryHidden && (job.salaryMin || job.salaryMax) && (
                 <Badge variant="success">
                   {formatSalaryRange(
@@ -212,7 +290,29 @@ export default async function PublicJobDetail({
         <aside className="space-y-4">
           <Card className="p-6">
             <h3 className="text-section text-emce-text">Apply</h3>
-            {alreadyApplied ? (
+            {/* External-apply jobs: when the listing carries an
+                applicationUrl, this site is acting purely as a
+                discovery layer. We don't own the funnel — bounce the
+                candidate straight out to the employer's career page,
+                regardless of sign-in state. Skip the internal form. */}
+            {job.applicationUrl ? (
+              <div className="mt-3 space-y-2">
+                <Button asChild className="w-full" size="lg">
+                  <a
+                    href={job.applicationUrl}
+                    target="_blank"
+                    rel="noopener noreferrer nofollow"
+                  >
+                    Apply on {job.company.name} →
+                  </a>
+                </Button>
+                <p className="text-hint text-emce-text-sec">
+                  Opens the employer&apos;s career page in a new tab.
+                  Listings sourced from public career pages — apply
+                  directly with the company.
+                </p>
+              </div>
+            ) : alreadyApplied ? (
               <div className="mt-3">
                 <Badge variant="success">✓ Applied</Badge>
                 <p className="mt-2 text-hint text-emce-text-sec">
@@ -230,16 +330,38 @@ export default async function PublicJobDetail({
                 </Button>
               </div>
             ) : session.user.role === "CANDIDATE" ? (
-              <form action={applyToJob} className="mt-3 space-y-3">
-                <input type="hidden" name="jobId" value={job.id} />
-                <Textarea
-                  name="coverLetter"
-                  rows={4}
-                  placeholder="Optional cover letter / why you're a great fit"
-                  maxLength={4000}
-                />
-                <Button type="submit" className="w-full" size="lg">Apply now →</Button>
-              </form>
+              candidateCompleteness !== null && candidateCompleteness < 90 ? (
+                // Hard 90% gate — apply server action would redirect anyway,
+                // but showing the locked state up-front avoids a useless
+                // form submission round-trip.
+                <div className="mt-3 space-y-2">
+                  <div className="rounded-md border border-emce-orange bg-emce-orange-light p-3 text-sm">
+                    <p className="font-bold text-emce-orange">
+                      🔒 Complete your profile to apply
+                    </p>
+                    <p className="mt-1 text-emce-text">
+                      Your profile is <strong>{candidateCompleteness}%</strong>. Reach{" "}
+                      <strong>90%</strong> and the apply button unlocks.
+                    </p>
+                  </div>
+                  <Button asChild className="w-full" size="lg">
+                    <Link href={`/me/profile?incomplete=apply&pct=${candidateCompleteness}&jobId=${job.id}`}>
+                      Complete profile to apply →
+                    </Link>
+                  </Button>
+                </div>
+              ) : (
+                <form action={applyToJob} className="mt-3 space-y-3">
+                  <input type="hidden" name="jobId" value={job.id} />
+                  <Textarea
+                    name="coverLetter"
+                    rows={4}
+                    placeholder="Optional cover letter / why you're a great fit"
+                    maxLength={4000}
+                  />
+                  <Button type="submit" className="w-full" size="lg">Apply now →</Button>
+                </form>
+              )
             ) : (
               <p className="mt-3 text-hint text-emce-text-sec">
                 Sign in as a candidate to apply.

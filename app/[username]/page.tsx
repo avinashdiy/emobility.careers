@@ -13,6 +13,7 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { saveCandidate } from "@/server/employer/actions";
 import { ShareButton } from "@/components/profile/ShareButton";
 import { ConnectButton } from "@/components/social/ConnectButton";
+import { WhatsAppButton } from "@/components/whatsapp/WhatsAppButton";
 import { FollowUserButton } from "@/components/social/FollowButton";
 import { PostCard, type FeedPostShape } from "@/components/social/PostCard";
 import { getConnectionStatus, isFollowingUser } from "@/server/social/queries";
@@ -158,7 +159,7 @@ export default async function PublicCandidateProfile({
   const showResume = canSeeResume(profile.resumeVisibility, viewerCtx) && Boolean(profile.resumeUrl || profile.aiResumeUrl);
   const activeResumeUrl = profile.useAiResume && profile.aiResumeUrl ? profile.aiResumeUrl : profile.resumeUrl;
 
-  const [connectionStatus, isFollowing, postsCount, recentPosts, mentorProfile, competitionWins] = await Promise.all([
+  const [connectionStatus, isFollowing, postsCount, recentPosts, mentorProfile, competitionWins, matchingJobs] = await Promise.all([
     session?.user
       ? getConnectionStatus(session.user.id, profile.user.id)
       : Promise.resolve({ status: "NONE" as const, connectionId: undefined as string | undefined }),
@@ -230,6 +231,26 @@ export default async function PublicCandidateProfile({
         competition: { select: { id: true, slug: true, title: true, type: true, hostCompany: { select: { name: true } } } },
       },
     }),
+    // Matching jobs — overlap candidate's EV domains with the JD's domain
+    // tags. v1 ranking is recency; the AI-driven score lives in the
+    // /employer/jobs/[id]/matches page and uses pgvector. This is a quick
+    // overlap query — Prisma can do it via the relation join. Falls back to
+    // the latest open jobs if the candidate hasn't tagged any domain yet.
+    db.jobPosting.findMany({
+      where: {
+        status: "OPEN",
+        publishedAt: { not: null },
+        ...(profile.evDomains.length > 0
+          ? { evDomains: { some: { evDomainId: { in: profile.evDomains.map((d) => d.evDomainId) } } } }
+          : {}),
+      },
+      orderBy: { publishedAt: "desc" },
+      take: 4,
+      select: {
+        id: true, title: true, locations: true, workMode: true, publishedAt: true,
+        company: { select: { name: true, logoUrl: true, slug: true } },
+      },
+    }),
   ]);
 
   // Person JSON-LD for richer snippets when public.
@@ -293,6 +314,7 @@ export default async function PublicCandidateProfile({
                 src={profile.profilePhotoUrl}
                 name={fullName}
                 size="xl"
+                openToWork={profile.openToWork}
                 className="h-28 w-28 ring-4 ring-white sm:h-36 sm:w-36 [&>span]:text-3xl"
               />
             </div>
@@ -358,11 +380,10 @@ export default async function PublicCandidateProfile({
                 <Badge variant="default" className="text-[10px]">
                   {PERSON_TYPE_LABEL[profile.personType] ?? "Professional"}
                 </Badge>
-                {profile.openToWork && (
-                  <Badge variant="success" className="text-[10px]">
-                    <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emce-mid" /> Open to work
-                  </Badge>
-                )}
+                {/* Open-to-Work cue lives on the avatar (#OpenToWork chip +
+                    green ring) — same place LinkedIn puts it. The
+                    redundant text badge here was removed when we adopted
+                    the avatar treatment. */}
                 {profile.evDomains.slice(0, 4).map((d) => (
                   <Badge key={d.evDomain.slug} variant="outline" className="text-[10px]">
                     {d.evDomain.name}
@@ -384,6 +405,12 @@ export default async function PublicCandidateProfile({
                   <Button asChild size="sm" variant="outline">
                     <Link href="/me">Open dashboard</Link>
                   </Button>
+                  {/* Compass CTA — owner-visible. Public visitors see
+                      the same link via the right rail of the profile.
+                      It's also linked from the Pulse page. */}
+                  <Button asChild size="sm" variant="outline" className="border-emce-mid text-emce-darkest hover:bg-emce-light-soft">
+                    <Link href={`/${profile.slug}/compass`}>⚡ My Compass</Link>
+                  </Button>
                 </>
               ) : (
                 <>
@@ -399,6 +426,9 @@ export default async function PublicCandidateProfile({
                       signedIn={true}
                     />
                   )}
+                  <Button asChild size="sm" variant="outline" className="border-emce-mid text-emce-darkest hover:bg-emce-light-soft">
+                    <Link href={`/${profile.slug}/compass`}>⚡ View Compass</Link>
+                  </Button>
                   {isEmployer && (
                     <form action={saveCandidate}>
                       <input type="hidden" name="candidateId" value={profile.id} />
@@ -434,6 +464,18 @@ export default async function PublicCandidateProfile({
                       <a href={`tel:${profile.phone.replace(/\s/g, "")}`} className="inline-flex items-center gap-1 font-semibold text-emce-dark hover:underline">
                         📞 {profile.phone}
                       </a>
+                    )}
+                    {/* WhatsApp deep-link CTA — opens the recruiter's
+                        WhatsApp app on mobile, web.whatsapp.com on
+                        desktop, with a polite intro pre-filled. Hidden
+                        when no phone is on file (component returns null). */}
+                    {profile.phone && (
+                      <WhatsAppButton
+                        phone={profile.phone}
+                        candidateName={fullName}
+                        size="sm"
+                        className="ml-1"
+                      />
                     )}
                   </>
                 ) : (
@@ -561,7 +603,17 @@ export default async function PublicCandidateProfile({
                   <ul className="mt-4 space-y-5">
                     {profile.experiences.map((e) => (
                       <li key={e.id} className="border-l-2 border-emce-mid pl-4">
-                        <div className="font-bold text-emce-text">{e.title}</div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-emce-text">{e.title}</span>
+                          {/* Verified-Company badge — green chip when stamped.
+                              The most visible cue that this candidate's
+                              employment claim has been corroborated. */}
+                          {e.verifiedAt && (
+                            <Badge variant="success" className="text-[10px]">
+                              ✓ Verified{e.verifiedMethod === "EMAIL_DOMAIN" ? " · email" : e.verifiedMethod === "RECRUITER_APPROVAL" ? " · recruiter" : ""}
+                            </Badge>
+                          )}
+                        </div>
                         <div className="text-sm text-emce-text-sec">{e.company}</div>
                         <div className="text-hint text-emce-text-muted">
                           {formatMonthYear(e.startDate)} – {e.current ? "Present" : formatMonthYear(e.endDate)}
@@ -727,6 +779,47 @@ export default async function PublicCandidateProfile({
                     <Link href="/me/mentor/sessions">Mentor inbox →</Link>
                   </Button>
                 )}
+              </Card>
+            )}
+
+            {/* Matching jobs — overlaps candidate's EV-domain tags with
+                open postings. LinkedIn shows a similar "Jobs you might be
+                interested in" card on profiles. */}
+            {matchingJobs.length > 0 && (
+              <Card>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-section text-emce-text">
+                    {profile.evDomains.length > 0 ? "Matching jobs" : "Latest jobs"}
+                  </h2>
+                  <Link href="/jobs" className="text-xs font-bold text-emce-dark hover:underline">All</Link>
+                </div>
+                {profile.evDomains.length > 0 && (
+                  <p className="mt-1 text-hint text-emce-text-sec">
+                    Open roles in {profile.evDomains.slice(0, 2).map((d) => d.evDomain.name).join(", ")}
+                    {profile.evDomains.length > 2 && ` · +${profile.evDomains.length - 2}`}
+                  </p>
+                )}
+                <ul className="mt-3 space-y-2">
+                  {matchingJobs.map((j) => (
+                    <li key={j.id}>
+                      <Link
+                        href={`/jobs/${j.id}`}
+                        className="flex items-start gap-2 rounded-md p-2 hover:bg-emce-light-soft"
+                      >
+                        <Avatar src={j.company.logoUrl} name={j.company.name} size="sm" />
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-1 text-sm font-bold text-emce-text">{j.title}</p>
+                          <p className="text-hint text-emce-text-sec">
+                            {j.company.name} · {j.locations[0] ?? "Remote"} · {j.workMode.toLowerCase()}
+                          </p>
+                        </div>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+                <Link href="/jobs" className="mt-3 block text-center text-xs font-bold text-emce-dark hover:underline">
+                  Show more →
+                </Link>
               </Card>
             )}
 

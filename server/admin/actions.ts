@@ -34,6 +34,30 @@ export async function setUserRole(formData: FormData) {
   revalidatePath("/admin/users");
 }
 
+/**
+ * Toggle the `User.isPlacementOfficer` flag — grants /tpo dashboard
+ * access without making the user an ADMIN. Reserved for trusted DIYguru
+ * placement coordinators.
+ */
+export async function togglePlacementOfficer(formData: FormData) {
+  const session = await requireAdmin();
+  const userId = z.string().parse(formData.get("userId"));
+  const before = await db.user.findUnique({
+    where: { id: userId },
+    select: { isPlacementOfficer: true },
+  });
+  if (!before) return;
+  const next = !before.isPlacementOfficer;
+  await db.user.update({ where: { id: userId }, data: { isPlacementOfficer: next } });
+  await audit({
+    actorId: session.user.id,
+    action: next ? "user.tpo_granted" : "user.tpo_revoked",
+    entity: "User",
+    entityId: userId,
+  });
+  revalidatePath("/admin/users");
+}
+
 export async function setUserStatus(formData: FormData) {
   const session = await requireAdmin();
   const userId = z.string().parse(formData.get("userId"));

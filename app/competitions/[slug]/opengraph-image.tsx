@@ -1,5 +1,6 @@
 import { ImageResponse } from "next/og";
 import { db } from "@/lib/db";
+import { brandLogoDataUrl } from "@/lib/og/brand-asset";
 
 export const runtime = "nodejs";
 export const alt = "Competition on eMobility Careers";
@@ -119,9 +120,12 @@ export default async function OG({ params }: { params: { slug: string } }) {
 
         {/* Footer */}
         <div style={{ marginTop: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 32, borderTop: "1px solid rgba(255,255,255,0.15)" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div style={{ background: "#8fd299", color: "#1e2d2a", padding: "6px 10px", borderRadius: 8, fontWeight: 800, fontSize: 18 }}>eM</div>
-            <div style={{ fontWeight: 800, fontSize: 22 }}>eMobility<span style={{ color: "#8fd299" }}>.careers</span></div>
+          {/* Brand wordmark on a white pill — readable on the dark gradient. */}
+          <div style={{ display: "flex" }}>
+            <div style={{ display: "flex", background: "white", padding: "8px 12px", borderRadius: 10 }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={brandLogoDataUrl()} alt="eMobility Careers" width={160} height={40} />
+            </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, background: "#8fd299", color: "#1e2d2a", padding: "12px 22px", borderRadius: 999, fontSize: 22, fontWeight: 800 }}>
             <span>{c.status === "RESULTS" ? "View results" : "Register now"}</span>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { getSetting } from "@/lib/settings";
+import { IconMark } from "@/components/brand/IconMark";
 
 /**
  * Compact, LinkedIn-style footer for logged-in / inside pages. Renders as
@@ -28,8 +29,10 @@ export async function CompactFooter() {
           ))}
         </ul>
         <div className="flex items-center gap-1.5 text-[11px] text-emce-text-muted">
-          <span className="grid h-4 w-4 place-items-center rounded-sm bg-emce-mid text-[8px] font-extrabold text-emce-darkest">eM</span>
-          <span>{siteName} Corporation © {year}</span>
+          {/* Icon-only marker — the wordmark would be too heavy at this
+              size and the row label already says the brand name. */}
+          <IconMark size="xs" />
+          <span>© {year} {siteName} · Powered by DIYguru</span>
         </div>
       </div>
     </footer>

@@ -9,6 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { VerifyEmailBanner } from "@/components/auth/VerifyEmailBanner";
+import { ProfileCompletenessCard } from "@/components/profile/ProfileCompletenessCard";
+import { ProductTour } from "@/components/onboarding/ProductTour";
+import { ApplicationTracker } from "@/components/candidate/ApplicationTracker";
+import { evaluateProfile } from "@/lib/profile-completeness";
+import { getCandidateApplicationStats } from "@/lib/applications-stats";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "My dashboard" };
@@ -35,8 +40,20 @@ export default async function MeDashboard() {
     where: { userId: session.user.id },
     include: {
       _count: { select: { applications: true, savedJobs: true, experiences: true, education: true } },
-      evDomains: { include: { evDomain: true } },
-      user: { select: { email: true, emailVerifiedAt: true } },
+      evDomains: { include: { evDomain: true }, select: { evDomainId: true, evDomain: true } },
+      skills: { select: { skillId: true } },
+      experiences: { select: { id: true } },
+      education: { select: { id: true } },
+      certifications: { select: { id: true } },
+      projects: { select: { id: true } },
+      user: {
+        select: {
+          email: true,
+          emailVerifiedAt: true,
+          phoneVerifiedAt: true,
+          productTourCompletedAt: true,
+        },
+      },
     },
   });
   if (!profile) redirect("/onboarding");
@@ -126,10 +143,21 @@ export default async function MeDashboard() {
   ]);
 
   const fullName = [profile.firstName, profile.lastName].filter(Boolean).join(" ");
-  const profileCompleteness = computeCompleteness(profile);
+  // Use the canonical scorer + denormalised column. We pass the full
+  // profile relations so `evaluateProfile` returns the section-level
+  // breakdown the gauge UI needs for the "Next steps" list.
+  const completeness = evaluateProfile(profile, {
+    phoneVerified: !!profile.user.phoneVerifiedAt,
+    emailVerified: !!profile.user.emailVerifiedAt,
+  });
+  const applicationStats = await getCandidateApplicationStats(profile.id);
 
   return (
     <div className="container max-w-6xl space-y-6 py-6 md:py-8">
+      {/* First-login welcome walkthrough — only fires while
+          productTourCompletedAt is null. The component closes itself and
+          stamps the column on Skip / Get started. */}
+      {!profile.user.productTourCompletedAt && <ProductTour />}
       {!profile.user.emailVerifiedAt && <VerifyEmailBanner email={profile.user.email} />}
 
         {/* Hero greeting */}
@@ -157,21 +185,16 @@ export default async function MeDashboard() {
             </div>
           </div>
 
-          {profileCompleteness < 100 && (
-            <div className="mt-5 rounded-md bg-emce-light-soft p-3">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-bold text-emce-text">Profile completeness</span>
-                <span className="text-emce-dark">{profileCompleteness}%</span>
-              </div>
-              <div className="mt-2 h-2 overflow-hidden rounded-full bg-white">
-                <div className="h-full bg-emce-mid" style={{ width: `${profileCompleteness}%` }} />
-              </div>
-              <Link href="/me/profile" className="mt-2 inline-block text-hint font-bold text-emce-dark underline">
-                Add what's missing →
-              </Link>
+          {completeness.pct < 100 && (
+            <div className="mt-5">
+              <ProfileCompletenessCard result={completeness} variant="inline" />
             </div>
           )}
         </Card>
+
+        {/* Application tracker — LinkedIn-style "Applied · Interviewed ·
+            Offers · Hired · Active" strip. Hidden when zero applications. */}
+        {applicationStats.applied > 0 && <ApplicationTracker stats={applicationStats} />}
 
         {/* At-a-glance counters */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -433,24 +456,3 @@ function QuickLink({ href, icon, label }: { href: string; icon: React.ReactNode;
   );
 }
 
-function computeCompleteness(profile: {
-  headline: string | null;
-  summary: string | null;
-  location: string | null;
-  resumeUrl: string | null;
-  onboardingCompletedAt: Date | null;
-  _count: { experiences: number; education: number };
-}): number {
-  let score = 0;
-  const checks: boolean[] = [
-    !!profile.headline,
-    !!profile.summary,
-    !!profile.location,
-    !!profile.resumeUrl,
-    profile._count.experiences > 0,
-    profile._count.education > 0,
-    !!profile.onboardingCompletedAt,
-  ];
-  for (const c of checks) if (c) score++;
-  return Math.round((score / checks.length) * 100);
-}

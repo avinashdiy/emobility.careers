@@ -6,6 +6,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmployerShell } from "@/components/layout/employer-shell";
+import { PageHeader } from "@/components/ui/page-header";
+import { EmptyState } from "@/components/ui/empty-state";
 import { updateJobStatus } from "@/server/employer/actions";
 import { relativeTime } from "@/lib/utils";
 
@@ -27,32 +29,36 @@ export default async function EmployerJobsPage() {
 
   return (
     <EmployerShell>
-      <div className="container max-w-6xl py-10">
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-dashboard text-emce-text">Jobs</h1>
-          <Button asChild>
-            <Link href="/employer/jobs/new">+ New job</Link>
-          </Button>
-        </div>
+      <div className="container max-w-6xl py-10 space-y-6">
+        <PageHeader
+          eyebrow="Hiring"
+          title="Jobs"
+          subtitle={`${jobs.length} ${jobs.length === 1 ? "role" : "roles"} on file`}
+          actions={
+            <Button asChild>
+              <Link href="/employer/jobs/new">+ New job</Link>
+            </Button>
+          }
+        />
 
         {jobs.length === 0 ? (
-          <Card className="p-10 text-center">
-            <div className="text-4xl">📝</div>
-            <h2 className="mt-3 text-section text-emce-text">No jobs yet</h2>
-            <p className="mt-1 text-hint text-emce-text-sec">
-              Post your first job to start matching with candidates.
-            </p>
-            <Button asChild className="mt-4">
-              <Link href="/employer/jobs/new">Post a job</Link>
-            </Button>
-          </Card>
+          <EmptyState
+            icon="📝"
+            title="No jobs yet"
+            body="Post your first job to start matching with candidates."
+            action={
+              <Button asChild>
+                <Link href="/employer/jobs/new">Post a job →</Link>
+              </Button>
+            }
+          />
         ) : (
           <Card className="p-0">
             <ul className="divide-y divide-emce-border">
               {jobs.map((j) => (
                 <li key={j.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Link
                         href={`/employer/jobs/${j.id}`}
                         className="font-bold text-emce-text hover:underline"
@@ -64,6 +70,16 @@ export default async function EmployerJobsPage() {
                         : j.status === "DRAFT" ? "outline"
                         : "default"
                       }>{j.status}</Badge>
+                      {/* Audience cue — DIYGURU_ONLY listings need to be
+                          obvious to recruiters managing many jobs since
+                          they obey different rules (forced salary
+                          disclosure, restricted browse). */}
+                      {j.audience === "DIYGURU_ONLY" && (
+                        <Badge variant="verified" className="text-[10px]">⭐ DIYguru exclusive</Badge>
+                      )}
+                      {j.audience === "INVITE_ONLY" && (
+                        <Badge variant="warning" className="text-[10px]">🔒 Invite-only</Badge>
+                      )}
                     </div>
                     <div className="mt-1 text-hint text-emce-text-sec">
                       {j._count.applications} applications · {j.workMode} · {j.profileMode}

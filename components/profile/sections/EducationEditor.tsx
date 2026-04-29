@@ -1,13 +1,18 @@
-import type { Education } from "@prisma/client";
+import type { Education, Institution } from "@prisma/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { InstitutionPicker } from "@/components/profile/InstitutionPicker";
 import { saveEducation, deleteEducation } from "@/server/candidates/actions";
 import { Trash2 } from "lucide-react";
 
-export function EducationEditor({ education }: { education: Education[] }) {
+type EducationWithInstitution = Education & {
+  institutionRef?: Pick<Institution, "id" | "name" | "logoUrl"> | null;
+};
+
+export function EducationEditor({ education }: { education: EducationWithInstitution[] }) {
   return (
     <Card className="p-6">
       <h2 className="text-section text-emce-text">Education</h2>
@@ -27,7 +32,12 @@ export function EducationEditor({ education }: { education: Education[] }) {
               className="flex items-start justify-between rounded-md border border-emce-border p-3"
             >
               <div>
-                <div className="font-bold text-emce-text">{e.institution}</div>
+                <div className="font-bold text-emce-text">
+                  {e.institution}
+                  {e.institutionRef && (
+                    <span className="ml-1 text-xs font-normal text-emce-mid-muted">✓ linked</span>
+                  )}
+                </div>
                 <div className="text-hint text-emce-text-muted">
                   {[e.degree, e.field].filter(Boolean).join(" · ")} ·{" "}
                   {e.startYear ?? "?"}–{e.endYear ?? "?"}
@@ -55,8 +65,10 @@ export function EducationEditor({ education }: { education: Education[] }) {
         </summary>
         <form action={saveEducation} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <Label htmlFor="institution">Institution</Label>
-            <Input id="institution" name="institution" required />
+            {/* InstitutionPicker — search-or-create autocomplete. The text
+                is always required; the institutionId is optional (links the
+                entry to a structured Institution row when present). */}
+            <InstitutionPicker />
           </div>
           <div>
             <Label htmlFor="degree">Degree</Label>

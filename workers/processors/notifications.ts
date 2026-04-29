@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendMail } from "@/lib/mail";
 import { sendSMS } from "@/lib/sms";
+import { sendWhatsAppTemplate } from "@/lib/whatsapp/send";
 import { env } from "@/lib/env";
 import { QueueNames, type NotificationsJob } from "@/lib/queues";
 
@@ -64,6 +65,24 @@ export function startNotificationsWorker() {
           templateId: env.MSG91_TXN_TEMPLATE_ID,
           variables: { title, body },
         });
+      }
+
+      // WhatsApp delivery — gated by the same per-event preference logic
+      // as SMS (the channels share the "I want a real-time mobile ping"
+      // intent). Uses the same approved template as the digest with two
+      // body params (title + body); ops can swap to a notification-class
+      // template via env if they want a richer layout.
+      if (channels.includes("WHATSAPP") && wantSMS && user.phone) {
+        await sendWhatsAppTemplate({
+          to: user.phone,
+          templateName: env.WHATSAPP_DIGEST_TEMPLATE,
+          // Five body params required by the digest template — pad with
+          // dashes so the template's body validators don't reject.
+          bodyParams: [title, body, "—", "—", "—"],
+          urlButtonParam: link
+            ? `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}${link}`
+            : env.NEXT_PUBLIC_APP_URL,
+        }).catch((err) => logger.warn({ err }, "[notifications] whatsapp send failed"));
       }
 
       return { ok: true };

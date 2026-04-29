@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { MobileNav } from "@/components/layout/mobile-nav";
+import { Logo } from "@/components/brand/Logo";
 
 const NAV = [
   { href: "/employer", label: "Dashboard" },
   { href: "/employer/jobs", label: "Jobs" },
   { href: "/employer/candidates", label: "Candidates" },
+  { href: "/employer/drives", label: "Drives" },
   { href: "/employer/competitions", label: "Competitions" },
+  { href: "/employer/verifications", label: "Verify" },
   { href: "/employer/saved", label: "Saved" },
   { href: "/employer/messages", label: "Messages" },
   { href: "/employer/team", label: "Team" },
@@ -18,10 +21,12 @@ export function EmployerShell({ children }: { children: React.ReactNode }) {
     <div className="min-h-screen bg-emce-light-bg">
       <header className="border-b border-emce-border bg-white">
         <div className="container flex h-14 items-center justify-between gap-3">
-          <Link href="/employer" className="flex items-center gap-2 font-extrabold text-emce-text">
-            <span className="grid h-7 w-7 place-items-center rounded-md bg-emce-mid text-emce-darkest">eM</span>
-            <span className="hidden sm:inline">eMobility Careers · </span>
-            <span>Employer</span>
+          {/* Brand wordmark + a small "Employer" suffix so the chrome
+              still reads as the employer console. */}
+          <Link href="/employer" className="flex items-center gap-2 font-extrabold text-emce-text" aria-label="Employer console home">
+            <Logo size="md" priority />
+            <span className="hidden text-emce-text-sec sm:inline">·</span>
+            <span className="hidden sm:inline">Employer</span>
           </Link>
           <nav className="hidden gap-1 lg:flex">
             {NAV.slice(0, 6).map((n) => (

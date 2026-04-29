@@ -1,5 +1,6 @@
 import { Card } from "@/components/ui/card";
 import { SignUpForm } from "@/components/auth/SignUpForm";
+import { turnstilePublicKey } from "@/lib/anti-spam";
 
 export const metadata = { title: "Create your account" };
 
@@ -18,7 +19,11 @@ export default async function SignUpPage({
         Free for candidates. Employers can post jobs after company verification.
       </p>
       <div className="mt-6">
-        <SignUpForm defaultRole={defaultRole} next={sp.next} />
+        <SignUpForm
+          defaultRole={defaultRole}
+          next={sp.next}
+          turnstileSiteKey={turnstilePublicKey}
+        />
       </div>
     </Card>
   );

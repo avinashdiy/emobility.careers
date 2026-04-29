@@ -8,12 +8,12 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
-import { PostComposer } from "@/components/social/PostComposer";
+import { RichPostComposer } from "@/components/social/RichPostComposer";
 import { PostCard, type FeedPostShape } from "@/components/social/PostCard";
 import { ConnectButton } from "@/components/social/ConnectButton";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
-import { getFeed, suggestConnections, getConnectionStatus } from "@/server/social/queries";
+import { getFeed, suggestConnections, getConnectionStatus, getViewerPollVotes } from "@/server/social/queries";
 import { isFeatureOff, FeatureOffNotice } from "@/components/layout/FeatureGate";
 import { relativeTime } from "@/lib/utils";
 
@@ -57,6 +57,7 @@ export default async function FeedPage() {
     profileViews30d,
     liveCompetitions,
     upcomingMentorshipSession,
+    latestJobs,
   ] = await Promise.all([
     getFeed({ viewerId: session.user.id, limit: 20 }),
     suggestConnections(session.user.id, 4),
@@ -90,10 +91,24 @@ export default async function FeedPage() {
         },
       },
     }),
+    // Latest open jobs for the right-rail "Latest jobs" widget (LinkedIn
+    // analogue: their "Jobs based on your activity" card). v1 is a recency
+    // sort; v2 will rank by AI match score against the viewer's embedding.
+    db.jobPosting.findMany({
+      where: { status: "OPEN", publishedAt: { not: null } },
+      orderBy: { publishedAt: "desc" },
+      take: 5,
+      select: {
+        id: true, title: true, locations: true, workMode: true,
+        publishedAt: true,
+        company: { select: { name: true, logoUrl: true, slug: true } },
+      },
+    }),
   ]);
 
   const fullName = `${me.firstName} ${me.lastName ?? ""}`.trim();
   const totalEngagement7d = weeklyReactions + weeklyComments;
+  const viewerPollVotes = await getViewerPollVotes(posts, session.user.id);
 
   return (
     <>
@@ -210,7 +225,7 @@ export default async function FeedPage() {
 
         {/* ─── Center column — composer + feed ─── */}
         <main className="lg:col-span-6">
-          <PostComposer
+          <RichPostComposer
             user={{
               name: fullName,
               profilePhotoUrl: me.profilePhotoUrl,
@@ -244,9 +259,16 @@ export default async function FeedPage() {
                 }
               />
             ) : (
-              posts.map((p) => (
-                <PostCard key={p.id} post={p as unknown as FeedPostShape} viewerId={session.user.id} />
-              ))
+              posts.map((p) => {
+                const votes = p.poll ? viewerPollVotes[p.poll.id] ?? [] : [];
+                return (
+                  <PostCard
+                    key={p.id}
+                    post={{ ...(p as unknown as FeedPostShape), viewerPollVotes: votes }}
+                    viewerId={session.user.id}
+                  />
+                );
+              })
             )}
           </div>
         </main>
@@ -281,9 +303,22 @@ export default async function FeedPage() {
             </div>
             <p className="mt-1 text-hint text-emce-text-sec">Same EV domain as you</p>
             {suggestions.length === 0 ? (
-              <p className="mt-3 text-hint text-emce-text-muted">
-                We&apos;ll surface suggestions as more people join.
-              </p>
+              <div className="mt-3 space-y-2">
+                <p className="text-hint text-emce-text-sec">
+                  No matches yet — try one of these to fill your feed:
+                </p>
+                <div className="flex flex-col gap-1.5">
+                  <Link href="/people" className="rounded-md border border-emce-border px-2.5 py-1.5 text-xs font-semibold text-emce-text hover:border-emce-mid hover:bg-emce-light-soft">
+                    🔍 Browse people
+                  </Link>
+                  <Link href="/companies" className="rounded-md border border-emce-border px-2.5 py-1.5 text-xs font-semibold text-emce-text hover:border-emce-mid hover:bg-emce-light-soft">
+                    🏢 Follow companies
+                  </Link>
+                  <Link href="/mentors" className="rounded-md border border-emce-border px-2.5 py-1.5 text-xs font-semibold text-emce-text hover:border-emce-mid hover:bg-emce-light-soft">
+                    🎓 Find a mentor
+                  </Link>
+                </div>
+              </div>
             ) : (
               <ul className="mt-3 space-y-3">
                 {await Promise.all(
@@ -293,7 +328,7 @@ export default async function FeedPage() {
                     return (
                       <li key={s.id} className="flex items-start gap-2">
                         <Link href={`/${s.slug}`}>
-                          <Avatar src={s.profilePhotoUrl} name={sname} size="sm" />
+                          <Avatar src={s.profilePhotoUrl} name={sname} size="sm" openToWork={s.openToWork} />
                         </Link>
                         <div className="min-w-0 flex-1">
                           <Link
@@ -357,6 +392,38 @@ export default async function FeedPage() {
                   </li>
                 ))}
               </ul>
+            </Card>
+          )}
+
+          {/* Latest jobs — LinkedIn analogue: "Jobs based on your activity".
+              Pulls newest OPEN postings, ordered by publishedAt. */}
+          {latestJobs.length > 0 && (
+            <Card>
+              <div className="flex items-center justify-between">
+                <h2 className="text-section text-emce-text">Latest EV jobs</h2>
+                <Link href="/jobs" className="text-xs font-bold text-emce-dark hover:underline">All jobs</Link>
+              </div>
+              <ul className="mt-3 space-y-2">
+                {latestJobs.map((j) => (
+                  <li key={j.id}>
+                    <Link
+                      href={`/jobs/${j.id}`}
+                      className="flex items-start gap-2 rounded-md p-2 hover:bg-emce-light-soft"
+                    >
+                      <Avatar src={j.company.logoUrl} name={j.company.name} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-1 text-sm font-bold text-emce-text">{j.title}</p>
+                        <p className="text-hint text-emce-text-sec">
+                          {j.company.name} · {j.locations[0] ?? "Remote"} · {j.workMode.toLowerCase()}
+                        </p>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <Link href="/jobs" className="mt-3 block text-center text-xs font-bold text-emce-dark hover:underline">
+                Show more →
+              </Link>
             </Card>
           )}
 

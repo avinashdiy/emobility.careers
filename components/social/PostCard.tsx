@@ -5,9 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { ReactionBar } from "@/components/social/ReactionBar";
 import { CommentSection } from "@/components/social/CommentSection";
 import { PostActions } from "@/components/social/PostActions";
+import { PollCard } from "@/components/social/PollCard";
+import { iframeFor } from "@/lib/social/embeds";
 import { relativeTime } from "@/lib/utils";
-import type { ReactionType } from "@prisma/client";
-import { Briefcase, Globe, Users } from "lucide-react";
+import type { EmbedProvider, PostAttachmentType, PostKind, ReactionType } from "@prisma/client";
+import { Briefcase, ExternalLink, FileText, Globe, Users } from "lucide-react";
 
 const PERSON_TYPE_LABEL: Record<string, string> = {
   PROFESSIONAL: "Professional",
@@ -66,6 +68,34 @@ export interface FeedPostShape {
     };
   } | null;
   reactions: { type: ReactionType; userId: string }[];
+
+  // ─── Rich content fields ───
+  kind?: PostKind;
+  articleTitle?: string | null;
+  articleCoverUrl?: string | null;
+  embedUrl?: string | null;
+  embedProvider?: EmbedProvider | null;
+  embedTitle?: string | null;
+  embedThumbnailUrl?: string | null;
+  attachments?: {
+    id: string;
+    type: PostAttachmentType;
+    url: string;
+    fileName: string;
+    mime: string;
+    byteSize: number;
+    order: number;
+  }[];
+  poll?: {
+    id: string;
+    question: string;
+    closesAt: Date | string;
+    multipleChoice: boolean;
+    totalVotes: number;
+    options: { id: string; text: string; votes: number; order: number }[];
+  } | null;
+  /** Option ids the viewer has already voted on, hydrated by the page. */
+  viewerPollVotes?: string[];
 }
 
 export function PostCard({
@@ -127,10 +157,88 @@ export function PostCard({
         <PostActions postId={post.id} authorId={post.author.id} viewerId={viewerId} />
       </div>
 
+      {/* Article header — banner-style cover above body */}
+      {post.kind === "ARTICLE" && post.articleCoverUrl && (
+        <Link href={`/posts/${post.id}`} className="mt-3 block overflow-hidden rounded-md">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={post.articleCoverUrl}
+            alt={post.articleTitle ?? "Article cover"}
+            className="h-48 w-full object-cover sm:h-56"
+          />
+        </Link>
+      )}
+      {post.kind === "ARTICLE" && post.articleTitle && (
+        <Link href={`/posts/${post.id}`} className="mt-3 block">
+          <h2 className="text-section text-emce-text hover:underline">{post.articleTitle}</h2>
+        </Link>
+      )}
+
       {/* Body */}
       <div className="mt-3 whitespace-pre-line text-body text-emce-text">
         {renderBodyWithLinks(post.body)}
       </div>
+
+      {/* Image attachments — 1 / 2 / 3 / 4+ layouts */}
+      {post.attachments && post.attachments.filter((a) => a.type === "IMAGE").length > 0 && (
+        <ImageAttachmentGrid
+          images={post.attachments.filter((a) => a.type === "IMAGE")}
+          postId={post.id}
+        />
+      )}
+
+      {/* Video attachments */}
+      {post.attachments?.filter((a) => a.type === "VIDEO").map((v) => (
+        <div key={v.id} className="mt-3 overflow-hidden rounded-md bg-black">
+          <video
+            controls
+            preload="metadata"
+            src={v.url}
+            className="h-auto max-h-[480px] w-full"
+          />
+        </div>
+      ))}
+
+      {/* Document attachments */}
+      {post.attachments?.filter((a) => a.type === "DOCUMENT").map((d) => (
+        <a
+          key={d.id}
+          href={d.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-3 flex items-center gap-3 rounded-md border border-emce-border bg-emce-light-soft/50 p-3 hover:border-emce-mid hover:bg-emce-light-soft"
+        >
+          <div className="grid h-10 w-10 flex-shrink-0 place-items-center rounded-md bg-emce-dark text-white">
+            <FileText className="h-5 w-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="line-clamp-1 text-sm font-bold text-emce-text">{d.fileName}</p>
+            <p className="text-hint text-emce-text-sec">
+              {formatFileSize(d.byteSize)} · {extLabel(d.mime, d.fileName)}
+            </p>
+          </div>
+          <ExternalLink className="h-4 w-4 text-emce-text-sec" />
+        </a>
+      ))}
+
+      {/* Embed (YouTube / Vimeo iframe; others as link card) */}
+      {post.kind === "EMBED" && post.embedUrl && post.embedProvider && (
+        <EmbedRenderer
+          url={post.embedUrl}
+          provider={post.embedProvider}
+          title={post.embedTitle ?? null}
+          thumbnailUrl={post.embedThumbnailUrl ?? null}
+        />
+      )}
+
+      {/* Poll */}
+      {post.kind === "POLL" && post.poll && (
+        <PollCard
+          poll={post.poll}
+          viewerVotes={post.viewerPollVotes ?? []}
+          isAuthor={viewerId === post.author.id}
+        />
+      )}
 
       {/* Hashtag chips */}
       {post.hashtags.length > 0 && (
@@ -275,6 +383,175 @@ function CommentToggleLink({ postId, count }: { postId: string; count: number })
       <span>Comment{count > 0 ? ` · ${count}` : ""}</span>
     </Link>
   );
+}
+
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function extLabel(mime: string, fileName: string): string {
+  if (mime.includes("pdf")) return "PDF";
+  if (mime.includes("word")) return "DOCX";
+  if (mime.includes("powerpoint") || mime.includes("presentation")) return "PPTX";
+  const ext = fileName.split(".").pop()?.toUpperCase();
+  return ext ?? "FILE";
+}
+
+interface ImageAttachment {
+  id: string;
+  url: string;
+  fileName: string;
+}
+
+function ImageAttachmentGrid({ images, postId }: { images: ImageAttachment[]; postId: string }) {
+  const count = images.length;
+  // LinkedIn-style layouts: 1 = full width, 2 = side-by-side, 3 = one big +
+  // two stacked, 4+ = 2×2 with "+N more" overlay on the last tile.
+  const visible = images.slice(0, 4);
+  const overflow = Math.max(0, count - 4);
+
+  if (count === 1) {
+    return (
+      <Link href={`/posts/${postId}`} className="mt-3 block overflow-hidden rounded-md">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={images[0].url}
+          alt={images[0].fileName}
+          className="h-auto max-h-[560px] w-full object-cover"
+        />
+      </Link>
+    );
+  }
+
+  if (count === 2) {
+    return (
+      <div className="mt-3 grid grid-cols-2 gap-0.5 overflow-hidden rounded-md">
+        {visible.map((img) => (
+          <Link key={img.id} href={`/posts/${postId}`} className="block">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src={img.url} alt={img.fileName} className="h-64 w-full object-cover" />
+          </Link>
+        ))}
+      </div>
+    );
+  }
+
+  if (count === 3) {
+    return (
+      <div className="mt-3 grid grid-cols-2 gap-0.5 overflow-hidden rounded-md">
+        <Link href={`/posts/${postId}`} className="row-span-2 block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={visible[0].url} alt={visible[0].fileName} className="h-full max-h-[400px] w-full object-cover" />
+        </Link>
+        <Link href={`/posts/${postId}`} className="block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={visible[1].url} alt={visible[1].fileName} className="h-[200px] w-full object-cover" />
+        </Link>
+        <Link href={`/posts/${postId}`} className="block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={visible[2].url} alt={visible[2].fileName} className="h-[200px] w-full object-cover" />
+        </Link>
+      </div>
+    );
+  }
+
+  // 4 or more
+  return (
+    <div className="mt-3 grid grid-cols-2 gap-0.5 overflow-hidden rounded-md">
+      {visible.map((img, i) => (
+        <Link key={img.id} href={`/posts/${postId}`} className="relative block">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={img.url} alt={img.fileName} className="h-[200px] w-full object-cover" />
+          {i === 3 && overflow > 0 && (
+            <div className="absolute inset-0 grid place-items-center bg-black/55 text-2xl font-bold text-white">
+              +{overflow}
+            </div>
+          )}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
+const PROVIDER_LABEL: Record<EmbedProvider, string> = {
+  YOUTUBE: "YouTube",
+  VIMEO: "Vimeo",
+  INSTAGRAM: "Instagram",
+  LINKEDIN: "LinkedIn",
+  TWITTER: "X (Twitter)",
+};
+
+function EmbedRenderer({
+  url,
+  provider,
+  title,
+  thumbnailUrl,
+}: {
+  url: string;
+  provider: EmbedProvider;
+  title: string | null;
+  thumbnailUrl: string | null;
+}) {
+  const embed = iframeFor({ provider, url, iframe: true, videoId: extractVideoId(url, provider) });
+  // YouTube + Vimeo: render the iframe inline.
+  if (embed) {
+    return (
+      <div className="mt-3 aspect-video w-full overflow-hidden rounded-md bg-black">
+        <iframe
+          src={embed}
+          title={title ?? PROVIDER_LABEL[provider]}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+          className="h-full w-full border-0"
+        />
+      </div>
+    );
+  }
+  // Instagram / LinkedIn / X — link card with provider chip.
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="mt-3 flex items-center gap-3 rounded-md border border-emce-border bg-white p-3 hover:border-emce-mid"
+    >
+      {thumbnailUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={thumbnailUrl}
+          alt={title ?? PROVIDER_LABEL[provider]}
+          className="h-16 w-24 flex-shrink-0 rounded object-cover"
+        />
+      ) : (
+        <div className="grid h-16 w-24 flex-shrink-0 place-items-center rounded bg-emce-light-soft text-xs font-bold text-emce-dark">
+          {PROVIDER_LABEL[provider]}
+        </div>
+      )}
+      <div className="min-w-0 flex-1">
+        <p className="text-hint font-bold uppercase tracking-wide text-emce-text-sec">
+          {PROVIDER_LABEL[provider]}
+        </p>
+        <p className="line-clamp-2 text-sm font-bold text-emce-text">
+          {title ?? url.replace(/^https?:\/\//, "")}
+        </p>
+        <p className="line-clamp-1 text-hint text-emce-text-sec">View on {PROVIDER_LABEL[provider]} →</p>
+      </div>
+    </a>
+  );
+}
+
+function extractVideoId(url: string, provider: EmbedProvider): string | undefined {
+  if (provider === "YOUTUBE") {
+    const m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/)([A-Za-z0-9_-]{11})/);
+    return m?.[1];
+  }
+  if (provider === "VIMEO") {
+    const m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+    return m?.[1];
+  }
+  return undefined;
 }
 
 function RepostButton({ postId }: { postId: string }) {

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { searchJobs } from "@/server/jobs/queries";
 import { db } from "@/lib/db";
+import { auth } from "@/lib/auth";
 import { JobCard } from "@/components/jobs/JobCard";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,12 +17,25 @@ export default async function JobsPage({
   searchParams: Promise<{ q?: string; location?: string; domain?: string; workMode?: string; profileMode?: string; page?: string }>;
 }) {
   const sp = await searchParams;
+  const session = await auth();
+  // DIYGURU_ONLY listings are filtered into the result set only for
+  // verified students. We resolve the flag here once and pass it down
+  // so the WHERE clause stays a single Prisma roundtrip.
+  let viewerIsDIYguru = false;
+  if (session?.user) {
+    const profile = await db.candidateProfile.findUnique({
+      where: { userId: session.user.id },
+      select: { isDIYguruVerified: true },
+    });
+    viewerIsDIYguru = !!profile?.isDIYguruVerified;
+  }
   const filter = {
     q: sp.q,
     location: sp.location,
     domain: sp.domain,
     workMode: sp.workMode,
     profileMode: sp.profileMode,
+    viewerIsDIYguru,
     page: sp.page ? parseInt(sp.page) : 1,
   };
   const { jobs, total, page, pages } = await searchJobs(filter);
@@ -36,39 +50,76 @@ export default async function JobsPage({
             {total > 0 ? `${total.toLocaleString()} EV jobs` : "EV jobs"}
           </h1>
         </div>
-        {(filter.q || filter.location || filter.domain) && (
-          <Button asChild variant="outline" size="sm">
-            <Link href="/me/alerts">🔔 Save this search as alert</Link>
+        <div className="flex flex-wrap gap-2">
+          {(filter.q || filter.location || filter.domain) && (
+            <Button asChild variant="outline" size="sm">
+              <Link href="/me/alerts">🔔 Save this search as alert</Link>
+            </Button>
+          )}
+          {/* WhatsApp daily-digest CTA — sits next to alerts so any
+              job-seeker scanning the page sees the lower-friction
+              "phone, not inbox" path. */}
+          <Button asChild size="sm" className="bg-[#25D366] text-white hover:bg-[#1ebe5b]">
+            <Link href="/digest">📱 Get daily on WhatsApp</Link>
           </Button>
-        )}
+        </div>
       </div>
 
-      {/* Filter bar */}
+      {/* Filter bar — on mobile only the search query and Search
+          button are visible by default; secondary filters (location,
+          work mode, profile mode) collapse into a "More filters"
+          panel so the page doesn't lead with five stacked rows.
+          On sm+ everything sits inline in the grid-cols-12 layout.
+          The collapsibility is pure HTML — `<details>` keeps form
+          inputs in the DOM (and submitting) even when visually
+          hidden, so no JS / client component needed. */}
       <Card className="mb-6 p-4">
         <form className="grid gap-3 sm:grid-cols-12">
           <div className="sm:col-span-4">
             <Input name="q" defaultValue={filter.q ?? ""} placeholder="Title, skill, company" />
           </div>
-          <div className="sm:col-span-3">
-            <Input name="location" defaultValue={filter.location ?? ""} placeholder="Location or 'Remote'" />
-          </div>
-          <div className="sm:col-span-2">
-            <NativeSelect name="workMode" defaultValue={filter.workMode ?? ""}>
-              <option value="">Any work mode</option>
-              <option value="ONSITE">On-site</option>
-              <option value="REMOTE">Remote</option>
-              <option value="HYBRID">Hybrid</option>
-            </NativeSelect>
-          </div>
-          <div className="sm:col-span-2">
-            <NativeSelect name="profileMode" defaultValue={filter.profileMode ?? ""}>
-              <option value="">Any profile</option>
-              <option value="FRESHER">Fresher</option>
-              <option value="EXPERIENCED">Experienced</option>
-              <option value="TECHNICIAN">Technician</option>
-              <option value="LEADERSHIP">Leadership</option>
-            </NativeSelect>
-          </div>
+
+          {/* Secondary filters — collapsible on mobile, force-shown
+              on sm+. Both the <details> wrapper and its inner div use
+              `sm:!contents` so they have no box at sm+; their input
+              children become direct grid items of the parent
+              grid-cols-12. The bang (`!`) is required because the UA
+              stylesheet's `details:not([open]) > *:not(summary)`
+              hide rule has higher specificity than a plain
+              `display: contents` declaration. Below sm the summary
+              is the toggle and the UA shows/hides the inner div
+              based on the open attribute. */}
+          <details className="group sm:!contents">
+            <summary
+              className="cursor-pointer list-none rounded-md bg-emce-light-soft px-3 py-2.5 text-sm font-bold text-emce-dark hover:bg-emce-mid hover:text-emce-darkest sm:hidden"
+            >
+              <span className="group-open:hidden">More filters ▾</span>
+              <span className="hidden group-open:inline">Hide filters ▴</span>
+            </summary>
+            <div className="mt-2 grid grid-cols-1 gap-3 sm:!contents">
+              <div className="sm:col-span-3">
+                <Input name="location" defaultValue={filter.location ?? ""} placeholder="Location or 'Remote'" />
+              </div>
+              <div className="sm:col-span-2">
+                <NativeSelect name="workMode" defaultValue={filter.workMode ?? ""}>
+                  <option value="">Any work mode</option>
+                  <option value="ONSITE">On-site</option>
+                  <option value="REMOTE">Remote</option>
+                  <option value="HYBRID">Hybrid</option>
+                </NativeSelect>
+              </div>
+              <div className="sm:col-span-2">
+                <NativeSelect name="profileMode" defaultValue={filter.profileMode ?? ""}>
+                  <option value="">Any profile</option>
+                  <option value="FRESHER">Fresher</option>
+                  <option value="EXPERIENCED">Experienced</option>
+                  <option value="TECHNICIAN">Technician</option>
+                  <option value="LEADERSHIP">Leadership</option>
+                </NativeSelect>
+              </div>
+            </div>
+          </details>
+
           <div className="sm:col-span-1">
             <Button type="submit" className="w-full">Search</Button>
           </div>

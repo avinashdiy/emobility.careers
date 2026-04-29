@@ -1,22 +1,44 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Avatar } from "@/components/ui/avatar";
 import { NativeSelect } from "@/components/ui/select";
 import { EmployerShell } from "@/components/layout/employer-shell";
+import { CandidateSearchList, type SearchCandidate } from "@/components/employer/CandidateSearchList";
+import { parseBooleanQuery } from "@/lib/search/boolean";
 
 export const metadata = { title: "Search candidates" };
 
+/**
+ * Recruiter talent search. Server component does the filtering + sort
+ * via Prisma; the result list is a client component so we can hold
+ * multi-select state for bulk InMail without re-fetching.
+ *
+ * Sort options:
+ *   - relevance (default) — recently updated profiles first.
+ *   - active             — recently logged-in users first (LinkedIn's
+ *                          "Recently active" recruiter sort).
+ *   - experienced        — most years of experience first.
+ *
+ * The `lastActive` filter is a coarse band (1 / 7 / 30 / 90 days).
+ * We store login on `User.lastLoginAt`, set on every successful sign-in
+ * inside Credentials.authorize.
+ */
 export default async function TalentSearch({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; domain?: string; profileMode?: string; diyguruOnly?: string; openToWork?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    domain?: string;
+    profileMode?: string;
+    diyguruOnly?: string;
+    openToWork?: string;
+    lastActive?: string; // "1d" | "7d" | "30d" | "90d"
+    sort?: string;       // "relevance" | "active" | "experienced"
+  }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/signin");
@@ -26,17 +48,17 @@ export default async function TalentSearch({
   if (!employer) redirect("/employer/onboarding");
 
   const sp = await searchParams;
+
+  // Boolean query parsing — `(battery OR powertrain) AND "3 years" AND
+  // Bengaluru NOT intern`. We AND the parsed clause into the visibility
+  // filter so the existing facet checkboxes still apply on top.
+  // `parseBooleanQuery` is parser-only — Prisma still does the actual
+  // matching, so there's no SQL-injection surface here.
+  const parsed = sp.q ? parseBooleanQuery(sp.q) : { where: {}, normalized: "" };
   const where: Prisma.CandidateProfileWhereInput = {
     cvVisibility: { in: ["EVERYONE", "EMPLOYERS_ONLY"] },
+    ...parsed.where,
   };
-  if (sp.q) {
-    where.OR = [
-      { firstName: { contains: sp.q, mode: "insensitive" } },
-      { lastName: { contains: sp.q, mode: "insensitive" } },
-      { headline: { contains: sp.q, mode: "insensitive" } },
-      { summary: { contains: sp.q, mode: "insensitive" } },
-    ];
-  }
   if (sp.domain) {
     where.evDomains = { some: { evDomain: { slug: sp.domain } } };
   }
@@ -44,30 +66,96 @@ export default async function TalentSearch({
   if (sp.diyguruOnly === "true") where.isDIYguruVerified = true;
   if (sp.openToWork === "true") where.openToWork = true;
 
+  // "Last active in" — User.lastLoginAt drives this. The cutoff converts
+  // band → ms, then filters via the User relation. We pull lastLoginAt
+  // alongside the candidate row for the per-card pill.
+  const dayMs = 24 * 60 * 60 * 1000;
+  const cutoff =
+    sp.lastActive === "1d" ? new Date(Date.now() - dayMs)
+    : sp.lastActive === "7d" ? new Date(Date.now() - 7 * dayMs)
+    : sp.lastActive === "30d" ? new Date(Date.now() - 30 * dayMs)
+    : sp.lastActive === "90d" ? new Date(Date.now() - 90 * dayMs)
+    : null;
+  if (cutoff) {
+    where.user = { lastLoginAt: { gte: cutoff } };
+  }
+
+  const sort = sp.sort ?? "relevance";
+  const orderBy: Prisma.CandidateProfileOrderByWithRelationInput[] =
+    sort === "active" ? [{ user: { lastLoginAt: "desc" } }, { updatedAt: "desc" }]
+    : sort === "experienced" ? [{ totalExperienceMonths: "desc" }, { updatedAt: "desc" }]
+    : [{ updatedAt: "desc" }];
+
   const candidates = await db.candidateProfile.findMany({
     where,
     take: 50,
-    orderBy: { updatedAt: "desc" },
+    orderBy,
     include: {
-      evDomains: { include: { evDomain: true } },
-      skills: { include: { skill: true }, take: 6 },
+      evDomains: { include: { evDomain: { select: { slug: true, name: true } } } },
+      skills: { include: { skill: { select: { id: true, name: true } } }, take: 6 },
+      user: { select: { lastLoginAt: true, phone: true } },
     },
   });
 
   const evDomains = await db.eVDomain.findMany({ orderBy: { order: "asc" } });
+
+  // Pre-serialise lastActiveAt as a number so the client component can
+  // hydrate without runtime Date marshalling. Phone is only forwarded
+  // when contactVisibility allows employers to see it — otherwise the
+  // bulk-WhatsApp link would leak a private number.
+  const rows: SearchCandidate[] = candidates.map((c) => {
+    const phoneVisible =
+      c.contactVisibility === "EVERYONE" || c.contactVisibility === "EMPLOYERS_ONLY";
+    return {
+      id: c.id,
+      slug: c.slug,
+      firstName: c.firstName,
+      lastName: c.lastName,
+      headline: c.headline,
+      profilePhotoUrl: c.profilePhotoUrl,
+      isDIYguruVerified: c.isDIYguruVerified,
+      openToWork: c.openToWork,
+      profileMode: c.profileMode,
+      location: c.location,
+      totalExperienceMonths: c.totalExperienceMonths,
+      lastActiveAt: c.user.lastLoginAt ? c.user.lastLoginAt.getTime() : null,
+      phone: phoneVisible ? c.phone ?? c.user.phone ?? null : null,
+      evDomains: c.evDomains.map((d) => ({ evDomain: d.evDomain })),
+      skills: c.skills.map((s) => ({ skill: s.skill })),
+    };
+  });
 
   return (
     <EmployerShell>
       <div className="container max-w-6xl py-10">
         <h1 className="text-dashboard text-emce-text">Candidate search</h1>
         <p className="mt-1 text-sm text-emce-text-sec">
-          Search the public talent network. Use AI matching from a job for ranked recommendations.
+          Search the public talent network. Tick candidates to message a shortlist in one click. Use AI matching from a job for ranked recommendations.
         </p>
 
         <Card className="mt-6 p-4">
           <form className="grid gap-3 sm:grid-cols-12">
             <div className="sm:col-span-5">
-              <Input name="q" defaultValue={sp.q ?? ""} placeholder="Headline, name, or keyword" />
+              <Input
+                name="q"
+                defaultValue={sp.q ?? ""}
+                placeholder='Boolean: (battery OR powertrain) AND "3 years" AND Bengaluru'
+                aria-describedby="boolean-help"
+              />
+              <p id="boolean-help" className="mt-1 text-hint text-emce-text-muted">
+                Boolean: <code className="rounded bg-emce-light-soft px-1 py-0.5 font-mono">AND</code>{" "}
+                <code className="rounded bg-emce-light-soft px-1 py-0.5 font-mono">OR</code>{" "}
+                <code className="rounded bg-emce-light-soft px-1 py-0.5 font-mono">NOT</code>{" "}
+                · quoted phrases · parens
+                {parsed.normalized && parsed.normalized !== sp.q && (
+                  <>
+                    {" · parsed as "}
+                    <code className="rounded bg-emce-light-soft px-1 py-0.5 font-mono">
+                      {parsed.normalized}
+                    </code>
+                  </>
+                )}
+              </p>
             </div>
             <div className="sm:col-span-3">
               <NativeSelect name="domain" defaultValue={sp.domain ?? ""}>
@@ -89,6 +177,28 @@ export default async function TalentSearch({
             <div className="sm:col-span-2">
               <Button type="submit" className="w-full">Search</Button>
             </div>
+
+            {/* Recently-active filter — narrows the result set to logins
+                within the band. Empty string = "any". */}
+            <div className="sm:col-span-3">
+              <NativeSelect name="lastActive" defaultValue={sp.lastActive ?? ""}>
+                <option value="">Active anytime</option>
+                <option value="1d">Active in last 24h</option>
+                <option value="7d">Active in last 7 days</option>
+                <option value="30d">Active in last 30 days</option>
+                <option value="90d">Active in last 90 days</option>
+              </NativeSelect>
+            </div>
+
+            {/* Sort selector */}
+            <div className="sm:col-span-3">
+              <NativeSelect name="sort" defaultValue={sp.sort ?? "relevance"}>
+                <option value="relevance">Sort: Relevance</option>
+                <option value="active">Sort: Recently active</option>
+                <option value="experienced">Sort: Most experienced</option>
+              </NativeSelect>
+            </div>
+
             <label className="sm:col-span-3 flex items-center gap-2 rounded-md bg-emce-light-soft p-2 text-hint font-bold text-emce-text">
               <input type="checkbox" name="diyguruOnly" value="true" defaultChecked={sp.diyguruOnly === "true"} className="h-4 w-4 accent-emce-mid" />
               DIYguru-verified only
@@ -100,53 +210,15 @@ export default async function TalentSearch({
           </form>
         </Card>
 
-        <p className="mt-6 text-sm text-emce-text-sec">{candidates.length} candidates</p>
+        <p className="mt-6 text-sm text-emce-text-sec">{rows.length} candidates</p>
 
-        <ul className="mt-3 grid gap-3 md:grid-cols-2">
-          {candidates.map((c) => {
-            const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ");
-            return (
-              <li key={c.id}>
-                <Link href={`/${c.slug}`}>
-                  <Card className="h-full">
-                    <div className="flex items-start gap-3">
-                      <Avatar src={c.profilePhotoUrl} name={fullName} size="md" />
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2">
-                          <h3 className="font-bold text-emce-text">{fullName}</h3>
-                          {c.isDIYguruVerified && <Badge variant="verified">⭐</Badge>}
-                        </div>
-                        {c.headline && (
-                          <p className="line-clamp-1 text-hint text-emce-text-sec">{c.headline}</p>
-                        )}
-                        <p className="text-hint text-emce-text-muted">
-                          {c.location ?? "—"} · {(c.totalExperienceMonths / 12).toFixed(1)} yrs
-                        </p>
-                        <div className="mt-2 flex flex-wrap gap-1.5">
-                          <Badge variant="default">{c.profileMode}</Badge>
-                          {c.evDomains.slice(0, 2).map((d) => (
-                            <Badge key={d.evDomain.slug} variant="success">{d.evDomain.name}</Badge>
-                          ))}
-                        </div>
-                        {c.skills.length > 0 && (
-                          <p className="mt-2 line-clamp-1 text-hint text-emce-text-sec">
-                            Skills: {c.skills.map((s) => s.skill.name).join(" · ")}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-
-        {candidates.length === 0 && (
-          <Card className="mt-6 p-10 text-center">
+        {rows.length === 0 ? (
+          <Card className="mt-3 p-10 text-center">
             <div className="text-4xl">🔎</div>
             <p className="mt-3 text-section text-emce-text">No candidates match your search</p>
           </Card>
+        ) : (
+          <CandidateSearchList candidates={rows} />
         )}
       </div>
     </EmployerShell>

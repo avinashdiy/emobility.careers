@@ -23,7 +23,10 @@ const buttonVariants = cva(
       },
       size: {
         default: "h-10 px-5 py-2.5",
-        sm: "h-8 rounded px-3 text-xs",
+        // 36px tall — closer to Apple's 44px touch target than the
+        // older 32px while still reading as a "small" button. Used
+        // densely on admin moderation rows and job cards.
+        sm: "h-9 rounded px-3 text-xs",
         lg: "h-12 rounded-md px-7 text-base",
         icon: "h-10 w-10",
       },

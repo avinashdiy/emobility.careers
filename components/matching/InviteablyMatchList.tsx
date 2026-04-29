@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
+import { SelectionBar } from "@/components/ui/selection-bar";
 import { bulkInviteCandidates } from "@/server/employer/actions";
 import type { RerankedCandidate } from "@/lib/ai/rerank";
 import { toast } from "sonner";
@@ -59,21 +60,11 @@ export function InviteableMatchList({
 
   return (
     <>
-      {selected.size > 0 && (
-        <div className="sticky top-2 z-10 mb-3 flex flex-col gap-2 rounded-lg border border-emce-mid bg-emce-light-soft p-3 sm:flex-row sm:items-center">
-          <span className="text-sm font-bold text-emce-text">
-            {selected.size} selected
-          </span>
-          <div className="flex flex-wrap gap-2 sm:ml-auto">
-            <Button type="button" variant="ghost" size="sm" onClick={clearAll}>
-              Clear
-            </Button>
-            <Button type="button" size="sm" onClick={inviteSelected}>
-              ✉ Invite to apply
-            </Button>
-          </div>
-        </div>
-      )}
+      <SelectionBar count={selected.size} onClear={clearAll} variant="sticky">
+        <Button type="button" size="sm" onClick={inviteSelected}>
+          ✉ Invite to apply
+        </Button>
+      </SelectionBar>
 
       <div className="mb-3 flex justify-end">
         <Button type="button" variant="ghost" size="sm" onClick={selectAll}>
@@ -99,7 +90,7 @@ export function InviteableMatchList({
                   <div className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-emce-light-soft text-sm font-extrabold text-emce-dark">
                     {idx + 1}
                   </div>
-                  <Avatar src={m.profilePhotoUrl} name={fullName} size="md" />
+                  <Avatar src={m.profilePhotoUrl} name={fullName} size="md" openToWork={m.openToWork} />
                   <div className="flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link href={`/${m.slug}`} className="font-bold text-emce-text hover:underline">

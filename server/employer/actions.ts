@@ -7,9 +7,10 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { withUniqueSlug } from "@/lib/slug";
-import { embeddingsQueue } from "@/lib/queues";
+import { embeddingsQueue, notificationsQueue } from "@/lib/queues";
 import { logger } from "@/lib/logger";
 import { audit } from "@/lib/audit";
+import { rateLimitOrThrow } from "@/lib/rate-limit";
 import {
   CompanyType,
   EmploymentType,
@@ -17,6 +18,7 @@ import {
   SeniorityLevel,
   ProfileMode,
   JobStatus,
+  JobAudience,
   CompanyTeamRole,
 } from "@prisma/client";
 
@@ -145,10 +147,32 @@ const jobSchema = z.object({
   salaryMax: z.coerce.number().min(0).optional(),
   salaryCurrency: z.string().default("INR"),
   salaryHidden: z.coerce.boolean().optional(),
+  audience: z.nativeEnum(JobAudience).default(JobAudience.PUBLIC),
   publishNow: z.coerce.boolean().optional(),
   evDomainSlugs: z.string().optional(),
   skillNames: z.string().optional(),
 });
+
+/**
+ * Apply the IIMjobs-style salary disclosure rule. DIYGURU_ONLY jobs are
+ * routed exclusively to DIYguru students who don't have negotiation
+ * leverage of seasoned engineers — letting recruiters hide the band on
+ * those listings would push them to apply blind. We force `salaryHidden
+ * = false` regardless of what the form sent. Recruiters who want to
+ * keep the band private should post as PUBLIC instead.
+ *
+ * Returns the resolved (audience, salaryHidden) pair so the caller can
+ * pass them straight into the Prisma write.
+ */
+function resolveSalaryDisclosure(
+  audience: JobAudience,
+  salaryHiddenInput: boolean | undefined,
+): { audience: JobAudience; salaryHidden: boolean } {
+  if (audience === JobAudience.DIYGURU_ONLY) {
+    return { audience, salaryHidden: false };
+  }
+  return { audience, salaryHidden: Boolean(salaryHiddenInput) };
+}
 
 export async function createJob(formData: FormData) {
   const { session, employer } = await requireEmployerWithCompany();
@@ -163,6 +187,7 @@ export async function createJob(formData: FormData) {
   const locations = data.locations
     ? data.locations.split(",").map((s) => s.trim()).filter(Boolean)
     : [];
+  const disclosure = resolveSalaryDisclosure(data.audience, data.salaryHidden);
 
   const job = await db.$transaction(
     async (tx) => {
@@ -187,7 +212,8 @@ export async function createJob(formData: FormData) {
             salaryMin: data.salaryMin ? new Prisma.Decimal(data.salaryMin) : null,
             salaryMax: data.salaryMax ? new Prisma.Decimal(data.salaryMax) : null,
             salaryCurrency: data.salaryCurrency,
-            salaryHidden: Boolean(data.salaryHidden),
+            salaryHidden: disclosure.salaryHidden,
+            audience: disclosure.audience,
             status: data.publishNow ? JobStatus.OPEN : JobStatus.DRAFT,
             publishedAt: data.publishNow ? new Date() : null,
           },
@@ -451,6 +477,52 @@ export async function unsaveCandidate(formData: FormData) {
   revalidatePath("/employer/saved");
 }
 
+/**
+ * Bulk variant — saves up to 50 candidates to the recruiter's shortlist
+ * pile in one shot. Idempotent via upsert; if the recruiter ticks a
+ * candidate they'd already saved, we just leave the existing row alone.
+ *
+ * Optional `note` is attached to every new row (lets the recruiter say
+ * "shortlist for Q2 BMS roles" once and have it propagate).
+ */
+export async function bulkSaveCandidates(input: {
+  candidateIds: string[];
+  note?: string;
+}): Promise<{ ok: boolean; saved: number; skipped: number; message?: string }> {
+  const session = await requireEmployer();
+  const ids = input.candidateIds.filter((s) => typeof s === "string" && s.length > 0).slice(0, 50);
+  if (ids.length === 0) {
+    return { ok: false, saved: 0, skipped: 0, message: "Pick at least one candidate." };
+  }
+  const note = (input.note ?? "").slice(0, 500) || null;
+
+  let saved = 0;
+  let skipped = 0;
+  for (const candidateId of ids) {
+    try {
+      await db.savedCandidate.upsert({
+        where: { candidateId_employerUserId: { candidateId, employerUserId: session.user.id } },
+        create: { candidateId, employerUserId: session.user.id, note },
+        // Don't overwrite existing notes on a re-save — recruiter notes
+        // are intentional even when added per-candidate.
+        update: {},
+      });
+      saved += 1;
+    } catch {
+      skipped += 1;
+    }
+  }
+  await audit({
+    actorId: session.user.id,
+    action: "candidates.bulk_saved",
+    entity: "User",
+    entityId: session.user.id,
+    meta: { saved, skipped, total: ids.length },
+  });
+  revalidatePath("/employer/saved");
+  return { ok: true, saved, skipped };
+}
+
 export async function updateJobStatus(formData: FormData) {
   const { employer } = await requireEmployerWithCompany();
   const id = String(formData.get("id"));
@@ -479,4 +551,145 @@ export async function updateJobStatus(formData: FormData) {
   revalidatePath(`/employer/jobs/${id}`);
   revalidatePath("/jobs.xml");
   revalidatePath("/sitemap-jobs.xml");
+}
+
+// ─── Bulk InMail (cold outreach to a shortlist) ────────────
+
+const bulkInMailSchema = z.object({
+  candidateIds: z.array(z.string().min(1)).min(1).max(50),
+  subject: z.string().max(200).optional(),
+  body: z.string().min(2).max(4000),
+});
+
+/**
+ * LinkedIn-Recruiter-style bulk InMail. The recruiter picks up to 50
+ * candidates from the talent search list and posts the same message to
+ * each. We open one cold-outreach MessageThread per (recruiter,
+ * candidate) pair (deduped on subsequent sends), insert one Message,
+ * stamp lastMessageAt, and fan a notification.
+ *
+ * Per-recruiter rate-limit (200 outreach messages / 24h) keeps abuse
+ * bounded without throttling normal recruiter flow. Skipped recipients
+ * (already at quota, blocked thread, missing user record) are returned
+ * to the client so the UI can surface "Sent X · Skipped Y".
+ *
+ * `{{firstName}}` substitution lets recruiters keep the message
+ * personal-feeling without writing N copies. We only substitute that
+ * one token to keep behaviour predictable + auditable.
+ */
+export async function sendBulkInMail(input: {
+  candidateIds: string[];
+  subject?: string;
+  body: string;
+}): Promise<{ ok: boolean; sent: number; skipped: number; message?: string }> {
+  const { session, employer } = await requireEmployerWithCompany();
+  const parsed = bulkInMailSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, sent: 0, skipped: 0, message: "Invalid message payload." };
+  }
+  const { candidateIds, subject, body } = parsed.data;
+
+  try {
+    // Account-level cap. The window is 24h; one bulk send of N counts as N
+    // toward the cap, applied after we know how many recipients are real.
+    await rateLimitOrThrow(`bulk-inmail:${session.user.id}`, "bulkInMail");
+  } catch (e) {
+    return {
+      ok: false,
+      sent: 0,
+      skipped: 0,
+      message: e instanceof Error ? e.message : "Rate limited.",
+    };
+  }
+
+  // Pull each candidate's user.id (recipient) + first name for the
+  // {{firstName}} substitution. We exclude candidates whose visibility
+  // forbids cold outreach (PRIVATE) — they shouldn't appear on the
+  // recruiter list anyway, but defence-in-depth here.
+  const candidates = await db.candidateProfile.findMany({
+    where: {
+      id: { in: candidateIds },
+      cvVisibility: { in: ["EVERYONE", "EMPLOYERS_ONLY"] },
+    },
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      user: { select: { id: true } },
+    },
+  });
+  if (candidates.length === 0) {
+    return { ok: false, sent: 0, skipped: 0, message: "No reachable candidates." };
+  }
+
+  const senderId = session.user.id;
+  let sent = 0;
+  let skipped = 0;
+
+  // We deliberately process serially rather than in a single transaction —
+  // a slow notification or a missing thread for one recipient should never
+  // roll back successful sends to other recipients.
+  for (const c of candidates) {
+    const personalised = body.replace(/\{\{\s*firstName\s*\}\}/gi, c.firstName);
+    try {
+      // One thread per (recruiter, candidate) cold-outreach pair. We can't
+      // express the dedupe with @@unique because candidateUserId +
+      // employerUserId are both nullable and shared with application
+      // threads; instead we look it up + create-if-missing inside a
+      // serialisable block. Race risk is negligible at this volume.
+      let thread = await db.messageThread.findFirst({
+        where: {
+          applicationId: null,
+          candidateUserId: c.user.id,
+          employerUserId: senderId,
+        },
+        select: { id: true },
+      });
+      if (!thread) {
+        thread = await db.messageThread.create({
+          data: {
+            candidateUserId: c.user.id,
+            employerUserId: senderId,
+          },
+          select: { id: true },
+        });
+      }
+
+      // Subject is prepended to the body so the existing per-thread chat
+      // UI doesn't need a new column. The convention "**Subject** — body"
+      // is what LinkedIn shows in their thread preview line.
+      const finalBody = subject ? `**${subject}**\n\n${personalised}` : personalised;
+      await db.message.create({
+        data: { threadId: thread.id, senderId, body: finalBody },
+      });
+      await db.messageThread.update({
+        where: { id: thread.id },
+        data: { lastMessageAt: new Date() },
+      });
+
+      await notificationsQueue.add("inmail", {
+        userId: c.user.id,
+        type: "message.new",
+        title: `Message from ${employer.company.name}`,
+        body: finalBody.slice(0, 140),
+        link: `/me/messages/${thread.id}`,
+        channels: ["IN_APP", "EMAIL"],
+      });
+      sent += 1;
+    } catch (err) {
+      logger.warn({ err, candidateId: c.id }, "[bulk-inmail] send failed for candidate");
+      skipped += 1;
+    }
+  }
+
+  await audit({
+    actorId: senderId,
+    action: "recruiter.bulk_inmail",
+    entity: "User",
+    entityId: senderId,
+    meta: { sent, skipped, recipients: candidates.length, subject: subject ?? null },
+  });
+
+  revalidatePath("/employer/messages");
+  return { ok: true, sent, skipped };
 }

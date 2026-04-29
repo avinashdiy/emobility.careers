@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { realtime, channels, events } from "@/lib/realtime";
 import { notificationsQueue } from "@/lib/queues";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { requireEmailVerified, EmailNotVerifiedError } from "@/lib/anti-spam";
 
 async function ensureThreadAccess(threadId: string, userId: string, role: string) {
   const thread = await db.messageThread.findUnique({
@@ -70,6 +71,14 @@ const sendSchema = z.object({
 export async function sendMessage(formData: FormData) {
   const session = await auth();
   if (!session?.user) redirect("/signin");
+  // Block unverified accounts from messaging — keeps newly-created spam
+  // accounts from DM-bombing recruiters before they click the verify link.
+  try {
+    await requireEmailVerified(session.user.id);
+  } catch (e) {
+    if (e instanceof EmailNotVerifiedError) redirect("/verify-email?required=1");
+    throw e;
+  }
   await rateLimitOrThrow(`message:${session.user.id}`, "message");
   const parsed = sendSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return;

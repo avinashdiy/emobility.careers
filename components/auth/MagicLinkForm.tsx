@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { FieldError } from "@/components/ui/field-error";
+import { TurnstileWidget } from "@/components/auth/TurnstileWidget";
 import { magicLinkSignIn } from "@/server/auth/actions";
 import { emptyFormState } from "@/lib/form-state";
 
@@ -13,9 +14,10 @@ interface Props {
   emailLabel: string;
   buttonLabel: string;
   pendingLabel: string;
+  turnstileSiteKey?: string | null;
 }
 
-export function MagicLinkForm({ next, emailLabel, buttonLabel, pendingLabel }: Props) {
+export function MagicLinkForm({ next, emailLabel, buttonLabel, pendingLabel, turnstileSiteKey }: Props) {
   const [state, formAction] = useActionState(magicLinkSignIn, emptyFormState);
 
   // The server action always returns ok=true for both "sent" and "rate-
@@ -33,6 +35,13 @@ export function MagicLinkForm({ next, emailLabel, buttonLabel, pendingLabel }: P
   return (
     <form action={formAction} className="space-y-3" noValidate>
       <input type="hidden" name="next" value={next ?? "/me"} />
+      {/* Honeypot — see SignUpForm for rationale. */}
+      <div aria-hidden="true" className="sr-only" style={{ position: "absolute", left: "-10000px" }}>
+        <label>
+          Website (leave blank)
+          <input type="text" name="website" tabIndex={-1} autoComplete="off" defaultValue="" />
+        </label>
+      </div>
       <div>
         <Label htmlFor="magic-email">{emailLabel}</Label>
         <Input
@@ -52,6 +61,7 @@ export function MagicLinkForm({ next, emailLabel, buttonLabel, pendingLabel }: P
           {state.message}
         </div>
       )}
+      {turnstileSiteKey && <TurnstileWidget siteKey={turnstileSiteKey} />}
       <SubmitButton variant="outline" className="w-full" pendingLabel={pendingLabel}>
         {buttonLabel}
       </SubmitButton>

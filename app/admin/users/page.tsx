@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { NativeSelect } from "@/components/ui/select";
 import { AdminShell } from "@/components/layout/admin-shell";
-import { setUserRole, setUserStatus } from "@/server/admin/actions";
+import { setUserRole, setUserStatus, togglePlacementOfficer } from "@/server/admin/actions";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "Users" };
@@ -111,6 +111,22 @@ export default async function AdminUsersPage({
                         </ConfirmSubmit>
                       ) : (
                         <Button type="submit" size="sm">Activate</Button>
+                      )}
+                    </form>
+                    {/* Placement-officer toggle. Granting `isPlacementOfficer`
+                        unlocks /tpo for the user without escalating their
+                        role — used for trusted DIYguru staff who shouldn't
+                        see the rest of /admin. */}
+                    <form action={togglePlacementOfficer} className="inline-flex">
+                      <input type="hidden" name="userId" value={u.id} />
+                      {u.isPlacementOfficer ? (
+                        <Button type="submit" size="sm" variant="ghost" title="Revoke /tpo access">
+                          ✓ TPO · revoke
+                        </Button>
+                      ) : (
+                        <Button type="submit" size="sm" variant="outline" title="Grant /tpo access">
+                          Grant TPO
+                        </Button>
                       )}
                     </form>
                   </td>
