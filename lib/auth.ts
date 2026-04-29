@@ -1,7 +1,9 @@
-import NextAuth, { type DefaultSession } from "next-auth";
+import NextAuth, { type DefaultSession, type NextAuthConfig } from "next-auth";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import Credentials from "next-auth/providers/credentials";
 import EmailProvider from "next-auth/providers/email";
+import Google from "next-auth/providers/google";
+import LinkedIn from "next-auth/providers/linkedin";
 import argon2 from "argon2";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -9,6 +11,7 @@ import { env } from "@/lib/env";
 import { authConfig } from "@/lib/auth.config";
 import { sendMail } from "@/lib/mail";
 import { logger } from "@/lib/logger";
+import { getSettings } from "@/lib/settings";
 import type { Role } from "@prisma/client";
 
 declare module "next-auth" {
@@ -64,15 +67,68 @@ function bridgePrismaAdapter() {
 }
 
 /**
- * Full server-side config: layered on top of authConfig with Credentials
- * (which depends on argon2 — Node-only) and the Prisma adapter.
+ * Build the Google + LinkedIn provider list at sign-in time so admins
+ * can paste OAuth credentials in /admin/settings/auth without
+ * redeploying. Settings (DB) take precedence; env vars are the
+ * fallback so a fresh deploy with classic env-only config keeps
+ * working until an admin overrides.
+ *
+ * Cached via `lib/settings.ts` (30 s TTL) so the per-request rebuild
+ * stays cheap — most requests hit the in-memory map, not Postgres.
  */
-export const { handlers, auth, signIn, signOut } = NextAuth({
+async function buildOAuthProviders(): Promise<NextAuthConfig["providers"]> {
+  const s = await getSettings(
+    "auth.google.client_id",
+    "auth.google.client_secret",
+    "auth.linkedin.client_id",
+    "auth.linkedin.client_secret",
+  ).catch(() => ({} as Record<string, string>));
+
+  const providers: NextAuthConfig["providers"] = [];
+
+  const googleId = s["auth.google.client_id"]?.trim() || process.env.AUTH_GOOGLE_ID;
+  const googleSecret = s["auth.google.client_secret"]?.trim() || process.env.AUTH_GOOGLE_SECRET;
+  if (googleId && googleSecret) {
+    providers.push(
+      Google({
+        clientId: googleId,
+        clientSecret: googleSecret,
+        // Account linking is opt-in: users must explicitly link
+        // OAuth providers from their account settings after first
+        // sign-in with credentials.
+        allowDangerousEmailAccountLinking: false,
+      }),
+    );
+  }
+
+  const liId = s["auth.linkedin.client_id"]?.trim() || process.env.AUTH_LINKEDIN_ID;
+  const liSecret = s["auth.linkedin.client_secret"]?.trim() || process.env.AUTH_LINKEDIN_SECRET;
+  if (liId && liSecret) {
+    providers.push(
+      LinkedIn({
+        clientId: liId,
+        clientSecret: liSecret,
+        allowDangerousEmailAccountLinking: false,
+      }),
+    );
+  }
+
+  return providers;
+}
+
+/**
+ * Full server-side config: layered on top of authConfig with
+ * Credentials + Email + dynamically-resolved OAuth providers and the
+ * Prisma adapter. Wrapped in an async function so NextAuth re-evaluates
+ * the provider list on each sign-in flow — this is what lets admins
+ * change OAuth credentials live from /admin/settings/auth.
+ */
+export const { handlers, auth, signIn, signOut } = NextAuth(async () => ({
   ...authConfig,
   adapter: bridgePrismaAdapter(),
   secret: env.AUTH_SECRET,
   providers: [
-    ...authConfig.providers,
+    ...(await buildOAuthProviders()),
     // Magic-link sign-in. NextAuth stores the one-time token in the
     // VerificationToken table (already in the schema); the link expires after
     // 24h by default. We hijack `sendVerificationRequest` so the email goes
@@ -194,7 +250,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
     },
   },
-});
+}));
 
 export async function hashPassword(password: string): Promise<string> {
   return argon2.hash(password);

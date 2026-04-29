@@ -27,6 +27,12 @@ const TABS = [
 ] as const;
 type Tab = typeof TABS[number]["value"];
 
+// Auth credentials live on a dedicated page (/admin/settings/auth)
+// rather than as a tab here because the page bundles a step-by-step
+// Google + LinkedIn setup guide and the redirect URLs admins need to
+// register — none of which fit cleanly into the tabbed-form layout.
+const AUTH_LINK = { href: "/admin/settings/auth", label: "Sign-in providers" };
+
 const CATEGORY_BLURB: Record<string, string> = {
   identity: "How your platform shows up in browsers, emails, and search engines.",
   email: "Sender identity and signature appended to every transactional email.",
@@ -76,6 +82,14 @@ export default async function SettingsPage({
               {t.label}
             </Link>
           ))}
+          {/* Sign-in providers — link out to the dedicated page since it
+              ships a setup guide that wouldn't fit a tab. */}
+          <Link
+            href={AUTH_LINK.href}
+            className="whitespace-nowrap rounded px-3 py-1.5 text-xs font-semibold text-emce-text-sec hover:text-emce-text"
+          >
+            {AUTH_LINK.label} ↗
+          </Link>
         </nav>
 
         {tab === "integrations" ? (

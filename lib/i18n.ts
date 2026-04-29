@@ -12,7 +12,26 @@
 // server-only deps (next/headers, prisma). Server `getLocale()` lives in
 // `lib/i18n-server.ts`.
 
-export const locales = ["en", "hi"] as const;
+// Order in this array drives the order in the language switcher.
+// English first; Indian languages next (Hindi, Tamil, Telugu, Marathi —
+// the four largest EV-industry workforce languages by speaker count);
+// international after that. The actual translation for non-English
+// locales is done client-side by Google Translate's element widget
+// (see components/translate/GoogleTranslate.tsx) — only English text
+// lives in `dict` below; everything else is machine-translated at
+// runtime against the user's chosen locale.
+export const locales = [
+  "en",
+  "hi",
+  "ta",
+  "te",
+  "mr",
+  "de",
+  "ar",
+  "zh",
+  "fr",
+  "ja",
+] as const;
 export type Locale = (typeof locales)[number];
 export const defaultLocale: Locale = "en";
 export const LOCALE_COOKIE = "emce_locale";
@@ -20,6 +39,34 @@ export const LOCALE_COOKIE = "emce_locale";
 export const localeNames: Record<Locale, string> = {
   en: "English",
   hi: "हिन्दी",
+  ta: "தமிழ்",
+  te: "తెలుగు",
+  mr: "मराठी",
+  de: "Deutsch",
+  ar: "العربية",
+  zh: "中文",
+  fr: "Français",
+  ja: "日本語",
+};
+
+/**
+ * Maps our internal `Locale` codes to the language codes Google
+ * Translate's element widget expects. Mostly identical, but Chinese
+ * needs an explicit `zh-CN` (simplified — what most India-based
+ * Mandarin speakers and EV manufacturers use) since `zh` is
+ * ambiguous.
+ */
+export const googleTranslateCodeFor: Record<Locale, string> = {
+  en: "",
+  hi: "hi",
+  ta: "ta",
+  te: "te",
+  mr: "mr",
+  de: "de",
+  ar: "ar",
+  zh: "zh-CN",
+  fr: "fr",
+  ja: "ja",
 };
 
 const dict = {
@@ -241,9 +288,15 @@ type Vars = Record<string, string | number>;
 export function t(key: TranslationKey, varsOrLocale?: Vars | Locale, maybeLocale?: Locale): string {
   const locale: Locale = typeof varsOrLocale === "string" ? varsOrLocale : (maybeLocale ?? defaultLocale);
   const vars = typeof varsOrLocale === "object" ? varsOrLocale : undefined;
+  // The dict object only carries hand-written translations for `en`
+  // (and historically `hi`) — every other locale falls back to the
+  // English string here, then Google Translate's element widget
+  // re-translates the served-English DOM client-side. Cast through
+  // `unknown` so the partial-coverage doesn't trip TypeScript.
+  const dictAny = dict as unknown as Partial<Record<Locale, Record<string, string>>>;
   const raw =
-    (dict as Record<Locale, Record<string, string>>)[locale]?.[key] ??
-    (dict as Record<Locale, Record<string, string>>).en[key] ??
+    dictAny[locale]?.[key] ??
+    dictAny.en?.[key] ??
     key;
   if (!vars) return raw;
   return raw.replace(/\{(\w+)\}/g, (_m, name: string) =>

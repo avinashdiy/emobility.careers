@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { ToastFromSearchParams } from "@/components/ui/toast-from-params";
 import { MaintenanceGate } from "@/components/layout/MaintenanceGate";
 import { MessagingWidget } from "@/components/messaging/MessagingWidget";
+import { GoogleTranslateLoader } from "@/components/translate/GoogleTranslate";
 import { getSettings } from "@/lib/settings";
 
 // Inter is the modern professional sans-serif standard (LinkedIn uses Source
@@ -130,6 +131,11 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_JSON_LD) }}
         />
         <MaintenanceGate>{children}</MaintenanceGate>
+        {/* Google Translate widget loader — opt-in via the language
+            switcher. Renders nothing visible; mounts a hidden host
+            element + injects the translate.google.com script so
+            non-English locales get machine-translated client-side. */}
+        <GoogleTranslateLoader />
         {/* Floating LinkedIn-style messaging dock — sticks to bottom-right
             on every authenticated page (the widget itself short-circuits
             on signed-out, admin, and in-thread routes). */}

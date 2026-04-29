@@ -1,44 +1,25 @@
 import type { NextAuthConfig } from "next-auth";
-import Google from "next-auth/providers/google";
-import LinkedIn from "next-auth/providers/linkedin";
 import type { Role } from "@prisma/client";
 
 /**
  * Edge-safe NextAuth config used by both:
  *  - middleware.ts (Edge runtime — no Node-only deps allowed)
- *  - lib/auth.ts (extended with Credentials + Prisma adapter)
+ *  - lib/auth.ts (extended with Credentials, Email, OAuth + Prisma adapter)
  *
- * Anything Node-only (argon2, Prisma) MUST live in lib/auth.ts, not here.
+ * Anything Node-only (argon2, Prisma, settings DB lookups) MUST live in
+ * lib/auth.ts, not here. OAuth provider construction used to live in this
+ * file via env vars but moved out — see `buildOAuthProviders` in
+ * lib/auth.ts which reads admin-set credentials from the SiteSetting
+ * table at sign-in time, with AUTH_GOOGLE_* / AUTH_LINKEDIN_* env vars
+ * as a fallback.
+ *
+ * Middleware doesn't need OAuth providers: it only verifies JWT sessions,
+ * which is signed with AUTH_SECRET — independent of which OAuth client
+ * issued the original token.
  */
 
-const oauthProviders: NextAuthConfig["providers"] = [];
-
-if (process.env.AUTH_GOOGLE_ID && process.env.AUTH_GOOGLE_SECRET) {
-  oauthProviders.push(
-    Google({
-      clientId: process.env.AUTH_GOOGLE_ID,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET,
-      // Account linking is opt-in: users must explicitly link OAuth providers
-      // from their account settings after first sign-in with credentials.
-      allowDangerousEmailAccountLinking: false,
-    }),
-  );
-}
-
-if (process.env.AUTH_LINKEDIN_ID && process.env.AUTH_LINKEDIN_SECRET) {
-  oauthProviders.push(
-    LinkedIn({
-      clientId: process.env.AUTH_LINKEDIN_ID,
-      clientSecret: process.env.AUTH_LINKEDIN_SECRET,
-      // Account linking is opt-in: users must explicitly link OAuth providers
-      // from their account settings after first sign-in with credentials.
-      allowDangerousEmailAccountLinking: false,
-    }),
-  );
-}
-
 export const authConfig: NextAuthConfig = {
-  providers: oauthProviders,
+  providers: [],
   session: { strategy: "jwt" },
   trustHost: true,
   pages: {

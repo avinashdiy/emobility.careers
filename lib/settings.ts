@@ -19,7 +19,16 @@ import type { SiteSettingType } from "@prisma/client";
 
 export interface SettingDefinition {
   key: string;
-  category: "identity" | "email" | "seo" | "legal" | "feature" | "system" | "payments" | "social";
+  category:
+    | "identity"
+    | "email"
+    | "seo"
+    | "legal"
+    | "feature"
+    | "system"
+    | "payments"
+    | "social"
+    | "auth";
   type: SiteSettingType;
   label: string;
   description?: string;
@@ -73,6 +82,17 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   { key: "system.maintenance_message", category: "system", type: "TEXT", label: "Maintenance message", default: "We're doing some maintenance. We'll be back shortly." },
   { key: "system.welcome_banner", category: "system", type: "TEXT", label: "Welcome banner", default: "", description: "Optional banner shown at the top of the home page. Leave empty to hide." },
   { key: "system.welcome_banner_url", category: "system", type: "URL", label: "Welcome banner link", default: "" },
+
+  // ─── Auth (OAuth provider credentials) ─────────────────────
+  // These let an admin paste OAuth credentials in /admin/settings/auth
+  // without redeploying. lib/auth.ts reads them at sign-in time and
+  // falls back to the matching AUTH_GOOGLE_* / AUTH_LINKEDIN_*
+  // environment variables when they're empty — so a fresh deploy
+  // with env-only config keeps working until an admin overrides.
+  { key: "auth.google.client_id", category: "auth", type: "STRING", label: "Google Client ID", default: "", description: "From Google Cloud Console → APIs & Services → Credentials. Looks like 1234-abc.apps.googleusercontent.com." },
+  { key: "auth.google.client_secret", category: "auth", type: "STRING", label: "Google Client Secret", default: "", sensitive: true, description: "From the same OAuth client in Google Cloud Console. Treat as a password — never commit it." },
+  { key: "auth.linkedin.client_id", category: "auth", type: "STRING", label: "LinkedIn Client ID", default: "", description: "From linkedin.com/developers → your app → Auth tab → Application credentials." },
+  { key: "auth.linkedin.client_secret", category: "auth", type: "STRING", label: "LinkedIn Client Secret", default: "", sensitive: true, description: "From the same LinkedIn developer app. Rotates if exposed; copy carefully." },
 ];
 
 const DEFINITIONS_BY_KEY = new Map(SETTING_DEFINITIONS.map((d) => [d.key, d]));

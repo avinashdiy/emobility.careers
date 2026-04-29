@@ -126,12 +126,11 @@ export async function SiteHeader() {
             mobile, but that read as a missing logo to first-time
             visitors who didn't recognise it as the brand. */}
         <Link href={user ? "/feed" : "/"} className="flex shrink-0 items-center" aria-label="Home">
-          <span className="md:hidden">
-            <Logo size="sm" priority />
-          </span>
-          <span className="hidden md:inline">
-            <Logo size="md" priority />
-          </span>
+          {/* Same `md` size at every breakpoint — `sm` (20px tall)
+              read as a hairline-thin wordmark on phones and users
+              kept asking where the logo went. md (28px) is the
+              minimum that reads as a confident brand mark. */}
+          <Logo size="md" priority />
         </Link>
 
         <nav className="hidden items-center md:flex">

@@ -157,7 +157,12 @@ export default async function PublicCandidateProfile({
   );
   const showContact = canSeeContact(profile.contactVisibility, viewerCtx);
   const showResume = canSeeResume(profile.resumeVisibility, viewerCtx) && Boolean(profile.resumeUrl || profile.aiResumeUrl);
-  const activeResumeUrl = profile.useAiResume && profile.aiResumeUrl ? profile.aiResumeUrl : profile.resumeUrl;
+  // Résumé download routes through `/api/resume/{slug}` rather than
+  // the raw column value. The columns store bucket keys (or, for
+  // legacy AI résumés, a half-broken full URL); the endpoint does the
+  // visibility re-check + presign + 302. Linking directly to the
+  // column value would 404 in production.
+  const resumeDownloadHref = `/api/resume/${profile.slug}`;
 
   const [connectionStatus, isFollowing, postsCount, recentPosts, mentorProfile, competitionWins, matchingJobs] = await Promise.all([
     session?.user
@@ -438,9 +443,9 @@ export default async function PublicCandidateProfile({
                 </>
               )}
               <ShareButton url={`${env.NEXT_PUBLIC_APP_URL}/${profile.slug}`} />
-              {showResume && activeResumeUrl && (
+              {showResume && (
                 <Button asChild variant="outline" size="sm">
-                  <a href={activeResumeUrl} target="_blank" rel="noopener noreferrer">
+                  <a href={resumeDownloadHref} target="_blank" rel="noopener noreferrer">
                     📄 Download résumé
                   </a>
                 </Button>

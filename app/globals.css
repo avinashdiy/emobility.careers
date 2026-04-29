@@ -74,6 +74,39 @@
        for fixed/sticky positioned elements (header, mobile drawer). */
     overflow-x: clip;
   }
+
+  /* ─── Google Translate widget — hide its UI ─────────────────
+     The element widget mounted by /components/translate/GoogleTranslate
+     auto-injects a banner iframe at the top of the page, an inline
+     dropdown, and a hover tooltip on translated phrases. Our own
+     LanguageSwitcher in the header drives the experience, so we
+     hide every piece of GT's chrome. The translation work itself
+     still happens — it's only the visible widgets we suppress.
+
+     Equally important: the banner iframe normally pushes the body
+     down 40px via `body { top: 40px }`, breaking sticky-header
+     layouts. We force `top: 0` and clear the inline transform to
+     keep our own layout intact. */
+  .skiptranslate,
+  .goog-te-banner-frame,
+  .goog-te-gadget,
+  .goog-te-balloon-frame,
+  .goog-tooltip,
+  .goog-tooltip:hover {
+    display: none !important;
+  }
+  body.translated-ltr,
+  body.translated-rtl,
+  body {
+    top: 0 !important;
+  }
+  /* Translated runs are wrapped in <font> tags with a yellow box-shadow
+     "highlight" by default; strip that styling so translated copy
+     reads identically to original. */
+  font[style*="background-color"] {
+    background-color: transparent !important;
+    box-shadow: none !important;
+  }
 }
 
 @layer components {

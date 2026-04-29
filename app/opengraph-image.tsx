@@ -1,13 +1,14 @@
 import { ImageResponse } from "next/og";
 import { brandLogoDataUrl } from "@/lib/og/brand-asset";
-import { getPulseCounters } from "@/lib/pulse";
 
 export const runtime = "nodejs";
-// Render dynamically so the live counters stay in sync with the
-// platform — every WhatsApp / LinkedIn / X unfurl shows the real
-// "X open roles, Y companies hiring" snapshot at share-time, not a
-// frozen number from build day.
-export const dynamic = "force-dynamic";
+// Cache for an hour — long enough that WhatsApp / LinkedIn / X
+// crawlers get the same image on every fetch within a popular share
+// burst, short enough that we can ship a new poster within the day
+// without forcing a redeploy. (We removed the per-request DB call
+// that was making this image slow + flaky on share-time. Slow
+// renders are why some unfurls fell back to the favicon.)
+export const revalidate = 3600;
 export const alt = "The address of EV in India — emobility.careers";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
@@ -19,16 +20,13 @@ export const contentType = "image/png";
  * The card is poster-style on purpose — it's the first impression of
  * the platform for anyone who didn't seek it out, and it has to
  * communicate "this is the address of the EV industry in India" in
- * one glance, not "this is a job board". Live counters at the bottom
- * (real open-role and company counts pulled at share-time) prove the
- * page is alive without forcing the viewer to click first.
+ * one glance, not "this is a job board". Every element here is
+ * static so the image renders fast and never fails — WhatsApp's
+ * crawler has aggressive timeouts and falls back to the favicon if
+ * the image is slow, which is why the previous DB-backed live-counters
+ * version sometimes showed a tiny icon instead of the poster.
  */
 export default async function HomeOG() {
-  // Live counters at share-time. We swallow errors so a broken DB
-  // never blocks an unfurl — the poster still ships, just without the
-  // numbers strip.
-  const pulse = await getPulseCounters().catch(() => null);
-
   return new ImageResponse(
     (
       <div
@@ -80,11 +78,15 @@ export default async function HomeOG() {
                 background: "#8fd299",
               }}
             />
-            <span>LIVE · UPDATED DAILY</span>
+            <span>UPDATED DAILY</span>
           </div>
         </div>
 
-        {/* Eyebrow — sets the framing before the H1 lands */}
+        {/* Eyebrow — sets the framing before the H1 lands. The
+            leading "⚡" reuses our brand glyph (also covered by the
+            standard system font) — earlier we tried "✦" but Satori
+            couldn't resolve a font for that codepoint and the whole
+            image render failed. */}
         <div
           style={{
             marginTop: 56,
@@ -96,25 +98,27 @@ export default async function HomeOG() {
             textTransform: "uppercase",
           }}
         >
-          ✦ The address of EV in India
+          ⚡ The address of EV in India
         </div>
 
-        {/* Hero — the line everyone sees on WhatsApp / LinkedIn first */}
-        <div style={{ marginTop: 18, display: "flex" }}>
-          <div
-            style={{
-              fontSize: 76,
-              fontWeight: 800,
-              lineHeight: 1.04,
-              letterSpacing: "-0.02em",
-            }}
-          >
-            Where the EV industry
-            <br />
-            <span style={{ color: "#c1ffb4" }}>hires, gets hired,</span>
-            <br />
-            and reads what&apos;s happening.
-          </div>
+        {/* Hero — the line everyone sees on WhatsApp / LinkedIn first.
+            Multi-line text is broken into explicit flex-column children
+            instead of <br>; Satori requires every parent with more
+            than one child to set display:flex (or none) explicitly. */}
+        <div
+          style={{
+            marginTop: 18,
+            display: "flex",
+            flexDirection: "column",
+            fontSize: 76,
+            fontWeight: 800,
+            lineHeight: 1.04,
+            letterSpacing: "-0.02em",
+          }}
+        >
+          <span style={{ display: "flex" }}>Where the EV industry</span>
+          <span style={{ display: "flex", color: "#c1ffb4" }}>hires, gets hired,</span>
+          <span style={{ display: "flex" }}>and reads what&apos;s happening.</span>
         </div>
 
         {/* What's-here strip — chips spelling out the four lenses */}
@@ -143,7 +147,9 @@ export default async function HomeOG() {
           ))}
         </div>
 
-        {/* Footer — live counters + URL */}
+        {/* Footer — static line + URL. Live counters were nice but
+            broke unfurls on slow DB connections; better to ship a
+            fast, reliable poster every time. */}
         <div
           style={{
             marginTop: 28,
@@ -155,17 +161,7 @@ export default async function HomeOG() {
           }}
         >
           <div style={{ display: "flex", fontSize: 22, color: "rgba(255,255,255,0.78)" }}>
-            {pulse && pulse.openJobs > 0 ? (
-              <span>
-                {pulse.openJobs.toLocaleString()} open roles ·{" "}
-                {pulse.activeCompanies.toLocaleString()} companies hiring
-                {pulse.verifiedPros > 0 && (
-                  <> · {pulse.verifiedPros.toLocaleString()} DIYguru-verified</>
-                )}
-              </span>
-            ) : (
-              <span>India&apos;s EV industry · Pulse · Salaries · People · Jobs</span>
-            )}
+            India&apos;s EV industry · Hiring · Salaries · People · Pulse
           </div>
           <div style={{ fontSize: 24, fontWeight: 800, color: "#c1ffb4" }}>
             emobility.careers

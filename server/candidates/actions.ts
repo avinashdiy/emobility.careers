@@ -593,12 +593,22 @@ export async function getResumeDownloadUrl(input: {
   } else if (input.candidateSlug) {
     const c = await db.candidateProfile.findUnique({
       where: { slug: input.candidateSlug },
-      select: { resumeUrl: true, userId: true, cvVisibility: true },
+      select: {
+        resumeUrl: true,
+        aiResumeUrl: true,
+        useAiResume: true,
+        userId: true,
+        cvVisibility: true,
+      },
     });
-    if (!c?.resumeUrl) return null;
-    resumeKey = c.resumeUrl;
+    if (!c) return null;
+    // Pick the same source the public profile picks. AI résumé wins
+    // when the candidate has opted in via `useAiResume` AND the
+    // worker has actually finished generating one.
+    resumeKey = c.useAiResume && c.aiResumeUrl ? c.aiResumeUrl : c.resumeUrl;
+    if (!resumeKey) return null;
     candidateUserId = c.userId;
-    // Public profile resume — only candidate, admin, or employer (if visibility allows)
+    // Public profile résumé — only candidate, admin, or employer (if visibility allows)
     if (session.user.role !== "ADMIN" && session.user.id !== candidateUserId) {
       if (c.cvVisibility === "PRIVATE") return null;
       if (c.cvVisibility === "EMPLOYERS_ONLY" && session.user.role !== "EMPLOYER") return null;
@@ -608,8 +618,26 @@ export async function getResumeDownloadUrl(input: {
   }
 
   if (!resumeKey) return null;
-  // Strip any legacy "bucket/" prefix from old saves
-  const key = resumeKey.replace(new RegExp(`^${buckets.resumes}/`), "");
+  // Normalise the stored value back to a bare bucket key. Three
+  // shapes have ever been written into these columns:
+  //   1. `${key}` — the current shape for `resumeUrl` (manual upload)
+  //   2. `${bucket}/${key}` — an earlier shape, stripped here
+  //   3. `${publicUrl}/${bucket}/${key}` — what the AI résumé worker
+  //      wrote before the fix landed; matches "https://.../emce-resumes/..."
+  // We try (3) first, then (2), then accept the value as-is.
+  const fullUrlMatch = resumeKey.match(/\/[^/]+\/(.+)$/);
+  let key = resumeKey;
+  if (resumeKey.startsWith("http")) {
+    // Strip everything up to and including `/{bucket}/`.
+    const after = resumeKey.replace(
+      new RegExp(`^https?://[^/]+/${buckets.resumes}/`),
+      "",
+    );
+    if (after !== resumeKey) key = after;
+    else if (fullUrlMatch) key = fullUrlMatch[1];
+  } else {
+    key = resumeKey.replace(new RegExp(`^${buckets.resumes}/`), "");
+  }
   return presignDownload("resumes", key, 60 * 5);
 }
 

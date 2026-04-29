@@ -3,7 +3,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { redis } from "@/lib/redis";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { s3, buckets, publicUrl } from "@/lib/storage";
+import { s3, buckets } from "@/lib/storage";
 import { QueueNames, type ResumeDraftJob } from "@/lib/queues";
 import { buildResumeDraft, RESUME_DRAFT_INCLUDE } from "@/lib/ai/resume-drafter";
 import { renderResumePdf } from "@/lib/pdf/resume-pdf";
@@ -47,10 +47,16 @@ export async function processResumeDraft(job: { data: ResumeDraftJob }) {
     }),
   );
 
-  const url = publicUrl("resumes", key);
+  // Store the bare bucket key, not a full public URL. Resumes are
+  // visibility-gated and served through `/api/resume/[slug]`, which
+  // generates a short-lived signed URL on demand. A pre-cooked
+  // public URL would (a) leak past the visibility check and (b)
+  // 404 in deployments where the resumes bucket isn't reverse-proxied
+  // at the platform's domain — exactly the bug avatars hit before
+  // the storage-proxy routes landed.
   await db.candidateProfile.update({
     where: { id: profile.id },
-    data: { aiResumeUrl: url, aiResumeGeneratedAt: new Date() },
+    data: { aiResumeUrl: key, aiResumeGeneratedAt: new Date() },
   });
 
   logger.info(
