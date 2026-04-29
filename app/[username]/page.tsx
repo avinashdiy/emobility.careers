@@ -411,9 +411,18 @@ export default async function PublicCandidateProfile({
       )}
       <SiteHeader />
 
-      {/* LinkedIn-style banner + profile header */}
+      {/* LinkedIn-style two-column layout. The grid wraps EVERYTHING
+          (banner + header + all body sections), so the right rail runs
+          parallel to the banner from the very top of the page rather
+          than starting underneath a full-width hero. The previous
+          layout had the banner card spanning the entire content width
+          and the grid only opening below it — visually that read as
+          "header section + a 1-column body with empty space on the
+          side", not the LinkedIn two-pane pattern. */}
       <div className="container max-w-5xl py-4 sm:py-6">
-        <Card className="overflow-hidden p-0 shadow-sm">
+        <div className="grid gap-3 lg:grid-cols-3 lg:gap-4">
+          <div className="space-y-3 lg:col-span-2">
+            <Card className="overflow-hidden p-0 shadow-sm">
           {/* Banner — candidate's cover photo if set, otherwise the
               brand gradient. Heights match LinkedIn's 4:1 ratio at
               this container width. `bg-cover bg-center` crops cleanly
@@ -450,13 +459,19 @@ export default async function PublicCandidateProfile({
               />
             </div>
 
-            {/* Spacer to clear the floating avatar */}
-            <div className="h-14 sm:h-18" />
+            {/* Spacer below the floating avatar. The avatar bottom edge
+                sits ~half-overlap below the banner, so we leave 64-80px
+                of breathing room before the name starts (LinkedIn lands
+                at roughly the same proportion). The earlier value of
+                h-14 / h-18 was both too tight visually AND `h-18` isn't
+                even a valid Tailwind class — it silently falls back to
+                no height, jamming the name against the avatar. */}
+            <div className="h-16 sm:h-20" />
 
             {/* Identity block: name, headline, location row, stats row, badges */}
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <h1 className="text-2xl font-bold leading-tight tracking-tight text-emce-text sm:text-[28px]">
+                <h1 className="text-[22px] font-bold leading-tight tracking-tight text-emce-text sm:text-2xl">
                   {fullName}
                 </h1>
                 {profile.pronouns && (
@@ -651,11 +666,10 @@ export default async function PublicCandidateProfile({
 
         </Card>
 
-        {/* Two-column body: main scroll + right rail. LinkedIn pattern —
-            all sections render top-to-bottom in `lg:col-span-2`; the
-            sidebar carries jobs, similar people, mentor info. */}
-        <div className="mt-4 grid gap-4 lg:grid-cols-3">
-          <div className="space-y-4 lg:col-span-2">
+            {/* Body sections continue in the same lg:col-span-2 column
+                that started at the top with the banner. The right rail
+                (declared further below) carries jobs / similar people /
+                mentor info. */}
             {true && (
               <>
                 {/* Activity header bar — LinkedIn renders this as a slim
@@ -698,7 +712,7 @@ export default async function PublicCandidateProfile({
             {true && featuredPosts.length > 0 && (
               <Card>
                 <div className="flex items-end justify-between">
-                  <h2 className="text-section text-emce-text">📌 Featured</h2>
+                  <h2 className="text-[16px] font-semibold text-emce-text">📌 Featured</h2>
                   <span className="text-hint text-emce-text-muted">
                     {featuredPosts.length} pinned
                   </span>
@@ -735,7 +749,7 @@ export default async function PublicCandidateProfile({
 
             {true && (
               <Card>
-                <h2 className="text-section text-emce-text">About</h2>
+                <h2 className="text-[16px] font-semibold text-emce-text">About</h2>
                 {profile.summary ? (
                   <p className="mt-3 whitespace-pre-line text-body text-emce-text-sec">{profile.summary}</p>
                 ) : (
@@ -758,7 +772,7 @@ export default async function PublicCandidateProfile({
                 so the tab doesn't carry an empty placeholder. */}
             {true && profile.volunteerExperiences.length > 0 && (
               <Card>
-                <h2 className="text-section text-emce-text">🤝 Volunteer experience</h2>
+                <h2 className="text-[16px] font-semibold text-emce-text">🤝 Volunteer experience</h2>
                 <ul className="mt-3 space-y-3">
                   {profile.volunteerExperiences.map((v) => (
                     <li key={v.id}>
@@ -810,7 +824,7 @@ export default async function PublicCandidateProfile({
 
             {true && (
               <Card>
-                <h2 className="text-section text-emce-text flex items-center gap-2">
+                <h2 className="text-[16px] font-semibold text-emce-text flex items-center gap-2">
                   <Briefcase className="h-4 w-4 text-emce-mid" /> Experience
                 </h2>
                 {profile.experiences.length === 0 ? (
@@ -847,7 +861,7 @@ export default async function PublicCandidateProfile({
 
             {true && (
               <Card>
-                <h2 className="text-section text-emce-text flex items-center gap-2">
+                <h2 className="text-[16px] font-semibold text-emce-text flex items-center gap-2">
                   <GraduationCap className="h-4 w-4 text-emce-mid" /> Education
                 </h2>
                 {profile.education.length === 0 ? (
@@ -874,7 +888,7 @@ export default async function PublicCandidateProfile({
             {true && (
               <>
                 <Card>
-                  <h2 className="text-section text-emce-text">Skills</h2>
+                  <h2 className="text-[16px] font-semibold text-emce-text">Skills</h2>
                   {profile.skills.length === 0 ? (
                     <p className="mt-3 text-hint text-emce-text-muted">No skills listed yet.</p>
                   ) : (
@@ -888,7 +902,7 @@ export default async function PublicCandidateProfile({
 
                 {profile.projects.length > 0 && (
                   <Card>
-                    <h2 className="text-section text-emce-text">Projects</h2>
+                    <h2 className="text-[16px] font-semibold text-emce-text">Projects</h2>
                     <ul className="mt-4 space-y-4">
                       {profile.projects.map((p) => (
                         <li key={p.id} className="rounded-md border border-emce-border p-4">
@@ -918,7 +932,7 @@ export default async function PublicCandidateProfile({
 
                 {profile.certifications.length > 0 && (
                   <Card>
-                    <h2 className="text-section text-emce-text flex items-center gap-2">
+                    <h2 className="text-[16px] font-semibold text-emce-text flex items-center gap-2">
                       <Award className="h-4 w-4 text-emce-mid" /> Certifications
                     </h2>
                     <ul className="mt-3 space-y-3">
@@ -939,7 +953,7 @@ export default async function PublicCandidateProfile({
 
                 {profile.awards.length > 0 && (
                   <Card>
-                    <h2 className="text-section text-emce-text">Awards</h2>
+                    <h2 className="text-[16px] font-semibold text-emce-text">Awards</h2>
                     <ul className="mt-3 space-y-2">
                       {profile.awards.map((a) => (
                         <li key={a.id}>
@@ -960,7 +974,7 @@ export default async function PublicCandidateProfile({
                 the candidate has populated the field. */}
             {profile.languagesSpoken.length > 0 && (
               <Card>
-                <h2 className="text-section text-emce-text">Languages</h2>
+                <h2 className="text-[16px] font-semibold text-emce-text">Languages</h2>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {profile.languagesSpoken.map((l) => (
                     <Badge key={l} variant="outline">
@@ -972,13 +986,17 @@ export default async function PublicCandidateProfile({
             )}
           </div>
 
-          {/* Right rail */}
-          <aside className="space-y-4">
+          {/* Right rail — runs parallel to the banner from the very
+              top of the page (LinkedIn pattern). Cards inside use the
+              same Card component as the main column but with tighter
+              line heights / smaller text to read as supporting
+              widgets, not primary content. */}
+          <aside className="space-y-3">
             {mentorProfile && mentorProfile.isPublished && mentorProfile.kycStatus === "APPROVED" && (
               <Card className="border-emce-mid">
                 <div className="flex items-center gap-2">
                   <GraduationCap className="h-4 w-4 text-emce-darkest" />
-                  <h2 className="text-section text-emce-text">Open for mentorship</h2>
+                  <h2 className="text-[16px] font-semibold text-emce-text">Open for mentorship</h2>
                 </div>
                 <p className="mt-1 text-sm text-emce-text-sec">{mentorProfile.headline}</p>
                 <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-emce-text-sec">
@@ -1020,7 +1038,7 @@ export default async function PublicCandidateProfile({
             {matchingJobs.length > 0 && (
               <Card>
                 <div className="flex items-center justify-between">
-                  <h2 className="text-section text-emce-text">
+                  <h2 className="text-[16px] font-semibold text-emce-text">
                     {profile.evDomains.length > 0 ? "Matching jobs" : "Latest jobs"}
                   </h2>
                   <Link href="/jobs" className="text-xs font-bold text-emce-dark hover:underline">All</Link>
@@ -1063,7 +1081,7 @@ export default async function PublicCandidateProfile({
             {similarProfiles.length > 0 && (
               <Card>
                 <div className="flex items-center justify-between">
-                  <h2 className="text-section text-emce-text">People you may know</h2>
+                  <h2 className="text-[16px] font-semibold text-emce-text">People you may know</h2>
                   <Link
                     href="/people"
                     className="text-xs font-bold text-emce-dark hover:underline"
@@ -1130,7 +1148,7 @@ export default async function PublicCandidateProfile({
               <Card>
                 <div className="flex items-center gap-2">
                   <span className="text-lg">🏆</span>
-                  <h2 className="text-section text-emce-text">Competition wins</h2>
+                  <h2 className="text-[16px] font-semibold text-emce-text">Competition wins</h2>
                 </div>
                 <ul className="mt-3 space-y-2 text-sm">
                   {competitionWins.map((r) => (
@@ -1150,7 +1168,7 @@ export default async function PublicCandidateProfile({
 
             {profile.labExposureTags.length > 0 && (
               <Card>
-                <h2 className="text-section text-emce-text">Lab exposure</h2>
+                <h2 className="text-[16px] font-semibold text-emce-text">Lab exposure</h2>
                 <p className="text-hint text-emce-text-sec">From DIYguru curriculum &amp; resume.</p>
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {profile.labExposureTags.map((t) => (
@@ -1161,7 +1179,7 @@ export default async function PublicCandidateProfile({
             )}
 
             <Card className="bg-emce-light-soft">
-              <h2 className="text-section text-emce-text">Profile URL</h2>
+              <h2 className="text-[16px] font-semibold text-emce-text">Profile URL</h2>
               <p className="mt-2 break-all text-hint text-emce-text-sec">
                 {env.NEXT_PUBLIC_APP_URL.replace(/^https?:\/\//, "")}/{profile.slug}
               </p>
