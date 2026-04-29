@@ -1,0 +1,84 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* shadcn/ui semantic tokens, mapped to the eMC brand palette
+       (HSL components without hsl() wrapper, per shadcn convention). */
+    --background: 132 50% 97%;        /* #f4fdf6 emce-light-bg */
+    --foreground: 162 17% 14%;        /* #1e2d2a emce-darkest */
+    --card: 0 0% 100%;
+    --card-foreground: 162 17% 14%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 162 17% 14%;
+    --primary: 168 13% 25%;           /* #374a47 emce-dark */
+    --primary-foreground: 110 100% 85%;  /* #c1ffb4 emce-light */
+    --secondary: 130 50% 89%;         /* emce-light-soft tone */
+    --secondary-foreground: 168 13% 25%;
+    --muted: 130 35% 92%;
+    --muted-foreground: 168 8% 40%;
+    --accent: 132 49% 69%;            /* #8fd299 emce-mid */
+    --accent-foreground: 162 17% 14%;
+    --destructive: 0 60% 58%;         /* #d45454 emce-red */
+    --destructive-foreground: 0 0% 100%;
+    --border: 130 32% 87%;            /* #d4e8d8 emce-border */
+    --input: 130 32% 87%;
+    --ring: 132 49% 69%;              /* emce-mid focus ring */
+    --radius: 0.875rem;               /* 14px from --emce-radius */
+  }
+
+  .dark {
+    --background: 162 17% 10%;
+    --foreground: 130 35% 92%;
+    --card: 162 17% 14%;
+    --card-foreground: 130 35% 92%;
+    --popover: 162 17% 14%;
+    --popover-foreground: 130 35% 92%;
+    --primary: 132 49% 69%;
+    --primary-foreground: 162 17% 14%;
+    --secondary: 168 13% 22%;
+    --secondary-foreground: 130 35% 92%;
+    --muted: 168 13% 22%;
+    --muted-foreground: 168 8% 60%;
+    --accent: 168 13% 30%;
+    --accent-foreground: 130 35% 92%;
+    --destructive: 0 60% 50%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 168 13% 25%;
+    --input: 168 13% 25%;
+    --ring: 132 49% 69%;
+  }
+
+  * {
+    @apply border-border;
+  }
+  html {
+    @apply antialiased;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  body {
+    @apply bg-background text-foreground font-sans;
+    font-feature-settings: "cv11", "ss01";
+  }
+}
+
+@layer components {
+  /* Reusable building blocks ported from the WP plugin styling */
+  .emce-hero-gradient {
+    background: linear-gradient(160deg, #1e2d2a 0%, #374a47 40%, #3d5e58 100%);
+  }
+  .emce-pill {
+    @apply inline-flex items-center gap-2 rounded-full px-3 py-1 text-badge uppercase tracking-wide;
+    background: rgba(143, 210, 153, 0.15);
+    border: 1px solid rgba(143, 210, 153, 0.25);
+    color: #c1ffb4;
+  }
+  .emce-card {
+    @apply rounded-lg border border-emce-border bg-white p-5 shadow-emce transition-all;
+  }
+  .emce-card:hover {
+    @apply -translate-y-0.5 shadow-emce-hover;
+  }
+}

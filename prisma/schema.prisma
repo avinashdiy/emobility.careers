@@ -1,0 +1,1932 @@
+// Prisma schema for emobility.careers
+// Models reflect the existing WordPress plugin's data model
+// (see /tmp/emob-engine-v3/.../includes/Core/Migrator.php and migrations/)
+// adapted for a Postgres + pgvector + NextAuth setup.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [pgvector(map: "vector", schema: "public")]
+}
+
+// ─── Identity & access ───────────────────────────────────────
+
+enum Role {
+  ADMIN
+  EMPLOYER
+  CANDIDATE
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  DELETED
+}
+
+model User {
+  id              String        @id @default(cuid())
+  email           String        @unique
+  emailVerifiedAt DateTime?
+  passwordHash    String?
+  name            String?
+  image           String?
+  role            Role          @default(CANDIDATE)
+  status          AccountStatus @default(ACTIVE)
+  locale          String        @default("en")
+  phone           String?
+  phoneVerifiedAt DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  lastLoginAt     DateTime?
+
+  accounts            Account[]
+  sessions            Session[]
+  candidateProfile    CandidateProfile?
+  employerProfile     EmployerProfile?
+  ownedCompanies      Company[]               @relation("CompanyOwner")
+  postedJobs          JobPosting[]            @relation("JobPoster")
+  notifications       Notification[]
+  notificationPrefs   NotificationPreference?
+  sentMessages        Message[]               @relation("MessageSender")
+  applicationNotes    ApplicationNote[]
+  stageHistoryActions StageHistory[]          @relation("StageActor")
+  auditEntries        AuditLog[]
+  diyguruImports      DIYguruImportBatch[]
+  verificationReviews VerificationRequest[]   @relation("VerificationReviewer")
+  teamInvitesSent     TeamInvite[]            @relation("TeamInviteInviter")
+
+  // Social graph
+  connectionRequests  Connection[]   @relation("ConnectionRequester")
+  connectionsReceived Connection[]   @relation("ConnectionRecipient")
+  followingUsers      Follow[]       @relation("Follower")
+  followers           Follow[]       @relation("FolloweeUser")
+  posts               Post[]         @relation("PostAuthor")
+  postReactions       PostReaction[]
+  postComments        PostComment[]
+
+  // Mentorship
+  mentorProfile      MentorProfile?
+  mentorshipBookings MentorshipSession[] @relation("MentorshipMentee")
+  mentorshipReviews  MentorshipReview[]  @relation("MentorshipReviewer")
+
+  // WordPress legacy tracking — set during the initial migration so re-runs
+  // upsert by this id rather than creating duplicates. Cleared (or kept,
+  // doesn't matter) after the WP site is decommissioned.
+  wpLegacyId  Int?      @unique
+  wpClaimedAt DateTime? // null until the user signs in for the first time post-import
+
+  // Competitions
+  competitionsHosted          Competition[]             @relation("CompetitionPostedBy")
+  competitionRegistrations    CompetitionRegistration[] @relation("CompetitionLeader")
+  competitionTeamMemberships  CompetitionTeamMember[]   @relation("CompetitionMember")
+  competitionJudgeAssignments CompetitionJudge[]        @relation("CompetitionJudge")
+
+  @@index([role, status])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+// ─── EV taxonomy ─────────────────────────────────────────────
+// Domains: Battery Tech, Charging, Powertrain, Motor Control, etc.
+
+model EVDomain {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  name        String
+  description String?
+  iconUrl     String?
+  order       Int      @default(0)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  skills           Skill[]
+  candidateDomains CandidateEVDomain[]
+  jobDomains       JobEVDomain[]
+  salaryBenchmarks SalaryBenchmark[]
+}
+
+model Skill {
+  id         String    @id @default(cuid())
+  slug       String    @unique
+  name       String
+  category   String?
+  evDomainId String?
+  evDomain   EVDomain? @relation(fields: [evDomainId], references: [id])
+  createdAt  DateTime  @default(now())
+
+  candidateSkills CandidateSkill[]
+  jobSkills       JobSkill[]
+
+  @@index([evDomainId])
+  @@index([category])
+}
+
+// ─── Candidate ───────────────────────────────────────────────
+
+enum ProfileMode {
+  FRESHER
+  EXPERIENCED
+  TECHNICIAN
+  LEADERSHIP
+}
+
+// Person types — anyone on the platform has a CandidateProfile (the profile is
+// universal). Person type drives badges, default fields, and discoverability.
+enum PersonType {
+  PROFESSIONAL // industry professional (default)
+  STUDENT // college student / fresh graduate
+  TRAINER // course creator / instructor
+  FACULTY // college professor / academic
+  TPO // Training & Placement Officer
+  EXPERT // industry expert / consultant
+  COMPANY_REP // founder / leadership posting on behalf of a company
+}
+
+enum AvailabilityStatus {
+  IMMEDIATE
+  DAYS_15
+  DAYS_30
+  DAYS_60
+  NOT_LOOKING
+  HIRED
+}
+
+enum CVVisibility {
+  EVERYONE
+  EMPLOYERS_ONLY
+  PRIVATE
+}
+
+enum RelocationPref {
+  ANYWHERE
+  WITHIN_STATE
+  HOMETOWN_ONLY
+}
+
+enum SkillProficiency {
+  BEGINNER
+  INTERMEDIATE
+  ADVANCED
+  EXPERT
+}
+
+model CandidateProfile {
+  id                    String             @id @default(cuid())
+  userId                String             @unique
+  user                  User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  slug                  String             @unique
+  firstName             String
+  lastName              String?
+  headline              String?
+  summary               String?            @db.Text
+  profilePhotoUrl       String?
+  phone                 String?
+  email                 String?
+  location              String?
+  preferredCities       String[]           @default([])
+  relocationPref        RelocationPref     @default(ANYWHERE)
+  profileMode           ProfileMode        @default(FRESHER)
+  availabilityStatus    AvailabilityStatus @default(IMMEDIATE)
+  noticePeriodDays      Int?
+  totalExperienceMonths Int                @default(0)
+  currentCtc            Decimal?           @db.Decimal(12, 2)
+  expectedCtcMin        Decimal?           @db.Decimal(12, 2)
+  expectedCtcMax        Decimal?           @db.Decimal(12, 2)
+  ctcCurrency           String             @default("INR")
+  resumeUrl             String?
+  portfolioUrl          String?
+  linkedinUrl           String?
+  githubUrl             String?
+  twitterUrl            String?
+  websiteUrl            String?
+  languagesSpoken       String[]           @default([])
+  cvVisibility          CVVisibility       @default(EVERYONE)
+  openToWork            Boolean            @default(true)
+
+  // DIYguru verification
+  isDIYguruVerified Boolean   @default(false)
+  diyguruStudentId  String?
+  diyguruVerifiedAt DateTime?
+  labExposureTags   String[]  @default([])
+  capstoneProject   Json?
+
+  // Onboarding & parsing state
+  onboardingCompletedAt DateTime?
+  resumeParsedAt        DateTime?
+  resumeParseDraft      Json?
+
+  // Social graph (LinkedIn-style)
+  personType          PersonType @default(PROFESSIONAL)
+  pronouns            String?
+  // For STUDENT / FACULTY / TPO: link to college / institution
+  institution         String?
+  graduationYear      Int?
+  // For COMPANY_REP: link to a company they represent
+  representsCompanyId String?
+  representsCompany   Company?   @relation("CompanyRep", fields: [representsCompanyId], references: [id])
+  // Counters (denormalised for cheap reads — kept fresh on mutations)
+  connectionsCount    Int        @default(0)
+  followersCount      Int        @default(0)
+  followingCount      Int        @default(0)
+  postsCount          Int        @default(0)
+
+  // AI / search
+  profileEmbedding Unsupported("vector(3072)")?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  evDomains          CandidateEVDomain[]
+  skills             CandidateSkill[]
+  experiences        Experience[]
+  education          Education[]
+  certifications     Certification[]
+  projects           Project[]
+  awards             Award[]
+  applications       Application[]
+  savedJobs          SavedJob[]
+  savedByEmployers   SavedCandidate[]
+  jobAlerts          JobAlert[]
+  documents          CandidateDocument[]
+  assessmentAttempts AssessmentAttempt[]
+
+  @@index([profileMode, availabilityStatus, openToWork])
+  @@index([isDIYguruVerified])
+}
+
+model CandidateEVDomain {
+  candidateId String
+  evDomainId  String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  evDomain    EVDomain         @relation(fields: [evDomainId], references: [id], onDelete: Cascade)
+
+  @@id([candidateId, evDomainId])
+}
+
+model CandidateSkill {
+  candidateId String
+  skillId     String
+  proficiency SkillProficiency @default(INTERMEDIATE)
+  yearsExp    Float?
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  skill       Skill            @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([candidateId, skillId])
+}
+
+model Experience {
+  id          String           @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  company     String
+  title       String
+  location    String?
+  startDate   DateTime
+  endDate     DateTime?
+  current     Boolean          @default(false)
+  description String?          @db.Text
+  createdAt   DateTime         @default(now())
+}
+
+model Education {
+  id          String           @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  institution String
+  degree      String?
+  field       String?
+  startYear   Int?
+  endYear     Int?
+  grade       String?
+  description String?          @db.Text
+  createdAt   DateTime         @default(now())
+}
+
+model Certification {
+  id              String             @id @default(cuid())
+  candidateId     String
+  candidate       CandidateProfile   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  name            String
+  issuer          String?
+  issueDate       DateTime?
+  expiresAt       DateTime?
+  credentialId    String?
+  credentialUrl   String?
+  isDIYguru       Boolean            @default(false)
+  diyguruVerified Boolean            @default(false)
+  documentId      String?
+  document        CandidateDocument? @relation(fields: [documentId], references: [id])
+  createdAt       DateTime           @default(now())
+}
+
+model Project {
+  id          String           @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  title       String
+  description String?          @db.Text
+  url         String?
+  techStack   String[]         @default([])
+  startDate   DateTime?
+  endDate     DateTime?
+  createdAt   DateTime         @default(now())
+}
+
+model Award {
+  id          String           @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  title       String
+  issuer      String?
+  date        DateTime?
+  description String?          @db.Text
+  createdAt   DateTime         @default(now())
+}
+
+// ─── Company / Employer ──────────────────────────────────────
+
+enum CompanyType {
+  OEM
+  STARTUP
+  TIER1
+  TIER2
+  BATTERY
+  CHARGING
+  FLEET
+  CONSULTING
+  OTHER
+}
+
+enum CompanyVerification {
+  UNVERIFIED
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+enum CompanyTeamRole {
+  ADMIN
+  RECRUITER
+  HIRING_MANAGER
+  VIEWER
+}
+
+model Company {
+  id                 String              @id @default(cuid())
+  slug               String              @unique
+  name               String
+  ownerUserId        String
+  owner              User                @relation("CompanyOwner", fields: [ownerUserId], references: [id])
+  logoUrl            String?
+  bannerUrl          String?
+  website            String?
+  description        String?             @db.Text
+  about              String?             @db.Text
+  companyType        CompanyType         @default(OTHER)
+  teamSize           String?
+  hqLocation         String?
+  foundedYear        Int?
+  evDomains          String[]            @default([])
+  techStack          String[]            @default([])
+  benefits           String[]            @default([])
+  galleryUrls        String[]            @default([])
+  linkedinUrl        String?
+  twitterUrl         String?
+  facebookUrl        String?
+  verificationStatus CompanyVerification @default(UNVERIFIED)
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  team           EmployerProfile[]
+  invites        TeamInvite[]
+  jobs           JobPosting[]
+  customStages   CustomPipelineStage[]
+  slaConfigs     SLAConfig[]
+  webhooks       Webhook[]
+  apiKeys        ApiKey[]
+  campusDrives   CampusDrive[]
+  // Social: people who represent this company (founders / PMs)
+  reps           CandidateProfile[]    @relation("CompanyRep")
+  // One-way follows on the company page
+  followedBy     Follow[]              @relation("FolloweeCompany")
+  // Posts published as this company
+  postsAsCompany Post[]                @relation("PostAsCompany")
+  followersCount Int                   @default(0)
+
+  // Competitions hosted by this company
+  competitions Competition[] @relation("CompanyCompetitions")
+
+  // WordPress legacy tracking
+  wpLegacyId Int? @unique
+
+  @@index([verificationStatus])
+}
+
+model EmployerProfile {
+  id             String          @id @default(cuid())
+  userId         String          @unique
+  user           User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  companyId      String
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  designation    String?
+  teamRole       CompanyTeamRole @default(RECRUITER)
+  isCompanyAdmin Boolean         @default(false)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([companyId])
+}
+
+model TeamInvite {
+  id          String          @id @default(cuid())
+  companyId   String
+  company     Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  email       String
+  role        CompanyTeamRole @default(RECRUITER)
+  token       String          @unique
+  invitedById String
+  invitedBy   User            @relation("TeamInviteInviter", fields: [invitedById], references: [id])
+  expiresAt   DateTime
+  acceptedAt  DateTime?
+  createdAt   DateTime        @default(now())
+
+  @@unique([companyId, email])
+  @@index([token])
+}
+
+// ─── Jobs ────────────────────────────────────────────────────
+
+enum JobStatus {
+  DRAFT
+  PENDING_REVIEW
+  OPEN
+  PAUSED
+  CLOSED
+}
+
+enum EmploymentType {
+  FULL_TIME
+  PART_TIME
+  CONTRACT
+  INTERNSHIP
+  TEMPORARY
+}
+
+enum WorkMode {
+  ONSITE
+  REMOTE
+  HYBRID
+}
+
+enum SeniorityLevel {
+  ENTRY
+  JUNIOR
+  MID
+  SENIOR
+  LEAD
+  PRINCIPAL
+}
+
+model JobPosting {
+  id               String         @id @default(cuid())
+  slug             String         @unique
+  companyId        String
+  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  postedById       String
+  postedBy         User           @relation("JobPoster", fields: [postedById], references: [id])
+  title            String
+  description      String         @db.Text
+  responsibilities String?        @db.Text
+  requirements     String?        @db.Text
+  benefits         String?        @db.Text
+  profileMode      ProfileMode    @default(EXPERIENCED)
+  employmentType   EmploymentType @default(FULL_TIME)
+  workMode         WorkMode       @default(ONSITE)
+  seniorityLevel   SeniorityLevel @default(MID)
+  locations        String[]       @default([])
+  experienceMin    Int?
+  experienceMax    Int?
+  salaryMin        Decimal?       @db.Decimal(12, 2)
+  salaryMax        Decimal?       @db.Decimal(12, 2)
+  salaryCurrency   String         @default("INR")
+  salaryHidden     Boolean        @default(false)
+  status           JobStatus      @default(DRAFT)
+  applicationUrl   String?
+  applicationEmail String?
+  headerImageUrl   String?
+  appliesCount     Int            @default(0)
+  viewsCount       Int            @default(0)
+  publishedAt      DateTime?
+  closesAt         DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  jdEmbedding Unsupported("vector(3072)")?
+
+  evDomains        JobEVDomain[]
+  skills           JobSkill[]
+  applications     Application[]
+  savedBy          SavedJob[]
+  jobAlerts        JobAlert[]
+  assessments      Assessment[]
+  campusDrives     CampusDriveJob[]
+  reports          JobReport[]
+  // Posts that attach this job to the social feed
+  feedPosts        Post[]
+  // Competitions linked to this job (winner-perk pipeline)
+  competitionPerks CompetitionPerk[]
+
+  // WordPress legacy tracking
+  wpLegacyId Int? @unique
+
+  @@index([status, publishedAt])
+  @@index([companyId, status])
+  @@index([profileMode, workMode])
+}
+
+model JobEVDomain {
+  jobId      String
+  evDomainId String
+  job        JobPosting @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  evDomain   EVDomain   @relation(fields: [evDomainId], references: [id], onDelete: Cascade)
+
+  @@id([jobId, evDomainId])
+}
+
+model JobSkill {
+  jobId    String
+  skillId  String
+  required Boolean    @default(true)
+  weight   Float      @default(1.0)
+  job      JobPosting @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  skill    Skill      @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@id([jobId, skillId])
+}
+
+// ─── Applications & ATS ──────────────────────────────────────
+
+enum ApplicationStage {
+  APPLIED
+  SCREENED
+  SHORTLISTED
+  ASSESSMENT
+  INTERVIEW
+  OFFER
+  HIRED
+  REJECTED
+  WITHDRAWN
+}
+
+enum ApplicationSource {
+  DIRECT
+  REFERRAL
+  CAMPUS
+  AI_INVITED
+  IMPORT
+}
+
+model Application {
+  id                String               @id @default(cuid())
+  jobId             String
+  job               JobPosting           @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId       String
+  candidate         CandidateProfile     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  stage             ApplicationStage     @default(APPLIED)
+  customStageId     String?
+  customStage       CustomPipelineStage? @relation(fields: [customStageId], references: [id])
+  rating            Int?
+  source            ApplicationSource    @default(DIRECT)
+  coverLetter       String?              @db.Text
+  resumeSnapshotUrl String?
+  matchScore        Float?
+  matchExplanation  Json?
+  appliedAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
+  withdrawnAt       DateTime?
+  rejectedReason    String?
+
+  notes              ApplicationNote[]
+  history            StageHistory[]
+  interviews         Interview[]
+  messageThread      MessageThread?
+  assessmentAttempts AssessmentAttempt[]
+  slaBreaches        SLABreach[]
+
+  @@unique([jobId, candidateId])
+  @@index([jobId, stage])
+  @@index([candidateId, stage])
+}
+
+enum NoteVisibility {
+  TEAM
+  PRIVATE
+}
+
+model ApplicationNote {
+  id            String         @id @default(cuid())
+  applicationId String
+  application   Application    @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  authorId      String
+  author        User           @relation(fields: [authorId], references: [id])
+  body          String         @db.Text
+  visibility    NoteVisibility @default(TEAM)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+}
+
+model StageHistory {
+  id            String            @id @default(cuid())
+  applicationId String
+  application   Application       @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  fromStage     ApplicationStage?
+  toStage       ApplicationStage
+  byUserId      String?
+  byUser        User?             @relation("StageActor", fields: [byUserId], references: [id])
+  reason        String?
+  meta          Json?
+  at            DateTime          @default(now())
+
+  @@index([applicationId, at])
+}
+
+// Enterprise feature: company-defined ATS pipeline stages
+model CustomPipelineStage {
+  id                 String   @id @default(cuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name               String
+  order              Int
+  color              String?
+  autoRejectionRules Json?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+
+  applications Application[]
+  slaConfigs   SLAConfig[]
+
+  @@unique([companyId, name])
+  @@index([companyId, order])
+}
+
+model SLAConfig {
+  id               String              @id @default(cuid())
+  companyId        String
+  company          Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  stageId          String
+  stage            CustomPipelineStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  slaHours         Int
+  escalationAction Json?
+  isActive         Boolean             @default(true)
+  createdAt        DateTime            @default(now())
+}
+
+model SLABreach {
+  id            String      @id @default(cuid())
+  applicationId String
+  application   Application @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  stageId       String
+  breachedAt    DateTime    @default(now())
+  notified      Boolean     @default(false)
+}
+
+// ─── Interviews ─────────────────────────────────────────────
+
+enum InterviewMode {
+  VIDEO
+  PHONE
+  ONSITE
+}
+
+enum InterviewStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+  RESCHEDULED
+}
+
+model Interview {
+  id                       String          @id @default(cuid())
+  applicationId            String
+  application              Application     @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  scheduledAt              DateTime
+  durationMins             Int             @default(45)
+  mode                     InterviewMode   @default(VIDEO)
+  location                 String?
+  meetingUrl               String?
+  interviewerIds           String[]        @default([])
+  status                   InterviewStatus @default(SCHEDULED)
+  feedback                 String?         @db.Text
+  rating                   Int?
+  googleEventId            String?
+  icsUid                   String?         @unique
+  // Reminder fanout markers — set by the interview-reminders cron when the
+  // candidate has been pinged 24h or 1h before the slot.
+  reminderDayBeforeSentAt  DateTime?
+  reminderHourBeforeSentAt DateTime?
+  createdAt                DateTime        @default(now())
+  updatedAt                DateTime        @updatedAt
+
+  @@index([applicationId, scheduledAt])
+  @@index([status, scheduledAt])
+}
+
+// ─── Assessments ────────────────────────────────────────────
+
+enum AssessmentType {
+  MCQ
+  CODING
+  SKILL_TASK
+  VIDEO_RESPONSE
+}
+
+model Assessment {
+  id           String         @id @default(cuid())
+  jobId        String?
+  job          JobPosting?    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  title        String
+  type         AssessmentType
+  questions    Json
+  passingScore Float          @default(60)
+  durationMins Int?
+  isLibrary    Boolean        @default(false)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  attempts AssessmentAttempt[]
+
+  @@index([jobId])
+}
+
+model AssessmentAttempt {
+  id            String           @id @default(cuid())
+  assessmentId  String
+  assessment    Assessment       @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  candidateId   String
+  candidate     CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  applicationId String?
+  application   Application?     @relation(fields: [applicationId], references: [id])
+  startedAt     DateTime         @default(now())
+  submittedAt   DateTime?
+  score         Float?
+  passed        Boolean?
+  answers       Json?
+  proctorMeta   Json?
+
+  @@index([candidateId])
+  @@index([assessmentId])
+}
+
+// ─── Messaging ──────────────────────────────────────────────
+
+model MessageThread {
+  id              String       @id @default(cuid())
+  applicationId   String?      @unique
+  application     Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  // For cold outreach (no application yet)
+  candidateUserId String?
+  employerUserId  String?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  lastMessageAt   DateTime?
+
+  messages Message[]
+
+  @@index([candidateUserId, employerUserId])
+  @@index([lastMessageAt])
+}
+
+model Message {
+  id          String        @id @default(cuid())
+  threadId    String
+  thread      MessageThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderId    String
+  sender      User          @relation("MessageSender", fields: [senderId], references: [id])
+  body        String        @db.Text
+  attachments Json?
+  readAt      DateTime?
+  createdAt   DateTime      @default(now())
+
+  @@index([threadId, createdAt])
+}
+
+// ─── Notifications ──────────────────────────────────────────
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+  PUSH
+}
+
+model Notification {
+  id        String              @id @default(cuid())
+  userId    String
+  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String
+  title     String
+  body      String              @db.Text
+  payload   Json?
+  channel   NotificationChannel @default(IN_APP)
+  link      String?
+  readAt    DateTime?
+  sentAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  @@index([userId, readAt])
+  @@index([userId, createdAt])
+}
+
+model NotificationPreference {
+  userId                  String   @id
+  user                    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Per-event channel toggles. Default is conservative (in-app + email; SMS off).
+  applicationUpdatesEmail Boolean  @default(true)
+  applicationUpdatesSMS   Boolean  @default(false)
+  messagesEmail           Boolean  @default(true)
+  messagesSMS             Boolean  @default(false)
+  interviewsEmail         Boolean  @default(true)
+  interviewsSMS           Boolean  @default(true)
+  jobAlertsEmail          Boolean  @default(true)
+  jobAlertsSMS            Boolean  @default(false)
+  marketingEmail          Boolean  @default(false)
+  updatedAt               DateTime @updatedAt
+}
+
+// ─── Saved items & alerts ───────────────────────────────────
+
+model SavedJob {
+  id          String           @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId       String
+  job         JobPosting       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdAt   DateTime         @default(now())
+
+  @@unique([candidateId, jobId])
+}
+
+model SavedCandidate {
+  id             String           @id @default(cuid())
+  candidateId    String
+  candidate      CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  employerUserId String
+  note           String?
+  createdAt      DateTime         @default(now())
+
+  @@unique([candidateId, employerUserId])
+}
+
+model JobAlert {
+  id          String                @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  query       String
+  filters     Json
+  jobId       String?
+  job         JobPosting?           @relation(fields: [jobId], references: [id])
+  frequency   String                @default("daily")
+  channels    NotificationChannel[]
+  isActive    Boolean               @default(true)
+  lastSentAt  DateTime?
+  createdAt   DateTime              @default(now())
+}
+
+// ─── DIYguru integration ────────────────────────────────────
+
+model DIYguruImportBatch {
+  id           String   @id @default(cuid())
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  fileUrl      String?
+  rowCount     Int
+  matchedCount Int      @default(0)
+  importedAt   DateTime @default(now())
+  notes        String?
+
+  rosterEntries DIYguruRoster[]
+}
+
+model DIYguruRoster {
+  id              String             @id @default(cuid())
+  importBatchId   String
+  importBatch     DIYguruImportBatch @relation(fields: [importBatchId], references: [id], onDelete: Cascade)
+  studentId       String?
+  email           String
+  fullName        String
+  phone           String?
+  courseName      String?
+  courseSlug      String?
+  completionDate  DateTime?
+  grade           String?
+  labTags         String[]           @default([])
+  capstoneTitle   String?
+  claimedByUserId String?
+  claimedAt       DateTime?
+  createdAt       DateTime           @default(now())
+
+  @@unique([importBatchId, email])
+  @@index([email])
+  @@index([studentId])
+}
+
+// ─── KYC / verification ─────────────────────────────────────
+
+enum DocumentType {
+  CERTIFICATE
+  DEGREE
+  EXPERIENCE_LETTER
+  ID_PROOF
+  OFFER_LETTER
+  OTHER
+}
+
+model CandidateDocument {
+  id          String           @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  docType     DocumentType
+  fileUrl     String
+  fileName    String
+  fileSize    Int?
+  mimeType    String?
+  isShared    Boolean          @default(false)
+  sharedWith  Json?
+  verified    Boolean          @default(false)
+  verifiedAt  DateTime?
+  createdAt   DateTime         @default(now())
+
+  certifications       Certification[]
+  verificationRequests VerificationRequest[]
+}
+
+enum VerificationEntity {
+  CANDIDATE
+  COMPANY
+}
+
+enum VerificationRequestType {
+  ID_VERIFICATION
+  KYC
+  CERTIFICATION
+  COMPANY_KYC
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model VerificationRequest {
+  id            String                  @id @default(cuid())
+  entityType    VerificationEntity
+  entityId      String
+  requestType   VerificationRequestType
+  documentId    String?
+  document      CandidateDocument?      @relation(fields: [documentId], references: [id])
+  idType        String?
+  idNumberHash  String?
+  status        VerificationStatus      @default(PENDING)
+  reviewerId    String?
+  reviewer      User?                   @relation("VerificationReviewer", fields: [reviewerId], references: [id])
+  reviewerNotes String?                 @db.Text
+  createdAt     DateTime                @default(now())
+  reviewedAt    DateTime?
+
+  @@index([entityType, entityId, status])
+  @@index([status])
+}
+
+// ─── Campus drives (DIYguru / college hiring) ───────────────
+
+enum CampusDriveStatus {
+  DRAFT
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum CampusCandidateStatus {
+  REGISTERED
+  SHORTLISTED
+  ASSESSED
+  INTERVIEWED
+  OFFERED
+  HIRED
+  REJECTED
+}
+
+model CampusDrive {
+  id             String            @id @default(cuid())
+  companyId      String
+  company        Company           @relation(fields: [companyId], references: [id])
+  title          String
+  institution    String
+  city           String?
+  state          String?
+  driveDate      DateTime
+  driveEndDate   DateTime?
+  contactName    String?
+  contactEmail   String?
+  contactPhone   String?
+  maxCandidates  Int?
+  status         CampusDriveStatus @default(DRAFT)
+  landingPageUrl String?
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  jobs       CampusDriveJob[]
+  candidates CampusCandidate[]
+
+  @@index([companyId, status])
+}
+
+model CampusDriveJob {
+  driveId String
+  jobId   String
+  drive   CampusDrive @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  job     JobPosting  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@id([driveId, jobId])
+}
+
+model CampusCandidate {
+  id              String                @id @default(cuid())
+  driveId         String
+  drive           CampusDrive           @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  userId          String?
+  name            String
+  email           String
+  phone           String?
+  college         String?
+  degree          String?
+  yearOfPassing   Int?
+  cgpa            Float?
+  skills          String[]              @default([])
+  resumeUrl       String?
+  status          CampusCandidateStatus @default(REGISTERED)
+  assessmentScore Float?
+  notes           String?
+  createdAt       DateTime              @default(now())
+
+  @@index([driveId, status])
+}
+
+// ─── Salary intelligence ────────────────────────────────────
+
+model SalaryBenchmark {
+  id           String   @id @default(cuid())
+  evDomainId   String
+  evDomain     EVDomain @relation(fields: [evDomainId], references: [id])
+  role         String
+  location     String
+  experience   String?
+  minSalary    Decimal  @db.Decimal(12, 2)
+  medianSalary Decimal  @db.Decimal(12, 2)
+  maxSalary    Decimal  @db.Decimal(12, 2)
+  currency     String   @default("INR")
+  source       String?
+  lastUpdated  DateTime @default(now())
+
+  @@index([evDomainId, role, location])
+}
+
+// ─── Webhooks & API keys (enterprise) ───────────────────────
+
+model Webhook {
+  id            String    @id @default(cuid())
+  companyId     String
+  company       Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  url           String
+  secret        String
+  events        String[]
+  isActive      Boolean   @default(true)
+  retryCount    Int       @default(0)
+  lastTriggered DateTime?
+  lastStatus    Int?
+  lastError     String?
+  createdAt     DateTime  @default(now())
+
+  logs WebhookLog[]
+}
+
+model WebhookLog {
+  id           String   @id @default(cuid())
+  webhookId    String
+  webhook      Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  event        String
+  payload      Json
+  responseCode Int?
+  responseBody String?  @db.Text
+  durationMs   Int?
+  attempt      Int      @default(1)
+  status       String
+  createdAt    DateTime @default(now())
+
+  @@index([webhookId, createdAt])
+}
+
+model ApiKey {
+  id           String    @id @default(cuid())
+  companyId    String
+  company      Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId       String
+  keyPrefix    String    @unique
+  keyHash      String
+  name         String
+  permissions  Json
+  rateLimit    Int       @default(60)
+  expiresAt    DateTime?
+  lastUsedAt   DateTime?
+  requestCount Int       @default(0)
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+}
+
+// ─── Social graph (LinkedIn-style) ─────────────────────────
+
+enum ConnectionStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+  BLOCKED
+}
+
+/// A symmetric "1st-degree connection" once accepted.
+/// Stored as a single row keyed by (requesterId, recipientId); we never
+/// duplicate to keep the graph small and dedupe trivial.
+model Connection {
+  id          String           @id @default(cuid())
+  requesterId String
+  recipientId String
+  requester   User             @relation("ConnectionRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  recipient   User             @relation("ConnectionRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  status      ConnectionStatus @default(PENDING)
+  message     String?          @db.Text
+  acceptedAt  DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([requesterId, recipientId])
+  @@index([recipientId, status])
+  @@index([requesterId, status])
+}
+
+/// One-way follow: candidates following experts/influencers and users
+/// following companies. Each row targets exactly one of `followeeUserId`
+/// or `followeeCompanyId` (validated in the action layer).
+model Follow {
+  id                String   @id @default(cuid())
+  followerId        String
+  followeeUserId    String?
+  followeeCompanyId String?
+  follower          User     @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  followeeUser      User?    @relation("FolloweeUser", fields: [followeeUserId], references: [id], onDelete: Cascade)
+  followeeCompany   Company? @relation("FolloweeCompany", fields: [followeeCompanyId], references: [id], onDelete: Cascade)
+  createdAt         DateTime @default(now())
+
+  @@unique([followerId, followeeUserId])
+  @@unique([followerId, followeeCompanyId])
+  @@index([followeeUserId])
+  @@index([followeeCompanyId])
+}
+
+enum PostVisibility {
+  PUBLIC // shows on the global feed and tag pages
+  CONNECTIONS // 1st-degree connections only
+  PRIVATE // hidden (drafts)
+}
+
+enum ReactionType {
+  LIKE
+  CELEBRATE
+  SUPPORT
+  INSIGHTFUL
+  FUNNY
+  LOVE
+}
+
+model Post {
+  id             String         @id @default(cuid())
+  authorId       String
+  author         User           @relation("PostAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  // Optionally posted as a company page (LinkedIn style "Acme Co posted").
+  asCompanyId    String?
+  asCompany      Company?       @relation("PostAsCompany", fields: [asCompanyId], references: [id], onDelete: SetNull)
+  body           String         @db.Text
+  mediaUrls      String[]       @default([])
+  hashtags       String[]       @default([])
+  mentions       String[]       @default([]) // raw @handles, not yet resolved
+  visibility     PostVisibility @default(PUBLIC)
+  // Optional join to a Job — turns a job into a feed item.
+  attachedJobId  String?
+  attachedJob    JobPosting?    @relation(fields: [attachedJobId], references: [id], onDelete: SetNull)
+  // For reposts:
+  repostOfId     String?
+  repostOf       Post?          @relation("PostRepost", fields: [repostOfId], references: [id], onDelete: SetNull)
+  reposts        Post[]         @relation("PostRepost")
+  reactionsCount Int            @default(0)
+  commentsCount  Int            @default(0)
+  repostsCount   Int            @default(0)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  reactions PostReaction[]
+  comments  PostComment[]
+
+  @@index([authorId, createdAt])
+  @@index([visibility, createdAt])
+  @@index([hashtags])
+}
+
+model PostReaction {
+  postId    String
+  userId    String
+  type      ReactionType @default(LIKE)
+  createdAt DateTime     @default(now())
+  post      Post         @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([postId, userId])
+  @@index([userId, createdAt])
+}
+
+model PostComment {
+  id        String        @id @default(cuid())
+  postId    String
+  post      Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String        @db.Text
+  parentId  String?
+  parent    PostComment?  @relation("CommentReply", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   PostComment[] @relation("CommentReply")
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  @@index([postId, createdAt])
+  @@index([parentId, createdAt])
+}
+
+// ─── Broadcasts (admin → user fanout) ──────────────────────
+
+enum BroadcastStatus {
+  DRAFT
+  SENDING
+  SENT
+  FAILED
+}
+
+enum BroadcastTarget {
+  ALL_USERS
+  ALL_CANDIDATES
+  ALL_EMPLOYERS
+  DIYGURU_VERIFIED
+  OPEN_TO_WORK
+  EMPLOYERS_VERIFIED
+}
+
+model Broadcast {
+  id             String                @id @default(cuid())
+  title          String
+  body           String                @db.Text
+  link           String?
+  target         BroadcastTarget       @default(ALL_USERS)
+  channels       NotificationChannel[]
+  status         BroadcastStatus       @default(DRAFT)
+  recipientCount Int                   @default(0)
+  sentCount      Int                   @default(0)
+  failedCount    Int                   @default(0)
+  createdById    String
+  createdAt      DateTime              @default(now())
+  startedAt      DateTime?
+  completedAt    DateTime?
+
+  @@index([status, createdAt])
+}
+
+// ─── Job reports / moderation ──────────────────────────────
+
+enum JobReportReason {
+  SPAM
+  MISLEADING
+  FRAUDULENT
+  INAPPROPRIATE
+  EXPIRED
+  OTHER
+}
+
+enum JobReportStatus {
+  OPEN
+  REVIEWED
+  DISMISSED
+  ACTIONED
+}
+
+model JobReport {
+  id             String          @id @default(cuid())
+  jobId          String
+  job            JobPosting      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  reporterUserId String?
+  reason         JobReportReason
+  details        String?         @db.Text
+  status         JobReportStatus @default(OPEN)
+  reviewedById   String?
+  reviewedAt     DateTime?
+  reviewerNotes  String?         @db.Text
+  ip             String?
+  createdAt      DateTime        @default(now())
+
+  @@index([jobId])
+  @@index([status, createdAt])
+}
+
+// ─── Audit log ──────────────────────────────────────────────
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  actor     User?    @relation(fields: [actorId], references: [id])
+  action    String
+  entity    String
+  entityId  String?
+  meta      Json?
+  ip        String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@index([actorId, createdAt])
+}
+
+// ─── Mentorship ─────────────────────────────────────────────
+// Any user can apply to become a mentor. Admin reviews KYC docs (PAN/Aadhaar/
+// expert-credential) before flipping `isPublished` to true. Mentors set a
+// weekly recurring availability (MentorAvailability rows with `kind=RECURRING`)
+// and optional one-off date overrides (`kind=OVERRIDE`). Mentees book a
+// MentorshipSession; if `priceMinor > 0` we kick off a Razorpay order and
+// flip `paymentStatus` via webhook. Free sessions skip checkout entirely.
+
+enum MentorKycStatus {
+  DRAFT // mentor still editing — not submitted
+  PENDING // submitted, awaiting admin review
+  APPROVED // KYC cleared — mentor can publish
+  REJECTED // admin rejected — mentor can resubmit after fix
+}
+
+enum MentorshipMode {
+  VIDEO
+  PHONE
+  CHAT
+}
+
+enum MentorshipSessionStatus {
+  PENDING_PAYMENT // mentee booked but Razorpay payment not yet captured
+  CONFIRMED // payment captured (or free); slot is locked
+  COMPLETED // mentor marked as held
+  CANCELLED // either side cancelled before the slot
+  NO_SHOW // marked by the mentor after the slot
+  REFUNDED // payment was reversed (admin or auto on cancel)
+}
+
+enum MentorshipPaymentStatus {
+  FREE // session was free, no order created
+  PENDING // Razorpay order created, awaiting capture
+  PAID // capture confirmed via webhook
+  REFUNDED // refund issued
+  FAILED // payment failed / abandoned
+}
+
+enum MentorAvailabilityKind {
+  RECURRING // dayOfWeek + startMinute + endMinute (weekly)
+  OVERRIDE // specific date — adds extra hours
+  BLOCKED // specific date — blocks an otherwise-available window
+}
+
+model MentorProfile {
+  id                   String          @id @default(cuid())
+  userId               String          @unique
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  // Public mentor display
+  headline             String // "Senior Battery Engineer · 12yr · Ola Electric"
+  bio                  String          @db.Text
+  expertiseTags        String[]        @default([]) // freeform: "BMS", "powertrain"
+  evDomainSlugs        String[]        @default([]) // canonical EV-domain slugs
+  languages            String[]        @default([]) // ISO codes: "en", "hi"
+  yearsExperience      Int             @default(0)
+  // Pricing — minor units (paise for INR). 0 = free.
+  pricePerSessionMinor Int             @default(0)
+  currency             String          @default("INR")
+  acceptingFree        Boolean         @default(false)
+  acceptingPaid        Boolean         @default(false)
+  // Session config — durations the mentor offers
+  sessionDurations     Int[]           @default([30, 45, 60]) // minutes
+  bufferMinutes        Int             @default(15) // gap between bookings
+  defaultMode          MentorshipMode  @default(VIDEO)
+  meetingProvider      String? // "google-meet" | "zoom" | "manual"
+  // KYC + publishing gate
+  kycStatus            MentorKycStatus @default(DRAFT)
+  kycSubmittedAt       DateTime?
+  kycReviewedAt        DateTime?
+  kycReviewerId        String?
+  kycRejectionNote     String?         @db.Text
+  isPublished          Boolean         @default(false)
+  // Aggregate stats
+  totalSessions        Int             @default(0)
+  totalEarningsMinor   Int             @default(0) // lifetime earnings (gross)
+  avgRating            Float           @default(0)
+  totalRatings         Int             @default(0)
+  responseRateBps      Int             @default(0) // 0-10000
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  availabilityRules MentorAvailability[]
+  sessions          MentorshipSession[]
+  reviews           MentorshipReview[]
+  payouts           MentorshipPayout[]
+
+  @@index([isPublished, kycStatus])
+  @@index([avgRating])
+}
+
+model MentorAvailability {
+  id          String                 @id @default(cuid())
+  mentorId    String
+  mentor      MentorProfile          @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  kind        MentorAvailabilityKind
+  // For RECURRING: dayOfWeek 0–6 (Sun–Sat) + minutes from midnight (mentor TZ).
+  dayOfWeek   Int? // 0=Sun … 6=Sat
+  startMinute Int? // 0–1440
+  endMinute   Int? // 0–1440
+  // For OVERRIDE / BLOCKED: a specific date window.
+  startAt     DateTime?
+  endAt       DateTime?
+  timezone    String                 @default("Asia/Kolkata")
+  createdAt   DateTime               @default(now())
+
+  @@index([mentorId, kind])
+  @@index([mentorId, startAt])
+}
+
+model MentorshipSession {
+  id                       String                  @id @default(cuid())
+  mentorId                 String
+  mentor                   MentorProfile           @relation(fields: [mentorId], references: [id], onDelete: Restrict)
+  menteeUserId             String
+  mentee                   User                    @relation("MentorshipMentee", fields: [menteeUserId], references: [id])
+  scheduledAt              DateTime
+  durationMins             Int
+  mode                     MentorshipMode          @default(VIDEO)
+  topic                    String // mentee's question / agenda
+  menteeNotes              String?                 @db.Text
+  meetingUrl               String?
+  icsUid                   String?                 @unique
+  status                   MentorshipSessionStatus @default(PENDING_PAYMENT)
+  // Pricing snapshot — frozen at booking time
+  priceMinor               Int                     @default(0)
+  currency                 String                  @default("INR")
+  // Razorpay
+  paymentStatus            MentorshipPaymentStatus @default(FREE)
+  razorpayOrderId          String?                 @unique
+  razorpayPaymentId        String?                 @unique
+  refundAt                 DateTime?
+  // Reminder fanout markers (mirrors Interview model conventions)
+  reminderDayBeforeSentAt  DateTime?
+  reminderHourBeforeSentAt DateTime?
+  // Post-session
+  mentorNotes              String?                 @db.Text
+  completedAt              DateTime?
+  cancelledAt              DateTime?
+  cancelledByUserId        String?
+  cancellationReason       String?                 @db.Text
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
+
+  review MentorshipReview?
+
+  @@index([mentorId, scheduledAt])
+  @@index([menteeUserId, scheduledAt])
+  @@index([status, scheduledAt])
+}
+
+model MentorshipReview {
+  id             String            @id @default(cuid())
+  sessionId      String            @unique
+  session        MentorshipSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  mentorId       String
+  mentor         MentorProfile     @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  reviewerUserId String
+  reviewer       User              @relation("MentorshipReviewer", fields: [reviewerUserId], references: [id])
+  rating         Int // 1–5
+  body           String?           @db.Text
+  isPublic       Boolean           @default(true)
+  createdAt      DateTime          @default(now())
+
+  @@index([mentorId, createdAt])
+}
+
+// Payout ledger — admin manually settles. We surface owed totals per mentor
+// (sum of CONFIRMED/COMPLETED PAID sessions minus already-paid-out rows) and
+// the admin records the disbursement here.
+enum MentorPayoutStatus {
+  PENDING
+  PROCESSING
+  PAID
+  ON_HOLD
+  REVERSED
+}
+
+model MentorshipPayout {
+  id          String             @id @default(cuid())
+  mentorId    String
+  mentor      MentorProfile      @relation(fields: [mentorId], references: [id], onDelete: Cascade)
+  // Sum of sessions covered by this payout, captured at creation time.
+  amountMinor Int
+  currency    String             @default("INR")
+  // Range over which sessions were aggregated.
+  periodStart DateTime
+  periodEnd   DateTime
+  status      MentorPayoutStatus @default(PENDING)
+  // Admin-entered transaction reference (NEFT/UPI ref).
+  externalRef String?
+  notes       String?            @db.Text
+  paidAt      DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  @@index([mentorId, status])
+}
+
+// ─── Competitions / Challenges (Unstop-style) ────────────────
+// A company drafts a Competition with one or more CompetitionStages. Admin
+// reviews the draft and either approves (status → APPROVED → goes LIVE on
+// `publishedAt`) or rejects with a note. Candidates register either solo or
+// as a team (CompetitionRegistration + CompetitionTeamMember). For team
+// invites we accept email-only invitees and resolve them to a userId on
+// account creation. Each registration moves through stages — a submission
+// per stage (CompetitionSubmission) — judges score (CompetitionScore), top-
+// scoring registrations advance. Final winners are listed in CompetitionPrize
+// (rank-keyed) and admin disburses prize money via PrizePayout (manual ledger).
+
+enum CompetitionType {
+  HACKATHON
+  CASE_STUDY
+  QUIZ
+  DESIGN_CHALLENGE
+  INNOVATION
+  INTERNSHIP_HUNT
+  IDEATHON
+  RESEARCH
+}
+
+enum CompetitionStatus {
+  DRAFT // host editing
+  PENDING_REVIEW // submitted to admin
+  CHANGES_REQUESTED // admin asked for changes
+  APPROVED // admin approved — will go LIVE at publishedAt
+  LIVE // currently accepting registrations / submissions
+  JUDGING // submissions closed, judges scoring
+  RESULTS // results announced
+  CLOSED // archive
+  REJECTED // admin rejected entirely
+}
+
+enum CompetitionStageKind {
+  REGISTRATION
+  QUIZ // tied to an Assessment
+  SUBMISSION // file + write-up
+  INTERVIEW
+  PRESENTATION
+}
+
+enum RegistrationStatus {
+  REGISTERED
+  SUBMITTED
+  SHORTLISTED
+  FINALIST
+  WINNER
+  RUNNER_UP
+  ELIMINATED
+  DISQUALIFIED
+  WITHDRAWN
+}
+
+enum TeamMemberStatus {
+  INVITED
+  ACCEPTED
+  DECLINED
+  REMOVED
+}
+
+enum TeamMemberRole {
+  LEADER
+  MEMBER
+}
+
+model Competition {
+  id                   String            @id @default(cuid())
+  slug                 String            @unique
+  title                String
+  tagline              String?
+  description          String            @db.Text
+  bannerImageUrl       String?
+  // Host is a company on the platform; postedBy is the user who drafted it.
+  hostCompanyId        String
+  hostCompany          Company           @relation("CompanyCompetitions", fields: [hostCompanyId], references: [id], onDelete: Cascade)
+  postedById           String
+  postedBy             User              @relation("CompetitionPostedBy", fields: [postedById], references: [id])
+  type                 CompetitionType   @default(HACKATHON)
+  evDomainSlugs        String[]          @default([])
+  eligibility          String?           @db.Text
+  rules                String?           @db.Text
+  judgingCriteria      Json? // [{ name, weight, description }]
+  // Team rules — solo competitions set isTeamBased=false, leave min/max null.
+  isTeamBased          Boolean           @default(false)
+  minTeamSize          Int?
+  maxTeamSize          Int?
+  // Lifecycle dates
+  registrationOpensAt  DateTime?
+  registrationClosesAt DateTime?
+  startsAt             DateTime
+  endsAt               DateTime
+  resultsAt            DateTime?
+  // Aggregate prize info — broken down per rank in CompetitionPrize.
+  totalPrizePoolMinor  Int               @default(0)
+  prizeCurrency        String            @default("INR")
+  // Moderation
+  status               CompetitionStatus @default(DRAFT)
+  submittedAt          DateTime?
+  reviewedById         String?
+  reviewedAt           DateTime?
+  reviewerNotes        String?           @db.Text
+  publishedAt          DateTime?
+  isFeatured           Boolean           @default(false)
+  // Stats
+  registrationsCount   Int               @default(0)
+  submissionsCount     Int               @default(0)
+  viewCount            Int               @default(0)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+
+  stages        CompetitionStage[]
+  registrations CompetitionRegistration[]
+  prizes        CompetitionPrize[]
+  perks         CompetitionPerk[]
+  judges        CompetitionJudge[]
+  announcements CompetitionAnnouncement[]
+
+  @@index([status, publishedAt])
+  @@index([hostCompanyId, status])
+  @@index([type, status])
+}
+
+model CompetitionStage {
+  id                 String               @id @default(cuid())
+  competitionId      String
+  competition        Competition          @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  order              Int
+  name               String
+  description        String?              @db.Text
+  kind               CompetitionStageKind
+  // For QUIZ stages we point at an existing Assessment in the host's library.
+  assessmentId       String?
+  startsAt           DateTime
+  endsAt             DateTime
+  // Advancement gate — top N or score threshold.
+  advanceTopN        Int?
+  advanceMinScore    Float?
+  // For team stages, whether all members must attend / submit.
+  requiresAllMembers Boolean              @default(false)
+  createdAt          DateTime             @default(now())
+
+  submissions CompetitionSubmission[]
+
+  @@unique([competitionId, order])
+  @@index([competitionId, kind])
+}
+
+model CompetitionRegistration {
+  id             String             @id @default(cuid())
+  competitionId  String
+  competition    Competition        @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  // The leader is the registering user (also for solo competitions).
+  leaderUserId   String
+  leader         User               @relation("CompetitionLeader", fields: [leaderUserId], references: [id])
+  teamName       String?
+  status         RegistrationStatus @default(REGISTERED)
+  currentStageId String?
+  registeredAt   DateTime           @default(now())
+  withdrawnAt    DateTime?
+  finalRank      Int? // populated when results are announced
+  finalScore     Float?
+  notes          String?            @db.Text
+
+  members     CompetitionTeamMember[]
+  submissions CompetitionSubmission[]
+  scores      CompetitionScore[]
+
+  @@unique([competitionId, leaderUserId])
+  @@index([competitionId, status])
+}
+
+model CompetitionTeamMember {
+  id             String                  @id @default(cuid())
+  registrationId String
+  registration   CompetitionRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  // Either userId (existing platform user) or invitedEmail (pending signup).
+  userId         String?
+  user           User?                   @relation("CompetitionMember", fields: [userId], references: [id])
+  invitedEmail   String?
+  inviteToken    String?                 @unique
+  role           TeamMemberRole          @default(MEMBER)
+  status         TeamMemberStatus        @default(INVITED)
+  invitedAt      DateTime                @default(now())
+  acceptedAt     DateTime?
+
+  @@index([registrationId])
+  @@index([userId])
+}
+
+model CompetitionSubmission {
+  id             String                  @id @default(cuid())
+  registrationId String
+  registration   CompetitionRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  stageId        String
+  stage          CompetitionStage        @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  title          String
+  summary        String?                 @db.Text
+  body           String?                 @db.Text // rich write-up
+  attachmentUrls String[]                @default([])
+  externalUrl    String? // GitHub / Figma / Drive
+  submittedAt    DateTime                @default(now())
+  isLate         Boolean                 @default(false)
+
+  scores CompetitionScore[]
+
+  @@unique([registrationId, stageId])
+  @@index([stageId])
+}
+
+// Per-judge per-submission score row. Final per-submission score is the
+// average across judges (server-side aggregation).
+model CompetitionScore {
+  id               String                  @id @default(cuid())
+  submissionId     String
+  submission       CompetitionSubmission   @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  registrationId   String
+  registration     CompetitionRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  judgeUserId      String
+  // Per-criterion scores keyed by criterion name. Server validates against the
+  // competition's judgingCriteria definition.
+  scoresByCriteria Json
+  total            Float
+  feedback         String?                 @db.Text
+  createdAt        DateTime                @default(now())
+
+  @@unique([submissionId, judgeUserId])
+}
+
+model CompetitionJudge {
+  id            String      @id @default(cuid())
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  judgeUserId   String
+  judge         User        @relation("CompetitionJudge", fields: [judgeUserId], references: [id])
+  // Limit which stages this judge scores (empty = all).
+  stageIds      String[]    @default([])
+  invitedAt     DateTime    @default(now())
+
+  @@unique([competitionId, judgeUserId])
+}
+
+model CompetitionPrize {
+  id                    String             @id @default(cuid())
+  competitionId         String
+  competition           Competition        @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  rank                  Int // 1, 2, 3 … or 0 for "honourable mentions"
+  title                 String // "Winner", "Runner-up"
+  description           String?
+  cashAmountMinor       Int                @default(0)
+  currency              String             @default("INR")
+  inKind                String? // e.g. "Lifetime DIYguru access"
+  // Sponsor name (defaults to host company)
+  sponsor               String?
+  // Disbursement (manual admin ledger)
+  awardedRegistrationId String?
+  payoutStatus          MentorPayoutStatus @default(PENDING)
+  payoutExternalRef     String?
+  payoutNotes           String?            @db.Text
+  paidAt                DateTime?
+
+  @@unique([competitionId, rank])
+}
+
+// "Perks" tie a competition to one or more JobPosting / Internship — the host
+// commits that finalists / winners get fast-tracked into ATS for that role.
+// On results-announce the system auto-creates an Application with source=
+// AI_INVITED for the awarded registration's candidate.
+model CompetitionPerk {
+  id            String           @id @default(cuid())
+  competitionId String
+  competition   Competition      @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  jobId         String
+  job           JobPosting       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  // Which ranks get the perk. e.g. [1,2,3] or [0] for finalists.
+  forRanks      Int[]            @default([])
+  // What stage of ATS the candidate is dropped into.
+  ataStage      ApplicationStage @default(SHORTLISTED)
+  notes         String?
+
+  @@unique([competitionId, jobId])
+}
+
+model CompetitionAnnouncement {
+  id            String      @id @default(cuid())
+  competitionId String
+  competition   Competition @relation(fields: [competitionId], references: [id], onDelete: Cascade)
+  title         String
+  body          String      @db.Text
+  postedById    String
+  createdAt     DateTime    @default(now())
+
+  @@index([competitionId, createdAt])
+}
+
+// ─── Editable platform settings ──────────────────────────────
+//
+// Tiny key/value store of admin-editable settings (site name, support email,
+// feature flags, maintenance toggle, etc.). Loaded by `lib/settings.ts` with
+// a small in-memory cache so reading these is effectively free; cache is
+// invalidated whenever an admin saves a value through `/admin/settings`.
+//
+// Why a generic table instead of one column per setting? Adding a new
+// setting must not require a Prisma migration — admins shouldn't have to
+// redeploy to add a "support phone number" field. The trade-off is that
+// callers must know the key by string. Defaults are baked into
+// `lib/settings.ts` so missing rows resolve to sensible values.
+
+enum SiteSettingType {
+  STRING
+  TEXT
+  NUMBER
+  BOOLEAN
+  URL
+  EMAIL
+  JSON
+}
+
+model SiteSetting {
+  key         String          @id
+  value       String          @db.Text
+  type        SiteSettingType @default(STRING)
+  category    String? // grouping for the admin UI (e.g. "identity", "email", "feature")
+  label       String? // human label shown in the admin form
+  description String? // help text shown under the field
+  updatedAt   DateTime        @updatedAt
+  updatedById String?
+
+  @@index([category])
+}

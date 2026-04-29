@@ -1,0 +1,27 @@
+# Production reverse proxy for emobility.careers
+# Caddy handles TLS via Let's Encrypt automatically.
+
+emobility.careers, www.emobility.careers {
+    encode zstd gzip
+    log {
+        output file /var/log/caddy/access.log
+    }
+
+    # WebSockets for in-app chat / ATS realtime
+    @ws {
+        path /ws/*
+    }
+    handle @ws {
+        reverse_proxy soketi:6001
+    }
+
+    # MinIO public buckets (avatars, logos)
+    handle /static/* {
+        uri strip_prefix /static
+        reverse_proxy minio:9000
+    }
+
+    handle {
+        reverse_proxy web:3000
+    }
+}

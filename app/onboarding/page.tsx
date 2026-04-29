@@ -1,0 +1,88 @@
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { setProfileMode } from "@/server/candidates/actions";
+
+export const metadata = { title: "Welcome — Pick your profile mode" };
+
+const MODES = [
+  {
+    value: "FRESHER",
+    title: "Fresher",
+    description: "Recently graduated or under 1 year of experience",
+    emoji: "🎓",
+  },
+  {
+    value: "EXPERIENCED",
+    title: "Experienced",
+    description: "1+ years of full-time work experience",
+    emoji: "💼",
+  },
+  {
+    value: "TECHNICIAN",
+    title: "Technician",
+    description: "Hands-on shop floor / service centre / lab roles",
+    emoji: "🔧",
+  },
+  {
+    value: "LEADERSHIP",
+    title: "Leadership",
+    description: "Team / function lead, manager, or director",
+    emoji: "🎯",
+  },
+] as const;
+
+export default async function OnboardingHome() {
+  const session = await auth();
+  if (!session?.user) redirect("/signin?next=/onboarding");
+
+  const profile = await db.candidateProfile.findUnique({
+    where: { userId: session.user.id },
+  });
+  if (!profile) {
+    // Employer or admin shouldn't be here
+    if (session.user.role === "EMPLOYER") redirect("/employer/onboarding");
+    redirect("/me");
+  }
+
+  return (
+    <Card className="p-8">
+      <h1 className="text-2xl font-extrabold text-emce-text">
+        Welcome to eMobility Careers
+      </h1>
+      <p className="mt-1 text-sm text-emce-text-sec">
+        Let&apos;s set up your profile in 4 quick steps. First — what kind of role are you in today?
+      </p>
+
+      <form action={setProfileMode} className="mt-6 space-y-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {MODES.map((m) => (
+            <label key={m.value} className="cursor-pointer">
+              <input
+                type="radio"
+                name="profileMode"
+                value={m.value}
+                defaultChecked={profile.profileMode === m.value}
+                className="peer sr-only"
+                required
+              />
+              <div className="flex h-full gap-3 rounded-lg border-2 border-emce-border bg-white p-4 transition peer-checked:border-emce-dark peer-checked:bg-emce-light-sog">
+                <div className="text-3xl">{m.emoji}</div>
+                <div>
+                  <div className="font-bold text-emce-text">{m.title}</div>
+                  <div className="text-hint text-emce-text-sec">{m.description}</div>
+                </div>
+              </div>
+            </label>
+          ))}
+        </div>
+
+        <div className="flex justify-end pt-4">
+          <Button type="submit" size="lg">Continue →</Button>
+        </div>
+      </form>
+    </Card>
+  );
+}

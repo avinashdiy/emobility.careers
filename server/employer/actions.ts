@@ -1,0 +1,482 @@
+"use server";
+
+import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
+import { z } from "zod";
+import { Prisma } from "@prisma/client";
+import { db } from "@/lib/db";
+import { auth } from "@/lib/auth";
+import { withUniqueSlug } from "@/lib/slug";
+import { embeddingsQueue } from "@/lib/queues";
+import { logger } from "@/lib/logger";
+import { audit } from "@/lib/audit";
+import {
+  CompanyType,
+  EmploymentType,
+  WorkMode,
+  SeniorityLevel,
+  ProfileMode,
+  JobStatus,
+  CompanyTeamRole,
+} from "@prisma/client";
+
+async function requireEmployer() {
+  const session = await auth();
+  if (!session?.user) redirect("/signin");
+  if (session.user.role !== "EMPLOYER" && session.user.role !== "ADMIN") {
+    redirect("/403");
+  }
+  return session;
+}
+
+async function requireEmployerWithCompany() {
+  const session = await requireEmployer();
+  const employer = await db.employerProfile.findUnique({
+    where: { userId: session.user.id },
+    include: { company: true, user: { select: { emailVerifiedAt: true } } },
+  });
+  if (!employer) redirect("/employer/onboarding");
+  if (!employer.user.emailVerifiedAt && session.user.role !== "ADMIN") {
+    redirect("/employer?error=" + encodeURIComponent("Verify your email before posting jobs."));
+  }
+  return { session, employer };
+}
+
+// ─── Company onboarding ─────────────────────────────────────
+
+const companySchema = z.object({
+  name: z.string().min(2).max(120),
+  website: z.string().url().optional().or(z.literal("")),
+  description: z.string().max(280).optional(),
+  about: z.string().max(4000).optional(),
+  companyType: z.nativeEnum(CompanyType),
+  teamSize: z.string().optional(),
+  hqLocation: z.string().max(120).optional(),
+  designation: z.string().min(1).max(120),
+});
+
+export async function createCompany(formData: FormData) {
+  const session = await requireEmployer();
+  const parsed = companySchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    redirect("/employer/onboarding?error=" + encodeURIComponent("Invalid input"));
+  }
+  const { designation, ...companyData } = parsed.data;
+
+  const company = await db.$transaction(async (tx) => {
+    const created = await withUniqueSlug(companyData.name, (slug) =>
+      tx.company.create({
+        data: {
+          ...companyData,
+          website: companyData.website || null,
+          slug,
+          ownerUserId: session.user.id,
+        },
+      }),
+    );
+    await tx.employerProfile.create({
+      data: {
+        userId: session.user.id,
+        companyId: created.id,
+        designation,
+        teamRole: CompanyTeamRole.ADMIN,
+        isCompanyAdmin: true,
+      },
+    });
+    return created;
+  });
+
+  await audit({
+    actorId: session.user.id,
+    action: "company.created",
+    entity: "Company",
+    entityId: company.id,
+    meta: { name: company.name },
+  });
+
+  revalidatePath("/employer");
+  redirect("/employer");
+}
+
+const companyUpdateSchema = companySchema.omit({ designation: true }).extend({
+  techStack: z.string().optional(),
+  benefits: z.string().optional(),
+  linkedinUrl: z.string().url().optional().or(z.literal("")),
+  twitterUrl: z.string().url().optional().or(z.literal("")),
+});
+
+export async function updateCompany(formData: FormData) {
+  const { employer } = await requireEmployerWithCompany();
+  if (!employer.isCompanyAdmin) redirect("/403");
+  const parsed = companyUpdateSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return;
+  const { techStack, benefits, ...rest } = parsed.data;
+  await db.company.update({
+    where: { id: employer.companyId },
+    data: {
+      ...rest,
+      website: rest.website || null,
+      linkedinUrl: rest.linkedinUrl || null,
+      twitterUrl: rest.twitterUrl || null,
+      techStack: techStack ? techStack.split(",").map((s) => s.trim()).filter(Boolean) : [],
+      benefits: benefits ? benefits.split(",").map((s) => s.trim()).filter(Boolean) : [],
+    },
+  });
+  revalidatePath("/employer");
+  revalidatePath(`/company/${employer.company.slug}`);
+}
+
+// ─── Job posting ────────────────────────────────────────────
+
+const jobSchema = z.object({
+  title: z.string().min(3).max(140),
+  description: z.string().min(20),
+  responsibilities: z.string().optional(),
+  requirements: z.string().optional(),
+  benefits: z.string().optional(),
+  profileMode: z.nativeEnum(ProfileMode),
+  employmentType: z.nativeEnum(EmploymentType),
+  workMode: z.nativeEnum(WorkMode),
+  seniorityLevel: z.nativeEnum(SeniorityLevel),
+  locations: z.string().optional(),
+  experienceMin: z.coerce.number().int().min(0).optional(),
+  experienceMax: z.coerce.number().int().min(0).optional(),
+  salaryMin: z.coerce.number().min(0).optional(),
+  salaryMax: z.coerce.number().min(0).optional(),
+  salaryCurrency: z.string().default("INR"),
+  salaryHidden: z.coerce.boolean().optional(),
+  publishNow: z.coerce.boolean().optional(),
+  evDomainSlugs: z.string().optional(),
+  skillNames: z.string().optional(),
+});
+
+export async function createJob(formData: FormData) {
+  const { session, employer } = await requireEmployerWithCompany();
+
+  const parsed = jobSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    logger.warn({ errors: parsed.error.flatten() }, "[createJob] validation failed");
+    redirect("/employer/jobs/new?error=" + encodeURIComponent("Please fill required fields"));
+  }
+  const data = parsed.data;
+
+  const locations = data.locations
+    ? data.locations.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+
+  const job = await db.$transaction(
+    async (tx) => {
+      const created = await withUniqueSlug(`${data.title}-${employer.company.slug}`, (slug) =>
+        tx.jobPosting.create({
+          data: {
+            slug,
+            companyId: employer.companyId,
+            postedById: session.user.id,
+            title: data.title,
+            description: data.description,
+            responsibilities: data.responsibilities || null,
+            requirements: data.requirements || null,
+            benefits: data.benefits || null,
+            profileMode: data.profileMode,
+            employmentType: data.employmentType,
+            workMode: data.workMode,
+            seniorityLevel: data.seniorityLevel,
+            locations,
+            experienceMin: data.experienceMin ?? null,
+            experienceMax: data.experienceMax ?? null,
+            salaryMin: data.salaryMin ? new Prisma.Decimal(data.salaryMin) : null,
+            salaryMax: data.salaryMax ? new Prisma.Decimal(data.salaryMax) : null,
+            salaryCurrency: data.salaryCurrency,
+            salaryHidden: Boolean(data.salaryHidden),
+            status: data.publishNow ? JobStatus.OPEN : JobStatus.DRAFT,
+            publishedAt: data.publishNow ? new Date() : null,
+          },
+        }),
+      );
+
+      if (data.evDomainSlugs) {
+        const slugs = data.evDomainSlugs.split(",").map((s) => s.trim()).filter(Boolean);
+        if (slugs.length > 0) {
+          const domains = await tx.eVDomain.findMany({
+            where: { slug: { in: slugs } },
+            select: { id: true },
+          });
+          if (domains.length > 0) {
+            await tx.jobEVDomain.createMany({
+              data: domains.map((d) => ({ jobId: created.id, evDomainId: d.id })),
+              skipDuplicates: true,
+            });
+          }
+        }
+      }
+
+      if (data.skillNames) {
+        const names = data.skillNames.split(",").map((s) => s.trim()).filter(Boolean);
+        if (names.length > 0) {
+          const skills = await Promise.all(
+            names.map((name) => {
+              const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+              return tx.skill.upsert({
+                where: { slug },
+                create: { slug, name, category: "Imported" },
+                update: {},
+                select: { id: true },
+              });
+            }),
+          );
+          await tx.jobSkill.createMany({
+            data: skills.map((s) => ({ jobId: created.id, skillId: s.id, required: true })),
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      return created;
+    },
+    { timeout: 15_000 },
+  );
+
+  await embeddingsQueue.add("job", { kind: "job", jobId: job.id });
+
+  if (data.publishNow) {
+    const { pingIndexNow, pingGoogleIndexing } = await import("@/lib/seo/indexnow");
+    const url = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "")}/jobs/${job.id}`;
+    void pingIndexNow(url);
+    void pingGoogleIndexing(url, "URL_UPDATED");
+    revalidatePath("/jobs.xml");
+    revalidatePath("/sitemap-jobs.xml");
+  }
+
+  revalidatePath("/employer/jobs");
+  redirect(`/employer/jobs/${job.id}`);
+}
+
+// ─── Company brand uploads (logo / banner) ─────────────────
+
+const ALLOWED_BRAND_MIMES = new Set(["image/jpeg", "image/png", "image/webp"]);
+
+function sniffBrandImage(buffer: Buffer): "jpeg" | "png" | "webp" | null {
+  if (buffer.length < 12) return null;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "jpeg";
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return "png";
+  if (
+    buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+    buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
+  ) return "webp";
+  return null;
+}
+
+async function uploadCompanyImage(
+  formData: FormData,
+  field: "logoUrl" | "bannerUrl",
+  fieldName: string,
+  maxBytes: number,
+) {
+  const { employer } = await requireEmployerWithCompany();
+  if (!employer.isCompanyAdmin) redirect("/403");
+  const file = formData.get(fieldName) as File | null;
+  if (!file || file.size === 0) return;
+  if (file.size > maxBytes) {
+    throw new Error(`Image too large (max ${Math.round(maxBytes / 1024 / 1024)}MB).`);
+  }
+  if (file.type && !ALLOWED_BRAND_MIMES.has(file.type)) {
+    throw new Error("Only JPEG, PNG, or WebP images.");
+  }
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const kind = sniffBrandImage(buffer);
+  if (!kind) throw new Error("File content is not a valid image.");
+  const ext = kind === "jpeg" ? "jpg" : kind;
+  const contentType = `image/${kind === "jpeg" ? "jpeg" : kind}`;
+  const { objectKey, buckets, s3, publicUrl } = await import("@/lib/storage");
+  const { PutObjectCommand } = await import("@aws-sdk/client-s3");
+  const key = objectKey(`companies/${employer.companyId}/${field}`, ext);
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: buckets.logos,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+      ACL: "public-read",
+    }),
+  );
+  await db.company.update({
+    where: { id: employer.companyId },
+    data: { [field]: publicUrl("logos", key) },
+  });
+  revalidatePath("/employer/company");
+  revalidatePath(`/company/${employer.company.slug}`);
+}
+
+export async function uploadCompanyLogo(formData: FormData) {
+  await uploadCompanyImage(formData, "logoUrl", "logo", 4 * 1024 * 1024);
+}
+
+export async function uploadCompanyBanner(formData: FormData) {
+  await uploadCompanyImage(formData, "bannerUrl", "banner", 8 * 1024 * 1024);
+}
+
+// ─── Bulk-invite candidates from /matches ──────────────────
+
+const inviteSchema = z.object({
+  jobId: z.string(),
+  candidateIds: z.string().min(1),  // comma-separated
+});
+
+export async function bulkInviteCandidates(formData: FormData) {
+  const { session, employer } = await requireEmployerWithCompany();
+  const parsed = inviteSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return;
+
+  const job = await db.jobPosting.findUnique({
+    where: { id: parsed.data.jobId },
+    select: { id: true, companyId: true, title: true, status: true },
+  });
+  if (!job) return;
+  if (session.user.role !== "ADMIN" && job.companyId !== employer.companyId) redirect("/403");
+  if (job.status !== "OPEN" && job.status !== "DRAFT") {
+    redirect(`/employer/jobs/${job.id}/matches?error=` + encodeURIComponent("Job is not open"));
+  }
+
+  const candidateIds = parsed.data.candidateIds
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 50);
+  if (candidateIds.length === 0) return;
+
+  // Pull candidates + skip those already applied to this job
+  const candidates = await db.candidateProfile.findMany({
+    where: { id: { in: candidateIds } },
+    select: { id: true, firstName: true, user: { select: { id: true } } },
+  });
+  const existing = await db.application.findMany({
+    where: { jobId: job.id, candidateId: { in: candidateIds } },
+    select: { candidateId: true },
+  });
+  const skipIds = new Set(existing.map((e) => e.candidateId));
+  const fresh = candidates.filter((c) => !skipIds.has(c.id));
+
+  if (fresh.length === 0) {
+    redirect(
+      `/employer/jobs/${job.id}/matches?notice=` +
+        encodeURIComponent("Those candidates have already applied to this job."),
+    );
+  }
+
+  const now = new Date();
+  await db.$transaction(async (tx) => {
+    await tx.application.createMany({
+      data: fresh.map((c) => ({
+        jobId: job.id,
+        candidateId: c.id,
+        stage: "APPLIED" as const,
+        source: "AI_INVITED" as const,
+        appliedAt: now,
+      })),
+      skipDuplicates: true,
+    });
+    // Stage history rows for the freshly-created applications
+    const newApps = await tx.application.findMany({
+      where: {
+        jobId: job.id,
+        candidateId: { in: fresh.map((c) => c.id) },
+        source: "AI_INVITED",
+      },
+      select: { id: true, candidateId: true },
+    });
+    await tx.stageHistory.createMany({
+      data: newApps.map((a) => ({
+        applicationId: a.id,
+        toStage: "APPLIED" as const,
+        byUserId: session.user.id,
+        reason: "Invited from AI matches",
+      })),
+    });
+    await tx.jobPosting.update({
+      where: { id: job.id },
+      data: { appliesCount: { increment: fresh.length } },
+    });
+  });
+
+  // Fan out invitation notifications
+  const { notificationsQueue } = await import("@/lib/queues");
+  for (const c of fresh) {
+    await notificationsQueue.add("invited", {
+      userId: c.user.id,
+      type: "application.invited",
+      title: `You've been invited to apply: ${job.title}`,
+      body: `A recruiter at ${employer.company.name} thinks you're a strong fit. Open your dashboard to review.`,
+      link: "/me/applications",
+      channels: ["IN_APP", "EMAIL"],
+    });
+  }
+
+  await audit({
+    actorId: session.user.id,
+    action: "candidates.bulk_invited",
+    entity: "JobPosting",
+    entityId: job.id,
+    meta: { invited: fresh.length, skipped: skipIds.size },
+  });
+
+  revalidatePath(`/employer/jobs/${job.id}/matches`);
+  revalidatePath(`/employer/jobs/${job.id}/ats`);
+  redirect(
+    `/employer/jobs/${job.id}/matches?notice=` +
+      encodeURIComponent(`Invited ${fresh.length} candidate${fresh.length === 1 ? "" : "s"}.`),
+  );
+}
+
+// ─── Save / unsave candidates ───────────────────────────────
+
+export async function saveCandidate(formData: FormData) {
+  const session = await requireEmployer();
+  const candidateId = z.string().parse(formData.get("candidateId"));
+  const note = String(formData.get("note") ?? "").slice(0, 500) || null;
+  await db.savedCandidate.upsert({
+    where: { candidateId_employerUserId: { candidateId, employerUserId: session.user.id } },
+    create: { candidateId, employerUserId: session.user.id, note },
+    update: { note },
+  });
+  revalidatePath("/employer/saved");
+  revalidatePath(`/${candidateId}`);
+}
+
+export async function unsaveCandidate(formData: FormData) {
+  const session = await requireEmployer();
+  const candidateId = z.string().parse(formData.get("candidateId"));
+  await db.savedCandidate.deleteMany({
+    where: { candidateId, employerUserId: session.user.id },
+  });
+  revalidatePath("/employer/saved");
+}
+
+export async function updateJobStatus(formData: FormData) {
+  const { employer } = await requireEmployerWithCompany();
+  const id = String(formData.get("id"));
+  const status = z.nativeEnum(JobStatus).parse(formData.get("status"));
+
+  const job = await db.jobPosting.findUnique({ where: { id }, select: { companyId: true } });
+  if (!job || job.companyId !== employer.companyId) redirect("/403");
+
+  await db.jobPosting.update({
+    where: { id },
+    data: {
+      status,
+      publishedAt: status === JobStatus.OPEN ? new Date() : undefined,
+    },
+  });
+
+  // Tell search engines about the change immediately. JobPostings are
+  // time-sensitive so we ping IndexNow + Google's Indexing API rather than
+  // wait for the next sitemap fetch.
+  const { pingIndexNow, pingGoogleIndexing } = await import("@/lib/seo/indexnow");
+  const url = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "")}/jobs/${id}`;
+  void pingIndexNow(url);
+  void pingGoogleIndexing(url, status === JobStatus.OPEN ? "URL_UPDATED" : "URL_DELETED");
+
+  revalidatePath("/employer/jobs");
+  revalidatePath(`/employer/jobs/${id}`);
+  revalidatePath("/jobs.xml");
+  revalidatePath("/sitemap-jobs.xml");
+}
