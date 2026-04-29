@@ -8,8 +8,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/empty-state";
-import { SiteHeader } from "@/components/layout/site-header";
-import { SiteFooter } from "@/components/layout/site-footer";
 import { VerifyEmailBanner } from "@/components/auth/VerifyEmailBanner";
 import { relativeTime } from "@/lib/utils";
 
@@ -131,10 +129,8 @@ export default async function MeDashboard() {
   const profileCompleteness = computeCompleteness(profile);
 
   return (
-    <>
-      <SiteHeader />
-      <div className="container max-w-6xl space-y-6 py-6 md:py-8">
-        {!profile.user.emailVerifiedAt && <VerifyEmailBanner email={profile.user.email} />}
+    <div className="container max-w-6xl space-y-6 py-6 md:py-8">
+      {!profile.user.emailVerifiedAt && <VerifyEmailBanner email={profile.user.email} />}
 
         {/* Hero greeting */}
         <Card>
@@ -407,9 +403,7 @@ export default async function MeDashboard() {
             </Card>
           </aside>
         </div>
-      </div>
-      <SiteFooter />
-    </>
+    </div>
   );
 }
 

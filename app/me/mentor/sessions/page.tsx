@@ -3,8 +3,6 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { SiteHeader } from "@/components/layout/site-header";
-import { SiteFooter } from "@/components/layout/site-footer";
 import { getMentorByUserId, getMentorshipBookingsForMentor, getPayoutLedger } from "@/server/mentorship/queries";
 import { SessionRow } from "@/components/mentorship/SessionRow";
 import { formatMinor } from "@/components/mentorship/PriceLabel";
@@ -27,9 +25,7 @@ export default async function MentorSessionsPage() {
   const past = bookings.filter((b) => !upcoming.includes(b));
 
   return (
-    <>
-      <SiteHeader />
-      <div className="container max-w-4xl space-y-4 py-6 md:py-8">
+    <div className="container max-w-4xl space-y-4 py-6 md:py-8">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-dashboard text-emce-text md:text-3xl">Booking inbox</h1>
@@ -129,8 +125,6 @@ export default async function MentorSessionsPage() {
             ))}
           </div>
         </div>
-      </div>
-      <SiteFooter />
-    </>
+    </div>
   );
 }

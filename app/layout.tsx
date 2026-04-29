@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toaster";
 import { ToastFromSearchParams } from "@/components/ui/toast-from-params";
 import { MaintenanceGate } from "@/components/layout/MaintenanceGate";
+import { MessagingWidget } from "@/components/messaging/MessagingWidget";
 import { getSettings } from "@/lib/settings";
 
 const dmSans = DM_Sans({
@@ -107,6 +108,12 @@ export default function RootLayout({
           dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_JSON_LD) }}
         />
         <MaintenanceGate>{children}</MaintenanceGate>
+        {/* Floating LinkedIn-style messaging dock — sticks to bottom-right
+            on every authenticated page (the widget itself short-circuits
+            on signed-out, admin, and in-thread routes). */}
+        <Suspense fallback={null}>
+          <MessagingWidget />
+        </Suspense>
         <Suspense fallback={null}>
           <ToastFromSearchParams />
         </Suspense>

@@ -7,8 +7,6 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { SiteHeader } from "@/components/layout/site-header";
-import { SiteFooter } from "@/components/layout/site-footer";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "Notifications" };
@@ -81,9 +79,7 @@ export default async function NotificationsPage({
   );
 
   return (
-    <>
-      <SiteHeader />
-      <div className="container max-w-3xl py-6 md:py-8">
+    <div className="container max-w-3xl py-6 md:py-8">
         <h1 className="text-dashboard text-emce-text md:text-3xl">Notifications</h1>
         <nav className="mt-4 flex gap-1 overflow-x-auto rounded-md border border-emce-border p-1">
           {TABS.map((t) => (
@@ -137,8 +133,6 @@ export default async function NotificationsPage({
             })}
           </ul>
         )}
-      </div>
-      <SiteFooter />
-    </>
+    </div>
   );
 }

@@ -4,8 +4,6 @@ import { auth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { SiteHeader } from "@/components/layout/site-header";
-import { SiteFooter } from "@/components/layout/site-footer";
 import { listMyCompetitions } from "@/server/competitions/queries";
 
 export const metadata = { title: "My competitions" };
@@ -17,9 +15,7 @@ export default async function MyCompetitionsPage() {
   const regs = await listMyCompetitions(session.user.id);
 
   return (
-    <>
-      <SiteHeader />
-      <div className="container max-w-4xl space-y-4 py-6 md:py-8">
+    <div className="container max-w-4xl space-y-4 py-6 md:py-8">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h1 className="text-dashboard text-emce-text md:text-3xl">My competitions</h1>
           <Button asChild>
@@ -61,8 +57,6 @@ export default async function MyCompetitionsPage() {
             </Card>
           ))}
         </div>
-      </div>
-      <SiteFooter />
-    </>
+    </div>
   );
 }

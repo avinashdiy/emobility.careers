@@ -71,6 +71,7 @@ function buildGroups(counts: Counts): Group[] {
       title: "Content & Taxonomy",
       items: [
         { href: "/admin/content", label: "Posts & comments", icon: MessageSquare },
+        { href: "/admin/messages", label: "Messages (moderation)", icon: MessageSquare },
         { href: "/admin/skills", label: "Skills & domains", icon: Tag },
       ],
     },

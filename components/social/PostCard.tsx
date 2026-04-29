@@ -90,7 +90,7 @@ export function PostCard({
   const myReaction = viewerId ? post.reactions.find((r) => r.userId === viewerId)?.type ?? null : null;
 
   return (
-    <Card className="p-4 sm:p-5">
+    <Card className="p-4 transition-shadow duration-150 hover:shadow-md sm:p-5">
       {/* Header */}
       <div className="flex items-start gap-3">
         <Link href={headerSlug}>

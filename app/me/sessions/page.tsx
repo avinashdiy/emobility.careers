@@ -4,8 +4,6 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { SiteHeader } from "@/components/layout/site-header";
-import { SiteFooter } from "@/components/layout/site-footer";
 import { getMyMentorshipSessions } from "@/server/mentorship/queries";
 import { SessionRow } from "@/components/mentorship/SessionRow";
 
@@ -26,9 +24,7 @@ export default async function MySessionsPage() {
   const past = sessions.filter((s) => !upcoming.includes(s));
 
   return (
-    <>
-      <SiteHeader />
-      <div className="container max-w-4xl space-y-4 py-6 md:py-8">
+    <div className="container max-w-4xl space-y-4 py-6 md:py-8">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h1 className="text-dashboard text-emce-text md:text-3xl">My mentorship sessions</h1>
@@ -100,8 +96,6 @@ export default async function MySessionsPage() {
             })}
           </div>
         </div>
-      </div>
-      <SiteFooter />
-    </>
+    </div>
   );
 }

@@ -87,7 +87,10 @@ export async function SiteHeader() {
   return (
     <header className="sticky top-0 z-40 w-full bg-emce-dark text-white shadow-emce">
       <div className="container flex h-14 items-center gap-3 py-2 md:h-15 md:gap-4 md:py-3">
-        <Link href="/" className="flex shrink-0 items-center gap-2">
+        {/* Logged-in users land on /feed (LinkedIn pattern); visitors go to
+            the marketing home. The href flips on the server so there's no
+            client-side flash of the wrong destination. */}
+        <Link href={user ? "/feed" : "/"} className="flex shrink-0 items-center gap-2">
           <span className="grid h-8 w-8 place-items-center rounded-md bg-emce-mid font-extrabold text-emce-darkest">
             eM
           </span>

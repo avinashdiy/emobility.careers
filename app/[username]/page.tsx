@@ -255,134 +255,167 @@ export default async function PublicCandidateProfile({
 
       {/* LinkedIn-style banner + profile header */}
       <div className="container max-w-5xl py-4 sm:py-6">
-        <Card className="overflow-hidden p-0">
-          <div className="emce-hero-gradient h-32 sm:h-44" />
-          <div className="px-4 pb-4 pt-0 sm:px-8 sm:pb-6">
-            <div className="-mt-12 flex flex-col gap-4 sm:-mt-16 sm:flex-row sm:items-end sm:justify-between">
-              <div className="flex items-end gap-4">
-                <Avatar
-                  src={profile.profilePhotoUrl}
-                  name={fullName}
-                  size="xl"
-                  className="ring-4 ring-white"
-                />
-                {profile.openToWork && (
-                  <Badge variant="success" className="mb-2 hidden sm:inline-flex">Open to work</Badge>
+        <Card className="overflow-hidden p-0 shadow-sm">
+          {/* Banner — taller, sharp bottom edge */}
+          <div className="emce-hero-gradient h-36 sm:h-52" />
+
+          <div className="relative px-4 pb-5 sm:px-6 sm:pb-6">
+            {/* Avatar — overlaps banner ~50%, on its own row so no buttons collide */}
+            <div className="absolute left-4 top-0 -translate-y-1/2 sm:left-6">
+              <Avatar
+                src={profile.profilePhotoUrl}
+                name={fullName}
+                size="xl"
+                className="h-28 w-28 ring-4 ring-white sm:h-36 sm:w-36 [&>span]:text-3xl"
+              />
+            </div>
+
+            {/* Spacer to clear the floating avatar */}
+            <div className="h-16 sm:h-20" />
+
+            {/* Identity block: name, headline, location row, stats row, badges */}
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <h1 className="text-2xl font-bold leading-tight tracking-tight text-emce-text sm:text-[28px]">
+                  {fullName}
+                </h1>
+                {profile.pronouns && (
+                  <span className="text-sm text-emce-text-muted">({profile.pronouns})</span>
+                )}
+                {profile.isDIYguruVerified && (
+                  <Badge variant="verified" className="ml-1 text-[10px]">⭐ DIYguru</Badge>
                 )}
               </div>
-              <div className="flex flex-wrap gap-2">
-                <ShareButton url={`${env.NEXT_PUBLIC_APP_URL}/${profile.slug}`} />
-                {!isOwner && session?.user && (
-                  <FollowUserButton
-                    userId={profile.user.id}
-                    initialFollowing={isFollowing}
-                    signedIn={true}
-                  />
+
+              {profile.headline && (
+                <p className="text-[15px] text-emce-text">{profile.headline}</p>
+              )}
+
+              {/* Location · institution · experience — single tight row */}
+              {(profile.location || profile.institution || profile.totalExperienceMonths > 0) && (
+                <p className="text-sm text-emce-text-sec">
+                  {[
+                    profile.location,
+                    profile.institution,
+                    profile.totalExperienceMonths > 0 ? `${totalYears} yrs experience` : null,
+                  ].filter(Boolean).join(" · ")}
+                  {!isOwner && session?.user && (
+                    <>
+                      {" · "}
+                      <span className="text-emce-dark">Contact info</span>
+                    </>
+                  )}
+                </p>
+              )}
+
+              {/* Connections / followers / posts — inline, link-coloured */}
+              <div className="flex flex-wrap items-center gap-x-1.5 text-sm">
+                <Link
+                  href={isOwner ? "/me/network" : "#"}
+                  className="font-bold text-emce-dark hover:underline"
+                >
+                  {profile.connectionsCount.toLocaleString()} connection{profile.connectionsCount === 1 ? "" : "s"}
+                </Link>
+                <span className="text-emce-text-sec">·</span>
+                <span className="font-bold text-emce-dark">
+                  {profile.followersCount.toLocaleString()} <span className="font-normal text-emce-text-sec">followers</span>
+                </span>
+                <span className="text-emce-text-sec">·</span>
+                <span className="font-bold text-emce-dark">
+                  {postsCount.toLocaleString()} <span className="font-normal text-emce-text-sec">posts</span>
+                </span>
+              </div>
+
+              {/* Person type + open-to-work pill — small row */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <Badge variant="default" className="text-[10px]">
+                  {PERSON_TYPE_LABEL[profile.personType] ?? "Professional"}
+                </Badge>
+                {profile.openToWork && (
+                  <Badge variant="success" className="text-[10px]">
+                    <span className="mr-1 inline-block h-1.5 w-1.5 rounded-full bg-emce-mid" /> Open to work
+                  </Badge>
                 )}
-                {!isOwner && isEmployer && (
-                  <form action={saveCandidate}>
-                    <input type="hidden" name="candidateId" value={profile.id} />
-                    <Button type="submit" variant="ghost" size="default">☆ Save</Button>
-                  </form>
-                )}
-                <ConnectButton
-                  targetUserId={profile.user.id}
-                  initialStatus={ctaStatus}
-                  connectionId={connectionStatus.connectionId}
-                />
-                {isOwner && (
-                  <Button asChild variant="outline">
-                    <Link href="/me/profile">Edit profile</Link>
-                  </Button>
+                {profile.evDomains.slice(0, 4).map((d) => (
+                  <Badge key={d.evDomain.slug} variant="outline" className="text-[10px]">
+                    {d.evDomain.name}
+                  </Badge>
+                ))}
+                {profile.evDomains.length > 4 && (
+                  <span className="text-[10px] text-emce-text-sec">+{profile.evDomains.length - 4} more</span>
                 )}
               </div>
             </div>
 
-            <div className="mt-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-extrabold text-emce-text md:text-3xl">{fullName}</h1>
-                {profile.pronouns && (
-                  <span className="text-hint text-emce-text-muted">({profile.pronouns})</span>
-                )}
-                {profile.isDIYguruVerified && <Badge variant="verified">⭐ DIYguru Verified</Badge>}
-                <Badge variant="default">{PERSON_TYPE_LABEL[profile.personType] ?? "Professional"}</Badge>
-                {profile.openToWork && (
-                  <Badge variant="success" className="sm:hidden">Open to work</Badge>
-                )}
-              </div>
-              {profile.headline && (
-                <p className="mt-2 text-base text-emce-text-sec">{profile.headline}</p>
+            {/* Action buttons — dedicated row at the bottom, primary is filled */}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              {isOwner ? (
+                <>
+                  <Button asChild size="sm">
+                    <Link href="/me/profile">Edit profile</Link>
+                  </Button>
+                  <Button asChild size="sm" variant="outline">
+                    <Link href="/me">Open dashboard</Link>
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <ConnectButton
+                    targetUserId={profile.user.id}
+                    initialStatus={ctaStatus}
+                    connectionId={connectionStatus.connectionId}
+                  />
+                  {session?.user && (
+                    <FollowUserButton
+                      userId={profile.user.id}
+                      initialFollowing={isFollowing}
+                      signedIn={true}
+                    />
+                  )}
+                  {isEmployer && (
+                    <form action={saveCandidate}>
+                      <input type="hidden" name="candidateId" value={profile.id} />
+                      <Button type="submit" variant="outline" size="sm">☆ Save</Button>
+                    </form>
+                  )}
+                </>
               )}
-              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-sm text-emce-text-sec">
-                {profile.location && (
-                  <span className="inline-flex items-center gap-1">
-                    <MapPin className="h-4 w-4" /> {profile.location}
-                  </span>
-                )}
-                {profile.institution && (
-                  <span className="inline-flex items-center gap-1">
-                    <GraduationCap className="h-4 w-4" /> {profile.institution}
-                  </span>
-                )}
-                {profile.totalExperienceMonths > 0 && (
-                  <span className="inline-flex items-center gap-1">
-                    <Briefcase className="h-4 w-4" /> {totalYears} yrs
-                  </span>
-                )}
+              <ShareButton url={`${env.NEXT_PUBLIC_APP_URL}/${profile.slug}`} />
+            </div>
+
+            {/* External links — small icon row, only when present */}
+            {(profile.linkedinUrl || profile.githubUrl || profile.portfolioUrl) && (
+              <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-emce-border pt-3 text-xs text-emce-text-sec">
                 {profile.linkedinUrl && (
                   <a href={profile.linkedinUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-emce-dark">
-                    <Linkedin className="h-4 w-4" /> LinkedIn
+                    <Linkedin className="h-3.5 w-3.5" /> LinkedIn
                   </a>
                 )}
                 {profile.githubUrl && (
                   <a href={profile.githubUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-emce-dark">
-                    <Github className="h-4 w-4" /> GitHub
+                    <Github className="h-3.5 w-3.5" /> GitHub
                   </a>
                 )}
                 {profile.portfolioUrl && (
                   <a href={profile.portfolioUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:text-emce-dark">
-                    <Globe className="h-4 w-4" /> Portfolio
+                    <Globe className="h-3.5 w-3.5" /> Portfolio
                   </a>
                 )}
               </div>
-
-              {/* Counters row */}
-              <div className="mt-3 flex flex-wrap gap-4 border-t border-emce-border pt-3 text-hint">
-                <Link href={isOwner ? "/me/network" : "#"} className="hover:underline">
-                  <strong className="text-emce-text">{profile.connectionsCount}</strong>
-                  <span className="ml-1 text-emce-text-sec">connections</span>
-                </Link>
-                <span>
-                  <strong className="text-emce-text">{profile.followersCount}</strong>
-                  <span className="ml-1 text-emce-text-sec">followers</span>
-                </span>
-                <span>
-                  <strong className="text-emce-text">{postsCount}</strong>
-                  <span className="ml-1 text-emce-text-sec">posts</span>
-                </span>
-              </div>
-
-              {profile.evDomains.length > 0 && (
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  {profile.evDomains.map((d) => (
-                    <Badge key={d.evDomain.slug} variant="success">{d.evDomain.name}</Badge>
-                  ))}
-                </div>
-              )}
-            </div>
+            )}
           </div>
 
-          {/* Tabs */}
+          {/* Tabs — LinkedIn-style thin underline, semibold (not bold) */}
           <nav className="border-t border-emce-border" aria-label="Profile sections">
-            <ul className="flex gap-1 overflow-x-auto px-2 sm:px-6">
+            <ul className="flex overflow-x-auto px-2 sm:px-4">
               {TABS.map((t) => (
                 <li key={t}>
                   <Link
                     href={`/${profile.slug}?tab=${t}`}
-                    className={`block whitespace-nowrap border-b-2 px-3 py-3 text-sm font-bold capitalize transition-colors ${
+                    className={`block whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-semibold capitalize transition-colors ${
                       activeTab === t
-                        ? "border-emce-dark text-emce-dark"
-                        : "border-transparent text-emce-text-sec hover:text-emce-text"
+                        ? "border-emce-dark text-emce-text"
+                        : "border-transparent text-emce-text-sec hover:border-emce-border hover:text-emce-text"
                     }`}
                   >
                     {t}
@@ -398,16 +431,32 @@ export default async function PublicCandidateProfile({
           <div className="space-y-4 lg:col-span-2">
             {activeTab === "activity" && (
               <>
-                <Card>
-                  <h2 className="text-section text-emce-text">Recent activity</h2>
-                  <p className="text-hint text-emce-text-sec">{postsCount} post{postsCount === 1 ? "" : "s"}</p>
-                </Card>
-                {recentPosts.length === 0 ? (
-                  <Card className="p-6 text-center">
-                    <p className="text-hint text-emce-text-sec">
-                      {fullName} hasn&apos;t posted yet.
+                {/* Activity header bar — LinkedIn renders this as a slim
+                    counter line above the post list, not a separate card. */}
+                <div className="flex items-center justify-between rounded-lg border border-emce-border bg-white px-5 py-3 shadow-sm">
+                  <div>
+                    <h2 className="text-base font-bold text-emce-text">Activity</h2>
+                    <p className="text-xs text-emce-text-sec">
+                      {profile.followersCount} follower{profile.followersCount === 1 ? "" : "s"} · {postsCount} post{postsCount === 1 ? "" : "s"}
                     </p>
-                  </Card>
+                  </div>
+                  {!isOwner && session?.user && (
+                    <FollowUserButton
+                      userId={profile.user.id}
+                      initialFollowing={isFollowing}
+                      signedIn={true}
+                    />
+                  )}
+                </div>
+                {recentPosts.length === 0 ? (
+                  <div className="rounded-lg border border-dashed border-emce-border bg-white p-10 text-center">
+                    <p className="text-sm font-bold text-emce-text">
+                      {isOwner ? "You haven't posted yet" : `${profile.firstName} hasn't posted yet`}
+                    </p>
+                    <p className="mt-1 text-hint text-emce-text-sec">
+                      {isOwner ? "Share an update from your /feed to start showing activity here." : "Follow to get notified when they post."}
+                    </p>
+                  </div>
                 ) : (
                   recentPosts.map((p) => (
                     <PostCard key={p.id} post={p as unknown as FeedPostShape} viewerId={session?.user?.id ?? null} />

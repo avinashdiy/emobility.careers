@@ -1,18 +1,21 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Bookmark, Briefcase, Users, Trophy, GraduationCap, Eye, TrendingUp, Calendar } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { SiteHeader } from "@/components/layout/site-header";
-import { SiteFooter } from "@/components/layout/site-footer";
+import { EmptyState } from "@/components/ui/empty-state";
 import { PostComposer } from "@/components/social/PostComposer";
 import { PostCard, type FeedPostShape } from "@/components/social/PostCard";
 import { ConnectButton } from "@/components/social/ConnectButton";
+import { SiteHeader } from "@/components/layout/site-header";
+import { SiteFooter } from "@/components/layout/site-footer";
 import { getFeed, suggestConnections, getConnectionStatus } from "@/server/social/queries";
 import { isFeatureOff, FeatureOffNotice } from "@/components/layout/FeatureGate";
+import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "Feed" };
 
@@ -36,182 +39,347 @@ export default async function FeedPage() {
   });
   if (!me) redirect("/onboarding");
 
-  // Companies the user can post on behalf of
+  // Companies user can post on behalf of
   const teamCompanies = await db.employerProfile.findMany({
     where: { userId: session.user.id },
-    select: { company: { select: { id: true, name: true, logoUrl: true } } },
+    select: { company: { select: { id: true, name: true, logoUrl: true, slug: true } } },
   });
 
-  const [posts, suggestions] = await Promise.all([
+  const since7d = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+  const since30d = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+
+  const [
+    posts,
+    suggestions,
+    weeklyPosts,
+    weeklyReactions,
+    weeklyComments,
+    profileViews30d,
+    liveCompetitions,
+    upcomingMentorshipSession,
+  ] = await Promise.all([
     getFeed({ viewerId: session.user.id, limit: 20 }),
     suggestConnections(session.user.id, 4),
+    db.post.count({ where: { authorId: session.user.id, createdAt: { gte: since7d } } }),
+    db.postReaction.count({ where: { post: { authorId: session.user.id }, createdAt: { gte: since7d } } }),
+    db.postComment.count({ where: { post: { authorId: session.user.id }, createdAt: { gte: since7d } } }),
+    // Profile-view tracking isn't a model yet — until we add a ProfileView
+    // table, derive a soft proxy from connection requests received in 30d.
+    // (Real LinkedIn-style impression tracking is a follow-up.)
+    db.connection.count({
+      where: { recipientId: session.user.id, createdAt: { gte: since30d } },
+    }),
+    db.competition.findMany({
+      where: { status: "LIVE", endsAt: { gte: new Date() } },
+      orderBy: { endsAt: "asc" },
+      take: 3,
+      select: {
+        id: true, slug: true, title: true, endsAt: true, type: true, totalPrizePoolMinor: true, prizeCurrency: true,
+        hostCompany: { select: { name: true, logoUrl: true } },
+      },
+    }),
+    db.mentorshipSession.findFirst({
+      where: { menteeUserId: session.user.id, status: "CONFIRMED", scheduledAt: { gte: new Date() } },
+      orderBy: { scheduledAt: "asc" },
+      select: {
+        scheduledAt: true,
+        mentor: {
+          select: {
+            user: { select: { candidateProfile: { select: { firstName: true, lastName: true, slug: true } } } },
+          },
+        },
+      },
+    }),
   ]);
 
   const fullName = `${me.firstName} ${me.lastName ?? ""}`.trim();
+  const totalEngagement7d = weeklyReactions + weeklyComments;
 
   return (
     <>
       <SiteHeader />
-      <div className="container max-w-6xl py-6">
+      <div className="container max-w-6xl py-4 md:py-6">
         <div className="grid gap-4 lg:grid-cols-12">
-          {/* Left rail — profile summary */}
-          <aside className="hidden lg:col-span-3 lg:block">
-            <Card className="overflow-hidden p-0">
-              <div className="emce-hero-gradient h-14" />
-              <div className="-mt-7 px-4 pb-4 text-center">
-                <Avatar
-                  src={me.profilePhotoUrl}
-                  name={fullName}
-                  size="lg"
-                  className="mx-auto ring-4 ring-white"
-                />
-                <Link
-                  href={`/${me.slug}`}
-                  className="mt-2 block font-bold text-emce-text hover:underline"
-                >
-                  {fullName}
-                </Link>
-                {me.headline && (
-                  <p className="mt-1 text-hint text-emce-text-sec line-clamp-2">{me.headline}</p>
-                )}
-              </div>
-              <div className="border-t border-emce-border px-4 py-2 text-hint">
-                <Link href="/me/network" className="flex items-center justify-between py-1 text-emce-text-sec hover:bg-emce-light-soft rounded-md px-2">
-                  <span>Connections</span>
-                  <span className="font-bold text-emce-dark">{me.connectionsCount}</span>
-                </Link>
-                <Link href={`/${me.slug}`} className="flex items-center justify-between py-1 text-emce-text-sec hover:bg-emce-light-soft rounded-md px-2">
-                  <span>Followers</span>
-                  <span className="font-bold text-emce-dark">{me.followersCount}</span>
-                </Link>
-                <Link href={`/${me.slug}`} className="flex items-center justify-between py-1 text-emce-text-sec hover:bg-emce-light-soft rounded-md px-2">
-                  <span>Posts</span>
-                  <span className="font-bold text-emce-dark">{me.postsCount}</span>
-                </Link>
-              </div>
-            </Card>
-
-            <Card className="mt-3">
-              <h2 className="text-section text-emce-text">Quick links</h2>
-              <ul className="mt-2 space-y-1 text-hint">
-                <li>
-                  <Link href="/jobs" className="block rounded-md px-2 py-1.5 hover:bg-emce-light-soft">
-                    🔍 Browse EV jobs
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/me/applications" className="block rounded-md px-2 py-1.5 hover:bg-emce-light-soft">
-                    📨 My applications
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/people" className="block rounded-md px-2 py-1.5 hover:bg-emce-light-soft">
-                    👥 Discover people
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/companies" className="block rounded-md px-2 py-1.5 hover:bg-emce-light-soft">
-                    🏢 Discover companies
-                  </Link>
-                </li>
-              </ul>
-            </Card>
-          </aside>
-
-          {/* Center column — composer + feed */}
-          <main className="lg:col-span-6">
-            <PostComposer
-              user={{
-                name: fullName,
-                profilePhotoUrl: me.profilePhotoUrl,
-                headline: me.headline,
-                slug: me.slug,
-              }}
-              companies={teamCompanies.map((t) => t.company)}
-            />
-
-            <div className="mt-4 space-y-3">
-              {posts.length === 0 ? (
-                <Card className="p-8 text-center">
-                  <div className="text-4xl">👋</div>
-                  <p className="mt-3 text-section text-emce-text">Your feed is quiet</p>
-                  <p className="mt-1 text-hint text-emce-text-sec">
-                    Connect with people in the EV industry or follow companies to see updates.
-                  </p>
-                  <Button asChild className="mt-4">
-                    <Link href="/people">Find people →</Link>
-                  </Button>
-                </Card>
-              ) : (
-                posts.map((p) => (
-                  <PostCard key={p.id} post={p as unknown as FeedPostShape} viewerId={session.user.id} />
-                ))
+        {/* ─── Left rail — profile card + stats + shortcuts ─── */}
+        <aside className="hidden space-y-3 lg:col-span-3 lg:block">
+          {/* Profile mini-card */}
+          <Card className="overflow-hidden p-0">
+            <div className="emce-hero-gradient h-14" />
+            <div className="-mt-7 px-4 pb-4 text-center">
+              <Avatar
+                src={me.profilePhotoUrl}
+                name={fullName}
+                size="lg"
+                className="mx-auto h-16 w-16 ring-4 ring-white"
+              />
+              <Link
+                href={`/${me.slug}`}
+                className="mt-2 block font-bold text-emce-text hover:underline"
+              >
+                {fullName}
+              </Link>
+              {me.headline && (
+                <p className="mt-1 line-clamp-2 text-hint text-emce-text-sec">{me.headline}</p>
               )}
             </div>
-          </main>
+            {/* Inline stats — link-coloured, LinkedIn-style */}
+            <div className="border-t border-emce-border bg-emce-light-soft/40 px-4 py-2 text-hint">
+              <Link
+                href="/me/network"
+                className="flex items-center justify-between rounded-md px-2 py-1 hover:bg-white"
+              >
+                <span className="text-emce-text-sec">Connections</span>
+                <span className="font-bold text-emce-dark">{me.connectionsCount}</span>
+              </Link>
+              <Link
+                href={`/${me.slug}`}
+                className="flex items-center justify-between rounded-md px-2 py-1 hover:bg-white"
+              >
+                <span className="text-emce-text-sec">Followers</span>
+                <span className="font-bold text-emce-dark">{me.followersCount}</span>
+              </Link>
+            </div>
+          </Card>
 
-          {/* Right rail — suggested connections */}
-          <aside className="hidden lg:col-span-3 lg:block">
-            <Card>
-              <h2 className="text-section text-emce-text">People you may know</h2>
-              <p className="mt-1 text-hint text-emce-text-sec">
-                Same EV domain as you
-              </p>
-              {suggestions.length === 0 ? (
-                <p className="mt-3 text-hint text-emce-text-muted">
-                  We&apos;ll surface suggestions as more people join.
-                </p>
-              ) : (
-                <ul className="mt-3 space-y-3">
-                  {await Promise.all(
-                    suggestions.map(async (s) => {
-                      const status = await getConnectionStatus(session.user.id, s.user.id);
-                      const fullName = `${s.firstName} ${s.lastName ?? ""}`.trim();
-                      return (
-                        <li key={s.id} className="flex items-start gap-2">
-                          <Link href={`/${s.slug}`}>
-                            <Avatar src={s.profilePhotoUrl} name={fullName} size="sm" />
-                          </Link>
-                          <div className="min-w-0 flex-1">
-                            <Link
-                              href={`/${s.slug}`}
-                              className="block truncate text-sm font-bold text-emce-text hover:underline"
-                            >
-                              {fullName}
-                            </Link>
-                            {s.headline && (
-                              <p className="line-clamp-2 text-hint text-emce-text-sec">{s.headline}</p>
-                            )}
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {s.evDomains.slice(0, 2).map((d) => (
-                                <Badge key={d.evDomain.name} variant="outline" className="text-[10px]">
-                                  {d.evDomain.name}
-                                </Badge>
-                              ))}
-                            </div>
-                            <div className="mt-2">
-                              <ConnectButton
-                                targetUserId={s.user.id}
-                                initialStatus={status.status === "ACCEPTED"
-                                  ? "ACCEPTED"
-                                  : status.status === "PENDING_OUT" ? "PENDING_OUT"
-                                  : status.status === "PENDING_IN" ? "PENDING_IN"
-                                  : "NONE"}
-                                connectionId={status.connectionId}
-                              />
-                            </div>
-                          </div>
-                        </li>
-                      );
-                    }),
-                  )}
-                </ul>
-              )}
+          {/* Weekly stats — LinkedIn's "Profile viewers / Post impressions" analogue */}
+          <Card className="p-0">
+            <div className="px-4 py-3 text-hint">
+              <Link
+                href={`/${me.slug}?tab=activity`}
+                className="flex items-center justify-between rounded-md px-1 py-1 hover:bg-emce-light-soft"
+              >
+                <span className="flex items-center gap-1.5 text-emce-text-sec">
+                  <Eye className="h-3.5 w-3.5" /> Recent connection requests
+                </span>
+                <span className="font-bold text-emce-dark">{profileViews30d}</span>
+              </Link>
+              <Link
+                href={`/${me.slug}?tab=activity`}
+                className="flex items-center justify-between rounded-md px-1 py-1 hover:bg-emce-light-soft"
+              >
+                <span className="flex items-center gap-1.5 text-emce-text-sec">
+                  <TrendingUp className="h-3.5 w-3.5" /> Engagement this week
+                </span>
+                <span className="font-bold text-emce-dark">{totalEngagement7d}</span>
+              </Link>
+              <Link
+                href={`/${me.slug}?tab=activity`}
+                className="flex items-center justify-between rounded-md px-1 py-1 hover:bg-emce-light-soft"
+              >
+                <span className="text-emce-text-sec">Posts (last 7 days)</span>
+                <span className="font-bold text-emce-dark">{weeklyPosts}</span>
+              </Link>
+            </div>
+          </Card>
+
+          {/* Pages you manage — only when applicable */}
+          {teamCompanies.length > 0 && (
+            <Card className="p-0">
+              <div className="border-b border-emce-border px-4 py-2 text-[10px] font-bold uppercase tracking-wide text-emce-text-sec">
+                Pages you manage
+              </div>
+              <ul className="py-1">
+                {teamCompanies.map((tc) => (
+                  <li key={tc.company.id}>
+                    <Link
+                      href={`/companies/${tc.company.slug}`}
+                      className="flex items-center gap-2 px-4 py-2 hover:bg-emce-light-soft"
+                    >
+                      <Avatar src={tc.company.logoUrl} name={tc.company.name} size="sm" />
+                      <span className="truncate text-sm font-semibold text-emce-text">{tc.company.name}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
             </Card>
-          </aside>
+          )}
+
+          {/* Quick shortcuts — LinkedIn's saved/groups/events block */}
+          <Card className="p-0">
+            <ul className="py-1 text-sm">
+              <ShortcutRow href="/me/saved" icon={<Bookmark className="h-3.5 w-3.5" />} label="Saved jobs" />
+              <ShortcutRow href="/me/applications" icon={<Briefcase className="h-3.5 w-3.5" />} label="My applications" />
+              <ShortcutRow href="/me/sessions" icon={<GraduationCap className="h-3.5 w-3.5" />} label="Mentor sessions" />
+              <ShortcutRow href="/me/competitions" icon={<Trophy className="h-3.5 w-3.5" />} label="My competitions" />
+              <ShortcutRow href="/people" icon={<Users className="h-3.5 w-3.5" />} label="Discover people" />
+            </ul>
+          </Card>
+        </aside>
+
+        {/* ─── Center column — composer + feed ─── */}
+        <main className="lg:col-span-6">
+          <PostComposer
+            user={{
+              name: fullName,
+              profilePhotoUrl: me.profilePhotoUrl,
+              headline: me.headline,
+              slug: me.slug,
+            }}
+            companies={teamCompanies.map((t) => t.company)}
+          />
+
+          {/* Sort tag — LinkedIn shows "Sort by: Top" inline */}
+          <div className="mt-3 flex items-center gap-2 px-1 text-[11px] uppercase tracking-wide text-emce-text-sec">
+            <span className="h-px flex-1 bg-emce-border" />
+            <span>Sort by: <strong className="text-emce-text">Top</strong></span>
+            <span className="h-px flex-1 bg-emce-border" />
+          </div>
+
+          <div className="mt-3 space-y-3">
+            {posts.length === 0 ? (
+              <EmptyState
+                icon="👋"
+                title="Your feed is quiet"
+                body="Connect with people in the EV industry, follow companies, or tap a hashtag to see updates."
+                action={
+                  <div className="flex gap-2">
+                    <Button asChild size="sm"><Link href="/people">Find people →</Link></Button>
+                    <Button asChild size="sm" variant="outline"><Link href="/companies">Browse companies</Link></Button>
+                  </div>
+                }
+              />
+            ) : (
+              posts.map((p) => (
+                <PostCard key={p.id} post={p as unknown as FeedPostShape} viewerId={session.user.id} />
+              ))
+            )}
+          </div>
+        </main>
+
+        {/* ─── Right rail — suggestions, competitions, news ─── */}
+        <aside className="hidden space-y-3 lg:col-span-3 lg:block">
+          {upcomingMentorshipSession && (
+            <Card>
+              <div className="flex items-start gap-2">
+                <Calendar className="mt-0.5 h-4 w-4 text-emce-darkest" />
+                <div>
+                  <p className="text-section text-emce-text">Coming up</p>
+                  <p className="mt-1 text-sm text-emce-text">
+                    Mentor session with{" "}
+                    <strong>{upcomingMentorshipSession.mentor.user.candidateProfile?.firstName ?? "your mentor"}</strong>
+                  </p>
+                  <p className="mt-0.5 text-hint text-emce-text-sec">
+                    {upcomingMentorshipSession.scheduledAt.toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" })}
+                  </p>
+                </div>
+              </div>
+              <Button asChild className="mt-3 w-full" size="sm" variant="outline">
+                <Link href="/me/sessions">Open dashboard →</Link>
+              </Button>
+            </Card>
+          )}
+
+          <Card>
+            <div className="flex items-center justify-between">
+              <h2 className="text-section text-emce-text">People you may know</h2>
+              <Link href="/people" className="text-xs font-bold text-emce-dark hover:underline">See all</Link>
+            </div>
+            <p className="mt-1 text-hint text-emce-text-sec">Same EV domain as you</p>
+            {suggestions.length === 0 ? (
+              <p className="mt-3 text-hint text-emce-text-muted">
+                We&apos;ll surface suggestions as more people join.
+              </p>
+            ) : (
+              <ul className="mt-3 space-y-3">
+                {await Promise.all(
+                  suggestions.map(async (s) => {
+                    const status = await getConnectionStatus(session.user.id, s.user.id);
+                    const sname = `${s.firstName} ${s.lastName ?? ""}`.trim();
+                    return (
+                      <li key={s.id} className="flex items-start gap-2">
+                        <Link href={`/${s.slug}`}>
+                          <Avatar src={s.profilePhotoUrl} name={sname} size="sm" />
+                        </Link>
+                        <div className="min-w-0 flex-1">
+                          <Link
+                            href={`/${s.slug}`}
+                            className="block truncate text-sm font-bold text-emce-text hover:underline"
+                          >
+                            {sname}
+                          </Link>
+                          {s.headline && (
+                            <p className="line-clamp-2 text-hint text-emce-text-sec">{s.headline}</p>
+                          )}
+                          <div className="mt-1 flex flex-wrap gap-1">
+                            {s.evDomains.slice(0, 2).map((d) => (
+                              <Badge key={d.evDomain.name} variant="outline" className="text-[10px]">
+                                {d.evDomain.name}
+                              </Badge>
+                            ))}
+                          </div>
+                          <div className="mt-2">
+                            <ConnectButton
+                              targetUserId={s.user.id}
+                              initialStatus={status.status === "ACCEPTED"
+                                ? "ACCEPTED"
+                                : status.status === "PENDING_OUT" ? "PENDING_OUT"
+                                : status.status === "PENDING_IN" ? "PENDING_IN"
+                                : "NONE"}
+                              connectionId={status.connectionId}
+                            />
+                          </div>
+                        </div>
+                      </li>
+                    );
+                  }),
+                )}
+              </ul>
+            )}
+          </Card>
+
+          {/* Live competitions — LinkedIn's "Today's puzzles" analogue */}
+          {liveCompetitions.length > 0 && (
+            <Card>
+              <div className="flex items-center justify-between">
+                <h2 className="text-section text-emce-text">Live competitions</h2>
+                <Link href="/competitions" className="text-xs font-bold text-emce-dark hover:underline">All</Link>
+              </div>
+              <ul className="mt-3 space-y-2">
+                {liveCompetitions.map((c) => (
+                  <li key={c.id}>
+                    <Link
+                      href={`/competitions/${c.slug}`}
+                      className="flex items-start gap-2 rounded-md p-2 hover:bg-emce-light-soft"
+                    >
+                      <Avatar src={c.hostCompany.logoUrl} name={c.hostCompany.name} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className="line-clamp-1 text-sm font-bold text-emce-text">{c.title}</p>
+                        <p className="text-hint text-emce-text-sec">
+                          {c.hostCompany.name} · ends {relativeTime(c.endsAt)}
+                        </p>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
+          {/* Footer mini — LinkedIn's bottom-right About / Help block */}
+          <div className="px-2 text-center text-[10px] text-emce-text-sec">
+            <Link href="/about" className="hover:underline">About</Link> ·{" "}
+            <Link href="/jobs" className="hover:underline">Jobs</Link> ·{" "}
+            <Link href="/companies" className="hover:underline">Companies</Link> ·{" "}
+            <Link href="/diyguru" className="hover:underline">DIYguru</Link>
+          </div>
+        </aside>
         </div>
       </div>
       <SiteFooter />
     </>
+  );
+}
+
+function ShortcutRow({ href, icon, label }: { href: string; icon: React.ReactNode; label: string }) {
+  return (
+    <li>
+      <Link
+        href={href}
+        className="flex items-center gap-2 px-4 py-2 font-semibold text-emce-text-sec hover:bg-emce-light-soft hover:text-emce-text"
+      >
+        {icon}
+        <span>{label}</span>
+      </Link>
+    </li>
   );
 }
