@@ -551,6 +551,323 @@ export async function uploadAvatar(formData: FormData) {
 }
 
 /**
+ * LinkedIn-style cover photo upload. Mirrors the avatar flow with
+ * three differences:
+ *   - Larger size cap (8MB — banners are wider, often higher-res).
+ *   - Object key is prefixed `banners/<profileId>` to keep them
+ *     separate from avatars in the same bucket.
+ *   - Writes `bannerUrl` instead of `profilePhotoUrl` and revalidates
+ *     the same surfaces (the public profile page renders the banner
+ *     behind the avatar in the header card).
+ *
+ * Same MIME-type allow-list + magic-byte sniff as avatars — SVG and
+ * anything that doesn't have a recognised image header is rejected.
+ */
+export async function uploadBanner(formData: FormData) {
+  const { profile } = await requireCandidate();
+  await rateLimitOrThrow(`banner:${profile.userId}`, "resumeUpload");
+  const file = formData.get("banner") as File | null;
+  if (!file) return;
+  if (file.size > 8 * 1024 * 1024) {
+    throw new Error("Cover photo must be under 8MB.");
+  }
+  if (file.size === 0) {
+    throw new Error("Empty file.");
+  }
+  if (file.type && !ALLOWED_AVATAR_MIMES.has(file.type)) {
+    throw new Error("Only JPEG, PNG, WEBP, or GIF images are accepted.");
+  }
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const kind = sniffImageKind(buffer);
+  if (!kind) {
+    throw new Error("File content is not a supported image (JPEG/PNG/WebP/GIF).");
+  }
+  const ext = kind === "jpeg" ? "jpg" : kind;
+  const contentType = `image/${kind === "jpeg" ? "jpeg" : kind}`;
+  const key = objectKey(`banners/${profile.id}`, ext);
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: buckets.avatars,
+      Key: key,
+      Body: buffer,
+      ContentType: contentType,
+      ACL: "public-read",
+      Metadata: { "x-content-type-options": "nosniff" },
+    }),
+  );
+  await db.candidateProfile.update({
+    where: { id: profile.id },
+    data: { bannerUrl: publicUrl("avatars", key) },
+  });
+  revalidatePath("/me/profile");
+  revalidatePath("/me");
+  revalidatePath(`/${profile.slug}`);
+}
+
+/** Clears the cover photo so the profile reverts to the default brand gradient. */
+export async function removeBanner() {
+  const { profile } = await requireCandidate();
+  await db.candidateProfile.update({
+    where: { id: profile.id },
+    data: { bannerUrl: null },
+  });
+  revalidatePath("/me/profile");
+  revalidatePath(`/${profile.slug}`);
+}
+
+/**
+ * LinkedIn-style availability frame: pick exactly one of looking,
+ * hiring, or neither. The two boolean columns on CandidateProfile
+ * (`openToWork`, `hiringNow`) are kept independent in the schema but
+ * are mutually exclusive at the application level — we set both
+ * here in one write so the public profile + Avatar can never end up
+ * showing two frames.
+ */
+const availabilitySchema = z.object({
+  status: z.enum(["LOOKING", "HIRING", "NONE"]),
+});
+
+export async function saveAvailability(formData: FormData) {
+  const { profile } = await requireCandidate();
+  const parsed = availabilitySchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return;
+  const { status } = parsed.data;
+  await db.candidateProfile.update({
+    where: { id: profile.id },
+    data: {
+      openToWork: status === "LOOKING",
+      hiringNow: status === "HIRING",
+    },
+  });
+  revalidatePath("/me/profile");
+  revalidatePath("/me");
+  revalidatePath(`/${profile.slug}`);
+}
+
+// ─── Custom CTA chip ───────────────────────────────────────
+const customCtaSchema = z.object({
+  customCta: z.string().max(160).optional().nullable(),
+});
+
+/**
+ * Save the LinkedIn-style custom-CTA chip ("Available for freelance",
+ * "Open to relocate", "Fundraising", etc.). Empty / null clears it.
+ */
+export async function saveCustomCta(formData: FormData) {
+  const { profile } = await requireCandidate();
+  const parsed = customCtaSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return;
+  const trimmed = parsed.data.customCta?.trim() || null;
+  await db.candidateProfile.update({
+    where: { id: profile.id },
+    data: { customCta: trimmed },
+  });
+  revalidatePath("/me/profile");
+  revalidatePath(`/${profile.slug}`);
+}
+
+// ─── Volunteer experience ──────────────────────────────────
+const volunteerSchema = z.object({
+  id: z.string().optional(),
+  organization: z.string().min(1).max(160),
+  role: z.string().min(1).max(160),
+  cause: z.string().max(80).optional().nullable(),
+  startDate: z.string().min(7), // YYYY-MM
+  endDate: z.string().optional().nullable(),
+  current: z.coerce.boolean().optional(),
+  description: z.string().max(2000).optional().nullable(),
+});
+
+export async function saveVolunteerExperience(formData: FormData) {
+  const { profile } = await requireCandidate();
+  const parsed = volunteerSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return;
+  const { id, startDate, endDate, current, ...rest } = parsed.data;
+  const data = {
+    ...rest,
+    candidateId: profile.id,
+    startDate: new Date(`${startDate}-01`),
+    endDate: !current && endDate ? new Date(`${endDate}-01`) : null,
+    current: Boolean(current),
+  };
+  if (id) {
+    // Scope by candidateId so an attacker can't update another candidate's row.
+    const result = await db.volunteerExperience.updateMany({
+      where: { id, candidateId: profile.id },
+      data,
+    });
+    if (result.count === 0) return;
+  } else {
+    await db.volunteerExperience.create({ data });
+  }
+  revalidatePath("/me/profile");
+  revalidatePath(`/${profile.slug}`);
+}
+
+export async function deleteVolunteerExperience(formData: FormData) {
+  const { profile } = await requireCandidate();
+  const id = formData.get("id");
+  if (typeof id !== "string") return;
+  await db.volunteerExperience.deleteMany({ where: { id, candidateId: profile.id } });
+  revalidatePath("/me/profile");
+  revalidatePath(`/${profile.slug}`);
+}
+
+// ─── Featured posts ────────────────────────────────────────
+const FEATURED_LIMIT = 3;
+
+/**
+ * Toggle the "Featured on profile" flag on one of the candidate's
+ * own posts. Caps at 3 featured at once (LinkedIn's limit). Refuses
+ * if the post belongs to a different user — prevents an attacker
+ * from pinning someone else's content to their profile.
+ */
+export async function togglePostFeatured(formData: FormData) {
+  const session = await auth();
+  if (!session?.user) redirect("/signin");
+  const postId = z.string().parse(formData.get("postId"));
+  const post = await db.post.findUnique({
+    where: { id: postId },
+    select: { id: true, authorId: true, featured: true },
+  });
+  if (!post) return;
+  if (post.authorId !== session.user.id) return; // not yours
+
+  if (post.featured) {
+    // Un-pin
+    await db.post.update({
+      where: { id: postId },
+      data: { featured: false, featuredAt: null },
+    });
+  } else {
+    // Pin — but enforce the cap. If the user is already at the limit,
+    // bump the oldest pin off so the newest takes its place. LinkedIn
+    // makes you manually unfeature first; we auto-rotate to keep the
+    // editor flow simple.
+    const currentlyFeatured = await db.post.findMany({
+      where: { authorId: session.user.id, featured: true },
+      orderBy: { featuredAt: "asc" },
+      select: { id: true },
+    });
+    const toUnfeature = currentlyFeatured.slice(0, Math.max(0, currentlyFeatured.length - (FEATURED_LIMIT - 1)));
+    if (toUnfeature.length > 0) {
+      await db.post.updateMany({
+        where: { id: { in: toUnfeature.map((p) => p.id) } },
+        data: { featured: false, featuredAt: null },
+      });
+    }
+    await db.post.update({
+      where: { id: postId },
+      data: { featured: true, featuredAt: new Date() },
+    });
+  }
+
+  // Public profile + author's own profile editor + feed all care.
+  revalidatePath("/me/profile");
+  const candidate = await db.candidateProfile.findUnique({
+    where: { userId: session.user.id },
+    select: { slug: true },
+  });
+  if (candidate) revalidatePath(`/${candidate.slug}`);
+}
+
+// ─── Recommendations ───────────────────────────────────────
+const recommendationSchema = z.object({
+  toUserSlug: z.string().min(1),
+  body: z.string().min(80, "Write at least 80 characters — short recs read as spam.").max(1200),
+  relationship: z.string().min(3).max(140),
+});
+
+/**
+ * Write or update a recommendation for another candidate. Lands as
+ * PENDING — only the receiver can flip to VISIBLE. Re-writes (same
+ * giver + receiver) update in place via the unique index, returning
+ * the rec to PENDING for re-approval.
+ */
+export async function writeRecommendation(formData: FormData) {
+  const session = await auth();
+  if (!session?.user) redirect("/signin");
+  await rateLimitOrThrow(`rec:${session.user.id}`, "saveItem");
+  const parsed = recommendationSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    redirect(
+      `/${formData.get("toUserSlug")}?error=` +
+        encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid input"),
+    );
+  }
+  const { toUserSlug, body, relationship } = parsed.data;
+  const toProfile = await db.candidateProfile.findUnique({
+    where: { slug: toUserSlug },
+    select: { userId: true, slug: true },
+  });
+  if (!toProfile) return;
+  if (toProfile.userId === session.user.id) return; // no self-recs
+  await db.recommendation.upsert({
+    where: { fromUserId_toUserId: { fromUserId: session.user.id, toUserId: toProfile.userId } },
+    create: {
+      fromUserId: session.user.id,
+      toUserId: toProfile.userId,
+      body: body.trim(),
+      relationship: relationship.trim(),
+      status: "PENDING",
+    },
+    update: {
+      body: body.trim(),
+      relationship: relationship.trim(),
+      // Re-writes drop the rec back into PENDING so the receiver re-vets
+      // the new copy before it goes public.
+      status: "PENDING",
+    },
+  });
+  revalidatePath(`/${toProfile.slug}`);
+  redirect(
+    `/${toProfile.slug}?notice=` +
+      encodeURIComponent("Recommendation sent — they'll see it for review."),
+  );
+}
+
+const recReceiverActionSchema = z.object({ id: z.string() });
+
+/**
+ * Receiver-side approval: flip a PENDING rec to VISIBLE so it shows
+ * on the public profile. Scoped to the receiver — refuses anything
+ * not addressed to the current user.
+ */
+export async function approveRecommendation(formData: FormData) {
+  const session = await auth();
+  if (!session?.user) redirect("/signin");
+  const { id } = recReceiverActionSchema.parse(Object.fromEntries(formData));
+  const result = await db.recommendation.updateMany({
+    where: { id, toUserId: session.user.id },
+    data: { status: "VISIBLE" },
+  });
+  if (result.count === 0) return;
+  const profile = await db.candidateProfile.findUnique({
+    where: { userId: session.user.id },
+    select: { slug: true },
+  });
+  revalidatePath("/me/profile");
+  if (profile) revalidatePath(`/${profile.slug}`);
+}
+
+/** Receiver-side hide — keeps the rec in the DB (un-hide is reversible) but pulls it from public surfaces. */
+export async function hideRecommendation(formData: FormData) {
+  const session = await auth();
+  if (!session?.user) redirect("/signin");
+  const { id } = recReceiverActionSchema.parse(Object.fromEntries(formData));
+  await db.recommendation.updateMany({
+    where: { id, toUserId: session.user.id },
+    data: { status: "HIDDEN" },
+  });
+  const profile = await db.candidateProfile.findUnique({
+    where: { userId: session.user.id },
+    select: { slug: true },
+  });
+  revalidatePath("/me/profile");
+  if (profile) revalidatePath(`/${profile.slug}`);
+}
+
+/**
  * Mint a short-lived signed URL for downloading a candidate's resume.
  * Authorization rules:
  *   - The candidate themselves

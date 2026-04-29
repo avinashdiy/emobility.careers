@@ -23,6 +23,9 @@ const TABS = [
   { value: "legal", label: "Legal" },
   { value: "payments", label: "Payments" },
   { value: "social", label: "Moderation" },
+  { value: "realtime", label: "Realtime" },
+  { value: "calendar", label: "Calendar" },
+  { value: "admin", label: "Admin" },
   { value: "integrations", label: "Integrations" },
 ] as const;
 type Tab = typeof TABS[number]["value"];
@@ -42,6 +45,9 @@ const CATEGORY_BLURB: Record<string, string> = {
   legal: "Links to your published Terms, Privacy, and Cookie policies.",
   payments: "Razorpay defaults and platform fee. Currency-related changes apply to new orders only.",
   social: "Anti-spam thresholds for the social feed. Tighten if you see abuse.",
+  realtime: "Soketi (Pusher-protocol) credentials for chat + ATS live updates. The server reads SOKETI_* env vars on boot — values saved here mirror the live config; restart the web container after changing.",
+  calendar: "Google Calendar OAuth for the interview-sync feature. Save the credentials here to prepare; the sync worker activates them in a follow-up release. Until then, every scheduled interview ships with an ICS download fallback.",
+  admin: "Admin-tier defaults — alert routing, audit-log retention, account lockout thresholds.",
 };
 
 function probe(varName: string): boolean {
@@ -106,6 +112,9 @@ export default async function SettingsPage({
               legal: "Legal links",
               payments: "Payments",
               social: "Social moderation",
+              realtime: "Realtime / Soketi",
+              calendar: "Google Calendar",
+              admin: "Admin defaults",
             };
             return (
               <div className="grid gap-6 lg:grid-cols-3">
@@ -144,6 +153,21 @@ export default async function SettingsPage({
                     {tab === "payments" && (
                       <p className="mt-2 text-sm text-emce-text-sec">
                         Platform fee is applied at booking time — existing sessions are unaffected. Setting to <code>0</code> keeps the v1 "no fee" promise.
+                      </p>
+                    )}
+                    {tab === "realtime" && (
+                      <p className="mt-2 text-sm text-emce-text-sec">
+                        These mirror the <code>SOKETI_*</code> env vars on the server. The Pusher client bootstraps once at module-init, so changes here apply on next deploy / web container restart. The browser-side public key is bundled at build time — also requires a redeploy.
+                      </p>
+                    )}
+                    {tab === "calendar" && (
+                      <p className="mt-2 text-sm text-emce-text-sec">
+                        Reuse the same Google Cloud OAuth client as <Link href="/admin/settings/auth" className="font-bold text-emce-dark hover:underline">sign-in</Link>; just add the <code>https://www.googleapis.com/auth/calendar.events</code> scope to the consent screen and enable the Calendar API in the project. Sync activates when the upcoming worker ships.
+                      </p>
+                    )}
+                    {tab === "admin" && (
+                      <p className="mt-2 text-sm text-emce-text-sec">
+                        Notification email gets the security + ops alerts that aren&apos;t worth a Slack channel of their own. Audit retention runs nightly — bumping it up just means more rows; bumping down purges immediately on the next cron tick.
                       </p>
                     )}
                   </Card>

@@ -10,6 +10,7 @@ export interface MatchedCandidate {
   profilePhotoUrl: string | null;
   isDIYguruVerified: boolean;
   openToWork: boolean;
+  hiringNow: boolean;
   totalExperienceMonths: number;
   location: string | null;
   vectorScore: number;        // 0..1
@@ -139,6 +140,7 @@ export async function matchCandidatesForJob(opts: MatchOptions): Promise<Matched
       profilePhotoUrl: c.profilePhotoUrl,
       isDIYguruVerified: c.isDIYguruVerified,
       openToWork: c.openToWork,
+      hiringNow: c.hiringNow,
       totalExperienceMonths: c.totalExperienceMonths,
       location: c.location,
       vectorScore,

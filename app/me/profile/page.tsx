@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { Logo } from "@/components/brand/Logo";
 import { AvatarUploader } from "@/components/profile/AvatarUploader";
+import { BannerUploader } from "@/components/profile/BannerUploader";
 import { CustomizeUrlEditor } from "@/components/profile/CustomizeUrlEditor";
 import { HeaderEditor } from "@/components/profile/sections/HeaderEditor";
 import { ExperienceEditor } from "@/components/profile/sections/ExperienceEditor";
@@ -18,6 +19,11 @@ import { ProjectsEditor } from "@/components/profile/sections/ProjectsEditor";
 import { AwardsEditor } from "@/components/profile/sections/AwardsEditor";
 import { LanguagesEditor } from "@/components/profile/sections/LanguagesEditor";
 import { PrivacyEditor } from "@/components/profile/sections/PrivacyEditor";
+import { AvailabilityEditor } from "@/components/profile/sections/AvailabilityEditor";
+import { CustomCtaEditor } from "@/components/profile/sections/CustomCtaEditor";
+import { VolunteerExperienceEditor } from "@/components/profile/sections/VolunteerExperienceEditor";
+import { FeaturedPostsEditor } from "@/components/profile/sections/FeaturedPostsEditor";
+import { RecommendationsInbox } from "@/components/profile/sections/RecommendationsInbox";
 import { ProfileCompletenessCard } from "@/components/profile/ProfileCompletenessCard";
 import { evaluateProfile, COMPLETENESS_THRESHOLDS } from "@/lib/profile-completeness";
 import { env } from "@/lib/env";
@@ -49,6 +55,7 @@ export default async function MyProfilePage({
       projects: { orderBy: { createdAt: "desc" } },
       awards: { orderBy: { date: "desc" } },
       evDomains: { include: { evDomain: true } },
+      volunteerExperiences: { orderBy: { startDate: "desc" } },
       user: { select: { phoneVerifiedAt: true, emailVerifiedAt: true } },
     },
   });
@@ -59,6 +66,38 @@ export default async function MyProfilePage({
     phoneVerified: !!profile.user.phoneVerifiedAt,
     emailVerified: !!profile.user.emailVerifiedAt,
   });
+
+  // Side queries for the new sections — fetched in parallel so we
+  // don't add a serial round-trip on top of the main profile load.
+  const [ownPosts, receivedRecs] = await Promise.all([
+    db.post.findMany({
+      where: { authorId: session.user.id },
+      orderBy: [{ featured: "desc" }, { featuredAt: "desc" }, { createdAt: "desc" }],
+      take: 20,
+      select: {
+        id: true, body: true, featured: true, featuredAt: true,
+        createdAt: true, reactionsCount: true, commentsCount: true,
+        kind: true, articleTitle: true,
+      },
+    }),
+    db.recommendation.findMany({
+      where: { toUserId: session.user.id },
+      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+      take: 50,
+      include: {
+        fromUser: {
+          select: {
+            candidateProfile: {
+              select: {
+                slug: true, firstName: true, lastName: true,
+                headline: true, profilePhotoUrl: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
 
   return (
     <div className="min-h-screen bg-emce-light-bg">
@@ -101,41 +140,73 @@ export default async function MyProfilePage({
           <ProfileCompletenessCard result={completeness} />
         </div>
 
-        {/* Profile summary card */}
-        <Card className="mb-6 p-6">
-          <div className="flex items-start gap-4">
-            <div>
-              <Avatar src={profile.profilePhotoUrl} name={fullName} size="lg" />
-              <AvatarUploader />
-            </div>
-            <div className="flex-1">
-              <div className="flex items-center gap-2">
-                <h1 className="text-2xl font-extrabold text-emce-text">{fullName}</h1>
-                {profile.isDIYguruVerified && <Badge variant="verified">⭐ DIYguru Verified</Badge>}
-              </div>
-              {profile.headline && (
-                <p className="text-emce-text-sec">{profile.headline}</p>
-              )}
-              <div className="mt-2 flex flex-wrap gap-2">
-                <Badge variant="default">{profile.profileMode}</Badge>
-                <Badge variant={profile.openToWork ? "success" : "outline"}>
-                  {profile.openToWork ? "Open to work" : "Not actively looking"}
-                </Badge>
-                <Badge variant="outline">
-                  {profile.cvVisibility === "EVERYONE" ? "Public" : profile.cvVisibility.replace("_", " ").toLowerCase()}
-                </Badge>
-              </div>
-            </div>
+        {/* Profile summary card — LinkedIn-style header with cover
+            photo on top + avatar overlapping the bottom edge. The
+            BannerUploader pins to the top-right of the cover; the
+            AvatarUploader sits below the avatar. */}
+        <Card className="mb-6 overflow-hidden p-0">
+          {/* Cover photo */}
+          <div className="relative">
+            {profile.bannerUrl ? (
+              <div
+                className="h-32 bg-cover bg-center sm:h-48"
+                style={{ backgroundImage: `url(${profile.bannerUrl})` }}
+                role="img"
+                aria-label="Your cover photo"
+              />
+            ) : (
+              <div className="emce-hero-gradient h-32 sm:h-48" />
+            )}
+            <BannerUploader hasBanner={!!profile.bannerUrl} />
           </div>
 
-          {!profile.onboardingCompletedAt && (
-            <div className="mt-4 rounded-md bg-emce-orange-light p-3 text-sm">
-              <strong>Finish onboarding</strong> to set your job preferences.{" "}
-              <Link href="/onboarding/preferences" className="font-bold text-emce-dark underline">
-                Continue →
-              </Link>
+          {/* Header body — avatar overlaps the cover */}
+          <div className="relative px-4 pb-5 sm:px-6 sm:pb-6">
+            <div className="absolute -top-12 left-4 flex flex-col items-center sm:-top-16 sm:left-6">
+              <Avatar
+                src={profile.profilePhotoUrl}
+                name={fullName}
+                size="xl"
+                openToWork={profile.openToWork && !profile.hiringNow}
+                hiring={profile.hiringNow}
+                className="h-24 w-24 ring-4 ring-white sm:h-32 sm:w-32"
+              />
+              <AvatarUploader />
             </div>
-          )}
+
+            {/* Spacer so the body clears the floating avatar */}
+            <div className="h-14 sm:h-20" />
+
+            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+              <h1 className="text-2xl font-extrabold leading-tight text-emce-text">{fullName}</h1>
+              {profile.isDIYguruVerified && <Badge variant="verified">⭐ DIYguru Verified</Badge>}
+            </div>
+            {profile.headline && (
+              <p className="mt-1 text-emce-text-sec">{profile.headline}</p>
+            )}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Badge variant="default">{profile.profileMode}</Badge>
+              {profile.hiringNow ? (
+                <Badge variant="verified">🎯 Hiring now</Badge>
+              ) : profile.openToWork ? (
+                <Badge variant="success">Open to work</Badge>
+              ) : (
+                <Badge variant="outline">Not actively looking</Badge>
+              )}
+              <Badge variant="outline">
+                {profile.cvVisibility === "EVERYONE" ? "Public" : profile.cvVisibility.replace("_", " ").toLowerCase()}
+              </Badge>
+            </div>
+
+            {!profile.onboardingCompletedAt && (
+              <div className="mt-4 rounded-md bg-emce-orange-light p-3 text-sm">
+                <strong>Finish onboarding</strong> to set your job preferences.{" "}
+                <Link href="/onboarding/preferences" className="font-bold text-emce-dark underline">
+                  Continue →
+                </Link>
+              </div>
+            )}
+          </div>
         </Card>
 
         <div className="space-y-4">
@@ -144,8 +215,20 @@ export default async function MyProfilePage({
             domain={env.NEXT_PUBLIC_APP_URL.replace(/^https?:\/\//, "")}
           />
           <HeaderEditor profile={profile} />
+          <AvailabilityEditor
+            openToWork={profile.openToWork}
+            hiringNow={profile.hiringNow}
+          />
+          <CustomCtaEditor value={profile.customCta} />
+          <FeaturedPostsEditor
+            posts={ownPosts.map((p) => ({
+              ...p,
+              kind: p.kind as string,
+            }))}
+          />
           <ExperienceEditor experiences={profile.experiences} />
           <EducationEditor education={profile.education} />
+          <VolunteerExperienceEditor entries={profile.volunteerExperiences} />
           <SkillsEditor
             initialSkills={profile.skills.map((s) => ({
               skillId: s.skillId,
@@ -158,6 +241,7 @@ export default async function MyProfilePage({
           <ProjectsEditor projects={profile.projects} />
           <AwardsEditor awards={profile.awards} />
           <LanguagesEditor languages={profile.languagesSpoken} />
+          <RecommendationsInbox recs={receivedRecs} />
           <PrivacyEditor
             contactVisibility={profile.contactVisibility}
             resumeVisibility={profile.resumeVisibility}

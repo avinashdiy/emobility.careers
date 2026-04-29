@@ -90,7 +90,7 @@ export function InviteableMatchList({
                   <div className="grid h-9 w-9 flex-shrink-0 place-items-center rounded-full bg-emce-light-soft text-sm font-extrabold text-emce-dark">
                     {idx + 1}
                   </div>
-                  <Avatar src={m.profilePhotoUrl} name={fullName} size="md" openToWork={m.openToWork} />
+                  <Avatar src={m.profilePhotoUrl} name={fullName} size="md" openToWork={m.openToWork && !m.hiringNow} hiring={m.hiringNow} />
                   <div className="flex-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <Link href={`/${m.slug}`} className="font-bold text-emce-text hover:underline">

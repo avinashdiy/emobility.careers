@@ -6,12 +6,20 @@ interface AvatarProps extends React.HTMLAttributes<HTMLDivElement> {
   name?: string | null;
   size?: "sm" | "md" | "lg" | "xl";
   /**
-   * LinkedIn-style "#OpenToWork" green ring around the avatar disc plus
-   * a small green chip pinned to the bottom-right. Renders only when
-   * `openToWork` is true *and* size is "md" or larger — at "sm" the chip
-   * obscures the avatar, so we silently drop it on small renders.
+   * LinkedIn-style "#OpenToWork" green ring + chip overlay. Renders
+   * only when `openToWork` is true *and* size is "md" or larger — at
+   * "sm" the chip obscures the avatar, so we silently drop it on small
+   * renders. Mutually exclusive with `hiring` (the editor enforces
+   * exactly one of the two at server-action save time).
    */
   openToWork?: boolean;
+  /**
+   * "#Hiring" frame for users who are recruiting. Same chip + ring
+   * pattern as `openToWork` but in a contrasting dark-teal palette so
+   * the two roles read distinctly at a glance. If both flags are
+   * accidentally set, hiring wins (the more deliberate signal).
+   */
+  hiring?: boolean;
 }
 
 const sizeMap = {
@@ -52,18 +60,29 @@ const ringSize = {
  * silhouette is recognisable instantly and never makes the user feel
  * the platform is half-built.
  */
-export function Avatar({ src, name, size = "md", className, openToWork, ...props }: AvatarProps) {
+export function Avatar({ src, name, size = "md", className, openToWork, hiring, ...props }: AvatarProps) {
+  // Hiring wins when both are accidentally set (more deliberate signal).
+  const status: "hiring" | "open" | null = hiring ? "hiring" : openToWork ? "open" : null;
   // The chip overlay would obscure most of an `sm` avatar — keep the ring
-  // (which is still a useful "open" cue) but skip the chip at that size.
-  const showChip = openToWork && size !== "sm";
-  const showRing = !!openToWork;
+  // (which is still a useful "open"/"hiring" cue) but skip the chip at sm.
+  const showChip = status !== null && size !== "sm";
+  const showRing = status !== null;
+  // Hiring uses the brand's dark teal — visually clearly distinct from
+  // the lime "Open to work" ring so a viewer can tell at a glance which
+  // side of the marketplace they're on.
+  const ringColor = status === "hiring" ? "ring-emce-darkest" : "ring-emce-mid";
+  const chipBg = status === "hiring" ? "bg-emce-darkest text-emce-mid" : "bg-emce-mid text-emce-darkest";
+  const chipText = status === "hiring" ? "#Hiring" : "#OpenToWork";
+  const ariaLabel = status === "hiring"
+    ? (name ? `${name} — Hiring now` : "Hiring now")
+    : (name ? `${name} — Open to work` : "Open to work");
 
   const inner = (
     <div
       className={cn(
         "grid shrink-0 place-items-center overflow-hidden rounded-full bg-emce-light-soft text-emce-dark/70",
         sizeMap[size],
-        showRing && `${ringSize[size]} ring-emce-mid ring-offset-2 ring-offset-white`,
+        showRing && `${ringSize[size]} ${ringColor} ring-offset-2 ring-offset-white`,
         className,
       )}
       role={src ? undefined : "img"}
@@ -82,23 +101,20 @@ export function Avatar({ src, name, size = "md", className, openToWork, ...props
   if (!showChip) return inner;
 
   // Wrap so we can position the chip absolutely relative to the avatar.
-  // `aria-label` is hoisted to the wrapper so the chip + ring are
-  // announced as a single "X — Open to work" unit by screen readers.
+  // `aria-label` is hoisted to the wrapper so chip + ring are announced
+  // as a single "X — Open to work / Hiring now" unit by screen readers.
   return (
-    <div
-      className="relative inline-flex"
-      role="group"
-      aria-label={name ? `${name} — Open to work` : "Open to work"}
-    >
+    <div className="relative inline-flex" role="group" aria-label={ariaLabel}>
       {inner}
       <span
         className={cn(
-          "pointer-events-none absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-emce-mid font-extrabold text-emce-darkest",
+          "pointer-events-none absolute -bottom-1 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full font-extrabold",
+          chipBg,
           chipSize[size],
         )}
         aria-hidden="true"
       >
-        #OpenToWork
+        {chipText}
       </span>
     </div>
   );

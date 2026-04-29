@@ -28,7 +28,10 @@ export interface SettingDefinition {
     | "system"
     | "payments"
     | "social"
-    | "auth";
+    | "auth"
+    | "realtime"
+    | "calendar"
+    | "admin";
   type: SiteSettingType;
   label: string;
   description?: string;
@@ -93,6 +96,35 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   { key: "auth.google.client_secret", category: "auth", type: "STRING", label: "Google Client Secret", default: "", sensitive: true, description: "From the same OAuth client in Google Cloud Console. Treat as a password — never commit it." },
   { key: "auth.linkedin.client_id", category: "auth", type: "STRING", label: "LinkedIn Client ID", default: "", description: "From linkedin.com/developers → your app → Auth tab → Application credentials." },
   { key: "auth.linkedin.client_secret", category: "auth", type: "STRING", label: "LinkedIn Client Secret", default: "", sensitive: true, description: "From the same LinkedIn developer app. Rotates if exposed; copy carefully." },
+
+  // ─── Realtime (Soketi / Pusher-protocol) ───────────────────
+  // The Pusher client in lib/realtime.ts reads the SOKETI_* env vars
+  // at module-init time. These settings are saved to the DB and
+  // mirror the env values for visibility — change-then-restart is
+  // the only way the server picks them up. (Public client config —
+  // host, port, key — is bundled at build time, so a redeploy is
+  // required there regardless.)
+  { key: "realtime.soketi.app_id", category: "realtime", type: "STRING", label: "Soketi App ID", default: "emce", description: "Application identifier configured in your Soketi container's app definition." },
+  { key: "realtime.soketi.app_key", category: "realtime", type: "STRING", label: "Soketi App Key", default: "", description: "Public key sent to browser clients on connect — also exposed as NEXT_PUBLIC_SOKETI_KEY in the build bundle." },
+  { key: "realtime.soketi.app_secret", category: "realtime", type: "STRING", label: "Soketi App Secret", default: "", sensitive: true, description: "Used by the server to sign broadcast events. Never expose to the client." },
+  { key: "realtime.soketi.host", category: "realtime", type: "STRING", label: "Soketi host", default: "", description: "Public WebSocket hostname (no protocol prefix). Example: ws.emobility.careers" },
+  { key: "realtime.soketi.port", category: "realtime", type: "NUMBER", label: "Soketi port", default: "6001", description: "Default 6001 for vanilla Soketi. Set to 443 if Caddy fronts /ws/* on TLS." },
+
+  // ─── Calendar (Google Calendar interview sync) ─────────────
+  // Placeholder for the upcoming interview-sync feature. Recruiter
+  // schedules interview → event lands on the candidate's Google
+  // Calendar via OAuth. Reuses a Google Cloud OAuth client (often
+  // the same one as auth.google.* with calendar scopes added).
+  // Until the worker that consumes these lands, the values are
+  // saved but unused.
+  { key: "calendar.google.client_id", category: "calendar", type: "STRING", label: "Google Calendar Client ID", default: "", description: "Same Google Cloud project as the sign-in client. Make sure the Calendar API is enabled and the calendar scope is in the consent screen." },
+  { key: "calendar.google.client_secret", category: "calendar", type: "STRING", label: "Google Calendar Client Secret", default: "", sensitive: true, description: "From the same OAuth client. Treat like a password." },
+  { key: "calendar.google.enabled", category: "calendar", type: "BOOLEAN", label: "Enable Google Calendar sync", default: "false", description: "Master toggle. When off, recruiters still get the ICS-download fallback for every interview they schedule." },
+
+  // ─── Admin tier defaults ───────────────────────────────────
+  { key: "admin.notification_email", category: "admin", type: "EMAIL", label: "Admin notification email", default: "", description: "Where security alerts, queue-failure pings, and weekly platform digests are sent. Leave empty to disable." },
+  { key: "admin.audit_retention_days", category: "admin", type: "NUMBER", label: "Audit log retention (days)", default: "180", description: "Entries older than this are purged by the nightly maintenance cron. Indian DPDP guidance is 12+ months for compliance-relevant actions; 180 is a sane default for v1." },
+  { key: "admin.failed_login_lock_threshold", category: "admin", type: "NUMBER", label: "Lock account after N failed logins", default: "10", description: "Lockout window is 15 minutes. Drop to 5 if you see credential-stuffing waves; raise if support tickets pile up about innocent lockouts." },
 ];
 
 const DEFINITIONS_BY_KEY = new Map(SETTING_DEFINITIONS.map((d) => [d.key, d]));

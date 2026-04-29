@@ -109,7 +109,7 @@ export default async function PeoplePage({
                 <Card className="h-full">
                   <Link href={`/${p.slug}`} className="block">
                     <div className="flex items-start gap-3">
-                      <Avatar src={p.profilePhotoUrl} name={fullName} size="md" openToWork={p.openToWork} />
+                      <Avatar src={p.profilePhotoUrl} name={fullName} size="md" openToWork={p.openToWork && !p.hiringNow} hiring={p.hiringNow} />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-emce-text hover:underline">{fullName}</span>

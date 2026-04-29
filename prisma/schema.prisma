@@ -80,6 +80,8 @@ model User {
   diyguruImports      DIYguruImportBatch[]
   verificationReviews VerificationRequest[]   @relation("VerificationReviewer")
   teamInvitesSent     TeamInvite[]            @relation("TeamInviteInviter")
+  recommendationsGiven    Recommendation[]    @relation("RecommendationGiver")
+  recommendationsReceived Recommendation[]    @relation("RecommendationReceiver")
 
   // Social graph
   connectionRequests  Connection[]   @relation("ConnectionRequester")
@@ -271,6 +273,11 @@ model CandidateProfile {
   headline              String?
   summary               String?            @db.Text
   profilePhotoUrl       String?
+  /// LinkedIn-style cover photo. Renders behind the avatar at the top
+  /// of the public profile (1584×396 ideal, 4:1 ratio). Optional —
+  /// falls back to the brand gradient when null. Stored as a public
+  /// URL into the avatars bucket under the `banners/` prefix.
+  bannerUrl             String?
   phone                 String?
   email                 String?
   location              String?
@@ -303,6 +310,16 @@ model CandidateProfile {
   // public but hide the resume until applying to specific jobs.
   resumeVisibility      ResumeVisibility   @default(PRIVATE)
   openToWork            Boolean            @default(true)
+  /// LinkedIn-style "#Hiring" frame for users who are recruiting (founders,
+  /// hiring managers, agency recruiters). Mutually exclusive with
+  /// `openToWork` at the editor + server-action level — both can't be true
+  /// at once. The Avatar component renders a teal ring + "#Hiring" chip
+  /// when this is on, mirroring the green ring + "#OpenToWork" chip flow.
+  hiringNow             Boolean            @default(false)
+  /// Free-text custom CTA chip rendered next to the name on the public
+  /// profile (e.g. "Available for freelance", "Open to relocate",
+  /// "Fundraising"). 160 chars cap; null hides the chip entirely.
+  customCta             String?
 
   // AI-drafted resume — refreshed by the resume-draft worker whenever the
   // candidate edits experience/education/skills/headline/summary. The user
@@ -369,6 +386,7 @@ model CandidateProfile {
   certifications     Certification[]
   projects           Project[]
   awards             Award[]
+  volunteerExperiences VolunteerExperience[]
   applications       Application[]
   savedJobs          SavedJob[]
   savedByEmployers   SavedCandidate[]
@@ -1756,6 +1774,12 @@ model Post {
   reactionsCount Int            @default(0)
   commentsCount  Int            @default(0)
   repostsCount   Int            @default(0)
+  // LinkedIn-style "Featured" pin — the author can spotlight up to 3 of
+  // their posts on the top of their public profile. `featuredAt` doubles
+  // as a sort key so the pinned strip is rendered in the order the user
+  // pinned them; null when not featured.
+  featured       Boolean        @default(false)
+  featuredAt     DateTime?
   createdAt      DateTime       @default(now())
   updatedAt      DateTime       @updatedAt
 
@@ -2504,4 +2528,67 @@ model SiteSetting {
   updatedById String?
 
   @@index([category])
+}
+
+// ─── Volunteer experience ────────────────────────────────────
+//
+// Same shape as Experience minus the company-FK upgrade — volunteer
+// roles rarely map to a Company entity (they're at NGOs, schools,
+// community groups). Kept as a separate model rather than a `kind`
+// discriminator on Experience so the public profile can render the
+// two as distinct sections (LinkedIn does the same) and so the
+// completeness scorer can weight them differently if we ever want.
+
+model VolunteerExperience {
+  id           String           @id @default(cuid())
+  candidateId  String
+  candidate    CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  organization String
+  role         String
+  /// Cause area — Education, Environment, Health, etc. Optional;
+  /// surfaced as a small chip on the profile card.
+  cause        String?
+  startDate    DateTime
+  endDate      DateTime?
+  current      Boolean          @default(false)
+  description  String?          @db.Text
+  createdAt    DateTime         @default(now())
+
+  @@index([candidateId])
+}
+
+// ─── Peer recommendations ────────────────────────────────────
+//
+// LinkedIn-style written endorsements. The receiver controls
+// visibility — every rec lands as PENDING and only flips to VISIBLE
+// when the receiver approves it (avoids spammy / drive-by recs from
+// strangers). Receivers can also HIDE without deleting (LinkedIn
+// pattern: hidden recs come back if visibility flips later).
+
+enum RecommendationStatus {
+  PENDING /// just written, awaiting receiver approval
+  VISIBLE /// approved by the receiver — shows on their public profile
+  HIDDEN /// hidden by the receiver, not shown publicly
+}
+
+model Recommendation {
+  id           String               @id @default(cuid())
+  fromUserId   String
+  fromUser     User                 @relation("RecommendationGiver", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUserId     String
+  toUser       User                 @relation("RecommendationReceiver", fields: [toUserId], references: [id], onDelete: Cascade)
+  /// Free-text endorsement. 280–1200 chars enforced server-side; the
+  /// floor stops 5-word "great person" recs that read as spam.
+  body         String               @db.Text
+  /// How the giver knew the receiver — "Worked together at Ola Electric",
+  /// "Reported to me at Ather", "Studied together at IIT Madras", etc.
+  /// Surfaces as the relationship caption under each rec on the profile.
+  relationship String
+  status       RecommendationStatus @default(PENDING)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  /// One rec per (giver, receiver) pair — re-writes update in place.
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId, status])
 }

@@ -328,7 +328,7 @@ export default async function FeedPage() {
                     return (
                       <li key={s.id} className="flex items-start gap-2">
                         <Link href={`/${s.slug}`}>
-                          <Avatar src={s.profilePhotoUrl} name={sname} size="sm" openToWork={s.openToWork} />
+                          <Avatar src={s.profilePhotoUrl} name={sname} size="sm" openToWork={s.openToWork && !s.hiringNow} hiring={s.hiringNow} />
                         </Link>
                         <div className="min-w-0 flex-1">
                           <Link

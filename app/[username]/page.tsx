@@ -12,6 +12,10 @@ import { SiteHeader } from "@/components/layout/site-header";
 // on the profile content with no visual interruption at the bottom.
 import { saveCandidate } from "@/server/employer/actions";
 import { ShareButton } from "@/components/profile/ShareButton";
+import {
+  RecommendationsSection,
+  WriteRecommendationForm,
+} from "@/components/profile/RecommendationsSection";
 import { ConnectButton } from "@/components/social/ConnectButton";
 import { WhatsAppButton } from "@/components/whatsapp/WhatsAppButton";
 import { FollowUserButton } from "@/components/social/FollowButton";
@@ -32,8 +36,11 @@ import {
   Briefcase,
 } from "lucide-react";
 
-const TABS = ["activity", "about", "experience", "education", "skills"] as const;
-type Tab = (typeof TABS)[number];
+// Public-profile sections render in a continuous scroll on a single
+// page (LinkedIn pattern), not behind tabs. The earlier tabbed layout
+// hid most of the profile per pageview which read thin and made the
+// page feel half-built. The `?tab=` query param is still tolerated
+// (404-safe) for old shares — it's just ignored.
 
 const PERSON_TYPE_LABEL: Record<string, string> = {
   PROFESSIONAL: "Industry Professional",
@@ -82,10 +89,9 @@ export default async function PublicCandidateProfile({
   const { username } = await params;
   if (RESERVED_SLUGS.has(username.toLowerCase())) notFound();
 
-  const sp = await searchParams;
-  const activeTab: Tab = (TABS as readonly string[]).includes(sp.tab ?? "")
-    ? (sp.tab as Tab)
-    : "activity";
+  // searchParams is awaited (Next.js 15 requirement) but no longer
+  // drives the layout — kept here in case a future tab/anchor surfaces.
+  await searchParams;
 
   const session = await auth();
 
@@ -100,6 +106,7 @@ export default async function PublicCandidateProfile({
       projects: { orderBy: { createdAt: "desc" } },
       awards: { orderBy: { date: "desc" } },
       evDomains: { include: { evDomain: true } },
+      volunteerExperiences: { orderBy: { startDate: "desc" } },
       representsCompany: { select: { id: true, slug: true, name: true, logoUrl: true } },
     },
   });
@@ -178,7 +185,7 @@ export default async function PublicCandidateProfile({
         visibility: profile.userId === session?.user?.id ? undefined : "PUBLIC",
       },
       orderBy: { createdAt: "desc" },
-      take: activeTab === "activity" ? 10 : 0,
+      take: 6,
       include: {
         author: {
           select: {
@@ -258,6 +265,104 @@ export default async function PublicCandidateProfile({
     }),
   ]);
 
+  // Featured posts + recommendations + similar profiles. Done in
+  // parallel so the right-rail "Similar profiles" widget doesn't
+  // serialise behind the main profile load.
+  const [featuredPosts, visibleRecs, viewerRec, similarProfiles] = await Promise.all([
+    db.post.findMany({
+      where: { authorId: profile.user.id, featured: true, visibility: "PUBLIC" },
+      orderBy: { featuredAt: "desc" },
+      take: 3,
+      select: {
+        id: true,
+        body: true,
+        kind: true,
+        articleTitle: true,
+        articleCoverUrl: true,
+        embedThumbnailUrl: true,
+        createdAt: true,
+        reactionsCount: true,
+        commentsCount: true,
+      },
+    }),
+    db.recommendation.findMany({
+      where: { toUserId: profile.user.id, status: "VISIBLE" },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: {
+        fromUser: {
+          select: {
+            candidateProfile: {
+              select: {
+                slug: true, firstName: true, lastName: true,
+                headline: true, profilePhotoUrl: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    // Viewer's own rec for this profile (if any) — used to pre-fill
+    // the WriteRecommendationForm so editing reuses the same form
+    // rather than creating a duplicate.
+    session?.user && session.user.id !== profile.user.id
+      ? db.recommendation.findUnique({
+          where: {
+            fromUserId_toUserId: {
+              fromUserId: session.user.id,
+              toUserId: profile.user.id,
+            },
+          },
+          select: { body: true, relationship: true, status: true },
+        })
+      : Promise.resolve(null),
+    // Similar profiles — other candidates sharing at least one
+    // EV-domain tag with the profile being viewed. Powers the right-
+    // rail "People you may know" / "Similar profiles" widget,
+    // mirroring LinkedIn's "People you may know" rail. Excludes the
+    // profile owner themselves.
+    profile.evDomains.length > 0
+      ? db.candidateProfile.findMany({
+          where: {
+            id: { not: profile.id },
+            cvVisibility: { in: ["EVERYONE", "EMPLOYERS_ONLY"] },
+            evDomains: {
+              some: {
+                evDomainId: { in: profile.evDomains.map((d) => d.evDomainId) },
+              },
+            },
+          },
+          orderBy: [
+            { followersCount: "desc" },
+            { connectionsCount: "desc" },
+            { updatedAt: "desc" },
+          ],
+          take: 5,
+          select: {
+            id: true,
+            slug: true,
+            firstName: true,
+            lastName: true,
+            headline: true,
+            profilePhotoUrl: true,
+            isDIYguruVerified: true,
+            openToWork: true,
+            hiringNow: true,
+          },
+        })
+      : Promise.resolve([] as Array<{
+          id: string;
+          slug: string;
+          firstName: string;
+          lastName: string | null;
+          headline: string | null;
+          profilePhotoUrl: string | null;
+          isDIYguruVerified: boolean;
+          openToWork: boolean;
+          hiringNow: boolean;
+        }>),
+  ]);
+
   // Person JSON-LD for richer snippets when public.
   const personJsonLd =
     profile.cvVisibility === "EVERYONE"
@@ -309,23 +414,44 @@ export default async function PublicCandidateProfile({
       {/* LinkedIn-style banner + profile header */}
       <div className="container max-w-5xl py-4 sm:py-6">
         <Card className="overflow-hidden p-0 shadow-sm">
-          {/* Banner — taller, sharp bottom edge */}
-          <div className="emce-hero-gradient h-36 sm:h-52" />
+          {/* Banner — candidate's cover photo if set, otherwise the
+              brand gradient. Heights match LinkedIn's 4:1 ratio at
+              this container width. `bg-cover bg-center` crops cleanly
+              for any uploaded aspect ratio. */}
+          {/* Banner — closer to LinkedIn's 4:1 / shorter aspect so the
+              cover doesn't dominate the fold. ~h-32 mobile / h-44
+              desktop; the avatar overlap below picks up the bottom
+              quarter for the "person disc bridges hero + content"
+              LinkedIn pattern. */}
+          {profile.bannerUrl ? (
+            <div
+              className="h-28 bg-cover bg-center sm:h-40"
+              style={{ backgroundImage: `url(${profile.bannerUrl})` }}
+              role="img"
+              aria-label={`${fullName} cover photo`}
+            />
+          ) : (
+            <div className="emce-hero-gradient h-28 sm:h-40" />
+          )}
 
-          <div className="relative px-4 pb-5 sm:px-6 sm:pb-6">
-            {/* Avatar — overlaps banner ~50%, on its own row so no buttons collide */}
+          <div className="relative px-4 pb-4 sm:px-6 sm:pb-5">
+            {/* Avatar — overlaps banner; tighter sizing matches
+                LinkedIn density (h-24 / h-32 vs the loose h-28 / h-36
+                we had before). Ring stays at 4px for the white-bevel
+                look. */}
             <div className="absolute left-4 top-0 -translate-y-1/2 sm:left-6">
               <Avatar
                 src={profile.profilePhotoUrl}
                 name={fullName}
                 size="xl"
-                openToWork={profile.openToWork}
-                className="h-28 w-28 ring-4 ring-white sm:h-36 sm:w-36 [&>span]:text-3xl"
+                openToWork={profile.openToWork && !profile.hiringNow}
+                hiring={profile.hiringNow}
+                className="h-24 w-24 ring-4 ring-white sm:h-32 sm:w-32 [&>span]:text-2xl"
               />
             </div>
 
             {/* Spacer to clear the floating avatar */}
-            <div className="h-16 sm:h-20" />
+            <div className="h-14 sm:h-18" />
 
             {/* Identity block: name, headline, location row, stats row, badges */}
             <div className="space-y-1.5">
@@ -338,6 +464,11 @@ export default async function PublicCandidateProfile({
                 )}
                 {profile.isDIYguruVerified && (
                   <Badge variant="verified" className="ml-1 text-[10px]">⭐ DIYguru</Badge>
+                )}
+                {profile.customCta && (
+                  <Badge variant="default" size="sm" className="ml-1">
+                    {profile.customCta}
+                  </Badge>
                 )}
               </div>
 
@@ -518,31 +649,14 @@ export default async function PublicCandidateProfile({
             )}
           </div>
 
-          {/* Tabs — LinkedIn-style thin underline, semibold (not bold) */}
-          <nav className="border-t border-emce-border" aria-label="Profile sections">
-            <ul className="flex overflow-x-auto px-2 sm:px-4">
-              {TABS.map((t) => (
-                <li key={t}>
-                  <Link
-                    href={`/${profile.slug}?tab=${t}`}
-                    className={`block whitespace-nowrap border-b-2 px-3 py-2.5 text-sm font-semibold capitalize transition-colors ${
-                      activeTab === t
-                        ? "border-emce-dark text-emce-text"
-                        : "border-transparent text-emce-text-sec hover:border-emce-border hover:text-emce-text"
-                    }`}
-                  >
-                    {t}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </nav>
         </Card>
 
-        {/* Tab content */}
+        {/* Two-column body: main scroll + right rail. LinkedIn pattern —
+            all sections render top-to-bottom in `lg:col-span-2`; the
+            sidebar carries jobs, similar people, mentor info. */}
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <div className="space-y-4 lg:col-span-2">
-            {activeTab === "activity" && (
+            {true && (
               <>
                 {/* Activity header bar — LinkedIn renders this as a slim
                     counter line above the post list, not a separate card. */}
@@ -578,7 +692,48 @@ export default async function PublicCandidateProfile({
               </>
             )}
 
-            {activeTab === "about" && (
+            {/* Featured posts — pinned strip above About. Renders only
+                when the user has actually pinned something; quietly
+                skipped otherwise so we don't show an empty rail. */}
+            {true && featuredPosts.length > 0 && (
+              <Card>
+                <div className="flex items-end justify-between">
+                  <h2 className="text-section text-emce-text">📌 Featured</h2>
+                  <span className="text-hint text-emce-text-muted">
+                    {featuredPosts.length} pinned
+                  </span>
+                </div>
+                <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                  {featuredPosts.map((p) => (
+                    <li key={p.id}>
+                      <Link
+                        href={`/posts/${p.id}`}
+                        className="block h-full rounded-md border border-emce-border bg-white p-3 transition hover:border-emce-mid hover:shadow-emce-hover"
+                      >
+                        {(p.articleCoverUrl || p.embedThumbnailUrl) && (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={p.articleCoverUrl ?? p.embedThumbnailUrl ?? ""}
+                            alt=""
+                            className="mb-2 h-24 w-full rounded object-cover"
+                          />
+                        )}
+                        <p className="line-clamp-1 text-sm font-bold text-emce-text">
+                          {p.kind === "ARTICLE" && p.articleTitle
+                            ? p.articleTitle
+                            : p.body || "(empty post)"}
+                        </p>
+                        <p className="mt-1 text-hint text-emce-text-muted">
+                          {p.reactionsCount} ❤️ · {p.commentsCount} 💬
+                        </p>
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
+
+            {true && (
               <Card>
                 <h2 className="text-section text-emce-text">About</h2>
                 {profile.summary ? (
@@ -597,7 +752,63 @@ export default async function PublicCandidateProfile({
               </Card>
             )}
 
-            {activeTab === "experience" && (
+            {/* Volunteer experience — separate card on the About tab so
+                paid Experience stays the primary signal but volunteer
+                roles still surface. Hidden when there are no entries
+                so the tab doesn't carry an empty placeholder. */}
+            {true && profile.volunteerExperiences.length > 0 && (
+              <Card>
+                <h2 className="text-section text-emce-text">🤝 Volunteer experience</h2>
+                <ul className="mt-3 space-y-3">
+                  {profile.volunteerExperiences.map((v) => (
+                    <li key={v.id}>
+                      <div className="flex flex-wrap items-baseline gap-x-2">
+                        <span className="font-bold text-emce-text">{v.role}</span>
+                        <span className="text-sm text-emce-text-sec">at {v.organization}</span>
+                        {v.cause && (
+                          <Badge variant="default" size="sm">{v.cause}</Badge>
+                        )}
+                      </div>
+                      <p className="text-hint text-emce-text-muted">
+                        {v.startDate.toLocaleDateString("en-IN", { month: "short", year: "numeric" })}
+                        {" – "}
+                        {v.current
+                          ? "Present"
+                          : v.endDate
+                            ? v.endDate.toLocaleDateString("en-IN", { month: "short", year: "numeric" })
+                            : "—"}
+                      </p>
+                      {v.description && (
+                        <p className="mt-1 whitespace-pre-line text-sm text-emce-text-sec">
+                          {v.description}
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
+
+            {/* Recommendations — visible peer endorsements + a
+                "Write a recommendation" form for signed-in viewers
+                who aren't the profile owner. The form pre-fills any
+                existing rec the viewer has already written, so
+                editing doesn't create a duplicate. */}
+            {true && (
+              <>
+                {visibleRecs.length > 0 && (
+                  <RecommendationsSection recs={visibleRecs} />
+                )}
+                {session?.user && session.user.id !== profile.user.id && (
+                  <WriteRecommendationForm
+                    toUserSlug={profile.slug}
+                    existing={viewerRec ?? undefined}
+                  />
+                )}
+              </>
+            )}
+
+            {true && (
               <Card>
                 <h2 className="text-section text-emce-text flex items-center gap-2">
                   <Briefcase className="h-4 w-4 text-emce-mid" /> Experience
@@ -634,7 +845,7 @@ export default async function PublicCandidateProfile({
               </Card>
             )}
 
-            {activeTab === "education" && (
+            {true && (
               <Card>
                 <h2 className="text-section text-emce-text flex items-center gap-2">
                   <GraduationCap className="h-4 w-4 text-emce-mid" /> Education
@@ -660,7 +871,7 @@ export default async function PublicCandidateProfile({
               </Card>
             )}
 
-            {activeTab === "skills" && (
+            {true && (
               <>
                 <Card>
                   <h2 className="text-section text-emce-text">Skills</h2>
@@ -742,6 +953,22 @@ export default async function PublicCandidateProfile({
                   </Card>
                 )}
               </>
+            )}
+
+            {/* Languages — moved out of the right rail to match
+                LinkedIn's main-column convention. Renders only when
+                the candidate has populated the field. */}
+            {profile.languagesSpoken.length > 0 && (
+              <Card>
+                <h2 className="text-section text-emce-text">Languages</h2>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {profile.languagesSpoken.map((l) => (
+                    <Badge key={l} variant="outline">
+                      {l}
+                    </Badge>
+                  ))}
+                </div>
+              </Card>
             )}
           </div>
 
@@ -828,6 +1055,77 @@ export default async function PublicCandidateProfile({
               </Card>
             )}
 
+            {/* People you may know — LinkedIn-style. Other candidates
+                sharing at least one EV-domain tag with this profile,
+                ranked by follower / connection counts. Skipped when
+                the profile owner has no domains tagged (no signal to
+                match on). */}
+            {similarProfiles.length > 0 && (
+              <Card>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-section text-emce-text">People you may know</h2>
+                  <Link
+                    href="/people"
+                    className="text-xs font-bold text-emce-dark hover:underline"
+                  >
+                    All
+                  </Link>
+                </div>
+                <p className="mt-1 text-hint text-emce-text-sec">
+                  Same EV domain
+                  {profile.evDomains.length > 0 &&
+                    ` · ${profile.evDomains
+                      .slice(0, 2)
+                      .map((d) => d.evDomain.name)
+                      .join(", ")}`}
+                </p>
+                <ul className="mt-3 space-y-2">
+                  {similarProfiles.map((p) => {
+                    const pName = `${p.firstName} ${p.lastName ?? ""}`.trim();
+                    return (
+                      <li key={p.id}>
+                        <Link
+                          href={`/${p.slug}`}
+                          className="flex items-start gap-2 rounded-md p-2 hover:bg-emce-light-soft"
+                        >
+                          <Avatar
+                            src={p.profilePhotoUrl}
+                            name={pName}
+                            size="sm"
+                            openToWork={p.openToWork && !p.hiringNow}
+                            hiring={p.hiringNow}
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-1">
+                              <p className="line-clamp-1 text-sm font-bold text-emce-text">
+                                {pName}
+                              </p>
+                              {p.isDIYguruVerified && (
+                                <Badge variant="verified" size="sm" className="shrink-0 text-[8px]">
+                                  ⭐
+                                </Badge>
+                              )}
+                            </div>
+                            {p.headline && (
+                              <p className="line-clamp-1 text-hint text-emce-text-sec">
+                                {p.headline}
+                              </p>
+                            )}
+                          </div>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <Link
+                  href="/people"
+                  className="mt-3 block text-center text-xs font-bold text-emce-dark hover:underline"
+                >
+                  Show more →
+                </Link>
+              </Card>
+            )}
+
             {competitionWins.length > 0 && (
               <Card>
                 <div className="flex items-center gap-2">
@@ -847,17 +1145,6 @@ export default async function PublicCandidateProfile({
                     </li>
                   ))}
                 </ul>
-              </Card>
-            )}
-
-            {profile.languagesSpoken.length > 0 && (
-              <Card>
-                <h2 className="text-section text-emce-text">Languages</h2>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {profile.languagesSpoken.map((l) => (
-                    <Badge key={l} variant="outline">{l}</Badge>
-                  ))}
-                </div>
               </Card>
             )}
 
