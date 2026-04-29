@@ -104,15 +104,7 @@ export default async function PublicCandidateProfile({
       user: { select: { id: true, role: true } },
       experiences: { orderBy: { startDate: "desc" } },
       education: { orderBy: { startYear: "desc" } },
-      skills: {
-        include: {
-          skill: true,
-          // Endorsement count surfaces next to each skill name on the
-          // public profile. Cheap on the SQL side because the
-          // (candidateId, skillId) prefix index covers it.
-          _count: { select: { endorsements: true } },
-        },
-      },
+      skills: { include: { skill: true } },
       certifications: { orderBy: { issueDate: "desc" } },
       projects: { orderBy: { createdAt: "desc" } },
       awards: { orderBy: { date: "desc" } },
@@ -276,11 +268,10 @@ export default async function PublicCandidateProfile({
     }),
   ]);
 
-  // Featured posts + recommendations + similar profiles + the
-  // viewer's own skill endorsements. Done in parallel so the
-  // right-rail "Similar profiles" widget doesn't serialise behind
-  // the main profile load.
-  const [featuredPosts, visibleRecs, viewerRec, similarProfiles, viewerEndorsements] = await Promise.all([
+  // Featured posts + recommendations + similar profiles. Done in
+  // parallel so the right-rail "Similar profiles" widget doesn't
+  // serialise behind the main profile load.
+  const [featuredPosts, visibleRecs, viewerRec, similarProfiles] = await Promise.all([
     db.post.findMany({
       where: { authorId: profile.user.id, featured: true, visibility: "PUBLIC" },
       orderBy: { featuredAt: "desc" },
@@ -373,18 +364,36 @@ export default async function PublicCandidateProfile({
           openToWork: boolean;
           hiringNow: boolean;
         }>),
-    // Skills the viewer has already endorsed on this profile — used
-    // to flip the per-skill button label from "+ Endorse" to
-    // "✓ Endorsed". Empty set when anonymous or self.
-    session?.user && session.user.id !== profile.user.id
-      ? db.skillEndorsement.findMany({
-          where: { candidateId: profile.id, fromUserId: session.user.id },
-          select: { skillId: true },
-        })
-      : Promise.resolve([] as { skillId: string }[]),
   ]);
 
-  const endorsedSkillIds = new Set(viewerEndorsements.map((e) => e.skillId));
+  // Skill endorsements — fetched separately and behind a try/catch so
+  // the page still renders if the SkillEndorsement table hasn't been
+  // migrated yet on this environment. When the load fails we hide the
+  // "+ Endorse" affordance entirely (since the action would also fail)
+  // and show counts of 0 — i.e. the section degrades to its pre-
+  // endorsement appearance.
+  let endorsementCounts = new Map<string, number>();
+  let endorsedSkillIds = new Set<string>();
+  let endorsementsEnabled = true;
+  try {
+    const [counts, viewerEndorsements] = await Promise.all([
+      db.skillEndorsement.groupBy({
+        by: ["skillId"],
+        where: { candidateId: profile.id },
+        _count: { _all: true },
+      }),
+      session?.user && session.user.id !== profile.user.id
+        ? db.skillEndorsement.findMany({
+            where: { candidateId: profile.id, fromUserId: session.user.id },
+            select: { skillId: true },
+          })
+        : Promise.resolve([] as { skillId: string }[]),
+    ]);
+    endorsementCounts = new Map(counts.map((c) => [c.skillId, c._count._all]));
+    endorsedSkillIds = new Set(viewerEndorsements.map((e) => e.skillId));
+  } catch {
+    endorsementsEnabled = false;
+  }
 
   // Person JSON-LD for richer snippets when public.
   const personJsonLd =
@@ -980,9 +989,9 @@ export default async function PublicCandidateProfile({
                         key={s.skill.name}
                         name={s.skill.name}
                         skillId={s.skillId}
-                        count={s._count.endorsements}
+                        count={endorsementCounts.get(s.skillId) ?? 0}
                         endorsed={endorsedSkillIds.has(s.skillId)}
-                        canEndorse={!!session?.user && !isOwner}
+                        canEndorse={endorsementsEnabled && !!session?.user && !isOwner}
                         slug={profile.slug}
                       />
                     ))}
@@ -999,9 +1008,9 @@ export default async function PublicCandidateProfile({
                             key={s.skill.name}
                             name={s.skill.name}
                             skillId={s.skillId}
-                            count={s._count.endorsements}
+                            count={endorsementCounts.get(s.skillId) ?? 0}
                             endorsed={endorsedSkillIds.has(s.skillId)}
-                            canEndorse={!!session?.user && !isOwner}
+                            canEndorse={endorsementsEnabled && !!session?.user && !isOwner}
                             slug={profile.slug}
                           />
                         ))}

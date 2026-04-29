@@ -1127,18 +1127,12 @@ export async function toggleSkillEndorsement(formData: FormData) {
 
   const fromUserId = session.user.id;
 
-  const existing = await db.skillEndorsement.findUnique({
-    where: {
-      candidateId_skillId_fromUserId: {
-        candidateId: target.id,
-        skillId,
-        fromUserId,
-      },
-    },
-  });
-
-  if (existing) {
-    await db.skillEndorsement.delete({
+  // Wrapped because the SkillEndorsement table may not be migrated
+  // on every environment yet — fail closed (no-op) rather than 500.
+  // Once the schema is pushed (`pnpm prisma db push`) this branch
+  // never trips.
+  try {
+    const existing = await db.skillEndorsement.findUnique({
       where: {
         candidateId_skillId_fromUserId: {
           candidateId: target.id,
@@ -1147,18 +1141,33 @@ export async function toggleSkillEndorsement(formData: FormData) {
         },
       },
     });
-  } else {
-    // Confirm the candidate actually lists this skill before we
-    // accept the endorsement — silently no-op otherwise so a stale
-    // form (skill removed mid-render) doesn't 500.
-    const has = await db.candidateSkill.findUnique({
-      where: { candidateId_skillId: { candidateId: target.id, skillId } },
-      select: { candidateId: true },
-    });
-    if (!has) return;
-    await db.skillEndorsement.create({
-      data: { candidateId: target.id, skillId, fromUserId },
-    });
+
+    if (existing) {
+      await db.skillEndorsement.delete({
+        where: {
+          candidateId_skillId_fromUserId: {
+            candidateId: target.id,
+            skillId,
+            fromUserId,
+          },
+        },
+      });
+    } else {
+      // Confirm the candidate actually lists this skill before we
+      // accept the endorsement — silently no-op otherwise so a stale
+      // form (skill removed mid-render) doesn't 500.
+      const has = await db.candidateSkill.findUnique({
+        where: { candidateId_skillId: { candidateId: target.id, skillId } },
+        select: { candidateId: true },
+      });
+      if (!has) return;
+      await db.skillEndorsement.create({
+        data: { candidateId: target.id, skillId, fromUserId },
+      });
+    }
+  } catch (err) {
+    logger.warn({ err, slug: target.slug, skillId }, "skill endorsement failed (table missing?)");
+    return;
   }
 
   revalidatePath(`/${target.slug}`);
