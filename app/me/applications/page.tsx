@@ -107,7 +107,7 @@ export default async function MyApplications({
                           )}
                         </div>
                         <div>
-                          <Link href={`/jobs/${a.job.id}`} className="font-bold text-emce-text hover:underline">
+                          <Link href={`/job/${a.job.slug}`} className="font-bold text-emce-text hover:underline">
                             {a.job.title}
                           </Link>
                           <p className="text-hint text-emce-text-sec">

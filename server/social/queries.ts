@@ -41,6 +41,7 @@ const POST_INCLUDE = {
   attachedJob: {
     select: {
       id: true,
+      slug: true,
       title: true,
       locations: true,
       workMode: true,

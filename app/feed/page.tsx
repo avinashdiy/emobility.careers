@@ -99,7 +99,7 @@ export default async function FeedPage() {
       orderBy: { publishedAt: "desc" },
       take: 5,
       select: {
-        id: true, title: true, locations: true, workMode: true,
+        id: true, slug: true, title: true, locations: true, workMode: true,
         publishedAt: true,
         company: { select: { name: true, logoUrl: true, slug: true } },
       },
@@ -407,7 +407,7 @@ export default async function FeedPage() {
                 {latestJobs.map((j) => (
                   <li key={j.id}>
                     <Link
-                      href={`/jobs/${j.id}`}
+                      href={`/job/${j.slug}`}
                       className="flex items-start gap-2 rounded-md p-2 hover:bg-emce-light-soft"
                     >
                       <Avatar src={j.company.logoUrl} name={j.company.name} size="sm" />

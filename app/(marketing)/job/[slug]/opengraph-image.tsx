@@ -16,9 +16,9 @@ export const contentType = "image/png";
  *   ─────────────
  *   "Apply on emobility.careers →"   ← the CTA the user explicitly asked for
  */
-export default async function OG({ params }: { params: { id: string } }) {
+export default async function OG({ params }: { params: { slug: string } }) {
   const job = await db.jobPosting.findUnique({
-    where: { id: params.id },
+    where: { slug: params.slug },
     include: { company: true },
   });
   if (!job || job.status !== "OPEN") {

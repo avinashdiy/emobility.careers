@@ -196,7 +196,7 @@ export default async function CompetitionDetailPage({ params }: { params: Promis
                 <ul className="mt-2 space-y-2 text-sm">
                   {c.perks.map((p) => (
                     <li key={p.id} className="rounded-md border border-emce-border p-2.5">
-                      <Link href={`/jobs/${p.job.id}`} className="font-bold text-emce-text hover:underline">
+                      <Link href={`/job/${p.job.slug}`} className="font-bold text-emce-text hover:underline">
                         {p.job.title}
                       </Link>
                       <p className="text-hint text-emce-text-sec">

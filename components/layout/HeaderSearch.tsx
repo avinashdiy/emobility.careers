@@ -46,7 +46,12 @@ export function HeaderSearch({ placeholder }: { placeholder?: string }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={placeholder ?? "Search people, jobs, mentors, competitions…"}
-          className="h-9 w-64 rounded-md bg-emce-light-soft pl-9 pr-3 text-sm text-emce-text placeholder-emce-text-sec outline-none ring-0 transition-colors focus:bg-white focus:ring-1 focus:ring-emce-mid md:w-80"
+          // Width grows by breakpoint so the full placeholder fits
+          // without truncation. The previous `md:w-80` (320px) was
+          // just shy of what 14px sans-serif text at 42 chars plus
+          // 48px of icon-padding needs — the placeholder ended up
+          // rendering as "…competiti" mid-word, which read like a bug.
+          className="h-9 w-64 rounded-md bg-emce-light-soft pl-9 pr-3 text-sm text-emce-text placeholder-emce-text-sec outline-none ring-0 transition-colors focus:bg-white focus:ring-1 focus:ring-emce-mid md:w-96 lg:w-[28rem]"
           aria-label="Search the platform"
         />
       </div>

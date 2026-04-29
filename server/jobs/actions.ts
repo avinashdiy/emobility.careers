@@ -152,14 +152,21 @@ export async function saveJob(formData: FormData) {
   });
   if (!profile) redirect("/onboarding");
   const jobId = z.string().parse(formData.get("jobId"));
+  const job = await db.jobPosting.findUnique({
+    where: { id: jobId },
+    select: { slug: true },
+  });
+  if (!job) redirect("/jobs?error=" + encodeURIComponent("Job not found"));
   await db.savedJob.upsert({
     where: { candidateId_jobId: { candidateId: profile.id, jobId } },
     create: { candidateId: profile.id, jobId },
     update: {},
   });
-  revalidatePath(`/jobs/${jobId}`);
+  // Revalidate the canonical slug URL — `/jobs/{id}` no longer renders
+  // its own content (it 308-redirects), so its cache key is irrelevant.
+  revalidatePath(`/job/${job.slug}`);
   revalidatePath("/me/saved");
-  redirect(`/jobs/${jobId}?notice=` + encodeURIComponent("Saved to your list"));
+  redirect(`/job/${job.slug}?notice=` + encodeURIComponent("Saved to your list"));
 }
 
 export async function unsaveJob(formData: FormData) {
@@ -170,9 +177,13 @@ export async function unsaveJob(formData: FormData) {
   });
   if (!profile) redirect("/onboarding");
   const jobId = z.string().parse(formData.get("jobId"));
+  const job = await db.jobPosting.findUnique({
+    where: { id: jobId },
+    select: { slug: true },
+  });
   await db.savedJob.deleteMany({
     where: { candidateId: profile.id, jobId },
   });
   revalidatePath("/me/saved");
-  revalidatePath(`/jobs/${jobId}`);
+  if (job) revalidatePath(`/job/${job.slug}`);
 }

@@ -37,7 +37,7 @@ export default async function ReportsPage({
     orderBy: { createdAt: "desc" },
     take: 100,
     include: {
-      job: { select: { id: true, title: true, status: true, company: { select: { name: true } } } },
+      job: { select: { id: true, slug: true, title: true, status: true, company: { select: { name: true } } } },
     },
   });
 
@@ -83,7 +83,7 @@ export default async function ReportsPage({
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge variant="danger">{REASON_LABEL[r.reason] ?? r.reason}</Badge>
-                        <Link href={`/jobs/${r.job.id}`} className="font-bold text-emce-text hover:underline">
+                        <Link href={`/job/${r.job.slug}`} className="font-bold text-emce-text hover:underline">
                           {r.job.title}
                         </Link>
                         <span className="text-hint text-emce-text-muted">· {r.job.company.name}</span>

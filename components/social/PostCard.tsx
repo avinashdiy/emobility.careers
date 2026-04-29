@@ -48,6 +48,7 @@ export interface FeedPostShape {
   asCompany: { id: string; slug: string; name: string; logoUrl: string | null } | null;
   attachedJob: {
     id: string;
+    slug: string;
     title: string;
     locations: string[];
     workMode: string;
@@ -289,7 +290,7 @@ export function PostCard({
       {/* Attached job card */}
       {post.attachedJob && (
         <Link
-          href={`/jobs/${post.attachedJob.id}`}
+          href={`/job/${post.attachedJob.slug}`}
           className="mt-3 block rounded-md border border-emce-border bg-emce-light-soft p-3 hover:border-emce-mid"
         >
           <div className="flex items-start gap-3">

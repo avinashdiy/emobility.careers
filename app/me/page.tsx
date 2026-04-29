@@ -75,7 +75,7 @@ export default async function MeDashboard() {
       where: { candidateId: profile.id },
       orderBy: { updatedAt: "desc" },
       take: 5,
-      include: { job: { select: { id: true, title: true, company: { select: { name: true, logoUrl: true } } } } },
+      include: { job: { select: { id: true, slug: true, title: true, company: { select: { name: true, logoUrl: true } } } } },
     }),
     db.interview.findFirst({
       where: {
@@ -224,7 +224,7 @@ export default async function MeDashboard() {
                       <div className="flex items-start gap-3">
                         <Avatar src={a.job.company.logoUrl} name={a.job.company.name} size="sm" />
                         <div>
-                          <Link href={`/jobs/${a.job.id}`} className="font-bold text-emce-text hover:underline">{a.job.title}</Link>
+                          <Link href={`/job/${a.job.slug}`} className="font-bold text-emce-text hover:underline">{a.job.title}</Link>
                           <p className="text-hint text-emce-text-sec">{a.job.company.name} · Applied {relativeTime(a.appliedAt)}</p>
                         </div>
                       </div>

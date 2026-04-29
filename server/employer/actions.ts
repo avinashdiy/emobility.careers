@@ -266,7 +266,9 @@ export async function createJob(formData: FormData) {
 
   if (data.publishNow) {
     const { pingIndexNow, pingGoogleIndexing } = await import("@/lib/seo/indexnow");
-    const url = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "")}/jobs/${job.id}`;
+    // Ping the canonical slug URL — `/jobs/{id}` redirects to it (308),
+    // and pinging the redirect chain wastes a crawl budget round-trip.
+    const url = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "")}/job/${job.slug}`;
     void pingIndexNow(url);
     void pingGoogleIndexing(url, "URL_UPDATED");
     revalidatePath("/jobs.xml");

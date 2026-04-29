@@ -69,7 +69,10 @@ export interface JobForSchema {
 /** Build the canonical JobPosting JSON-LD object (Google for Jobs). */
 export function jobPostingJsonLd(job: JobForSchema) {
   const base = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
-  const url = `${base}/jobs/${job.id}`;
+  // Canonical URL is the slug-based route. Crawlers + Google for Jobs
+  // index this exact URL — `/jobs/{id}` still 308-redirects here for
+  // legacy inbound links but should never appear in JSON-LD output.
+  const url = `${base}/job/${job.slug}`;
   const datePosted = (job.publishedAt ?? job.updatedAt).toISOString();
   // validThrough is required — Google de-indexes JobPostings without it.
   // Default to 60 days from publish if no closesAt is set.

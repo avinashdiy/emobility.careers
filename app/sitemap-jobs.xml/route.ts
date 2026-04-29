@@ -30,14 +30,17 @@ export async function GET() {
     where: { status: "OPEN", company: { verificationStatus: "VERIFIED" } },
     orderBy: { publishedAt: "desc" },
     take: 50_000,
-    select: { id: true, updatedAt: true, publishedAt: true },
+    select: { slug: true, updatedAt: true, publishedAt: true },
   });
 
   const urls = jobs
     .map((j) => {
       const lastmod = (j.updatedAt ?? j.publishedAt ?? new Date()).toISOString();
+      // Canonical URL is the slug-based route. The legacy `/jobs/{id}`
+      // path 308-redirects here, but pointing search engines straight
+      // at the canonical avoids a redirect chain on every crawl.
       return `  <url>
-    <loc>${escape(`${base}/jobs/${j.id}`)}</loc>
+    <loc>${escape(`${base}/job/${j.slug}`)}</loc>
     <lastmod>${lastmod}</lastmod>
     <changefreq>daily</changefreq>
     <priority>0.8</priority>

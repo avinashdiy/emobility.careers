@@ -65,7 +65,7 @@ export default async function DriveLandingPage({
         include: {
           job: {
             select: {
-              id: true, title: true, locations: true, workMode: true,
+              id: true, slug: true, title: true, locations: true, workMode: true,
               employmentType: true, status: true, salaryMin: true, salaryMax: true,
               salaryHidden: true, salaryCurrency: true,
             },
@@ -195,7 +195,7 @@ export default async function DriveLandingPage({
                   <li key={job.id} className="flex items-center justify-between gap-3 py-3">
                     <div className="min-w-0 flex-1">
                       <Link
-                        href={`/jobs/${job.id}`}
+                        href={`/job/${job.slug}`}
                         className="block font-bold text-emce-text hover:underline"
                       >
                         {job.title}
@@ -206,7 +206,7 @@ export default async function DriveLandingPage({
                     </div>
                     {job.status === "OPEN" ? (
                       <Button asChild size="sm">
-                        <Link href={`/jobs/${job.id}`}>Apply →</Link>
+                        <Link href={`/job/${job.slug}`}>Apply →</Link>
                       </Button>
                     ) : (
                       <Badge variant="outline">{job.status}</Badge>

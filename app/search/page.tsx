@@ -256,7 +256,7 @@ export default async function SearchPage({
                       <div className="flex items-start gap-3">
                         <Avatar src={j.company.logoUrl} name={j.company.name} size="sm" />
                         <div className="min-w-0 flex-1">
-                          <Link href={`/jobs/${j.id}`} className="font-bold text-emce-text hover:underline">{j.title}</Link>
+                          <Link href={`/job/${j.slug}`} className="font-bold text-emce-text hover:underline">{j.title}</Link>
                           <p className="text-hint text-emce-text-sec">
                             {j.company.name} · {j.locations.join(", ") || "Remote"} · {j.workMode}
                           </p>

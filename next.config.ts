@@ -20,6 +20,13 @@ const nextConfig: NextConfig = {
     },
   },
   images: {
+    // Next.js 15 requires every non-default `quality` value used on
+    // <Image /> to be declared here — otherwise the optimizer endpoint
+    // returns 400 and the <img> falls back to its alt text (which is
+    // why the wordmark + icon were rendering as broken text in prod).
+    // Our brand mark + icon ask for q=95 to stay crisp on retina at
+    // small px heights, so 95 must be allow-listed alongside 75.
+    qualities: [50, 75, 95],
     remotePatterns: [
       { protocol: "https", hostname: "**.googleusercontent.com" },
       { protocol: "https", hostname: "media.licdn.com" },

@@ -28,7 +28,7 @@ export interface JobCardData {
 export function JobCard({ job }: { job: JobCardData }) {
   return (
     <Link
-      href={`/jobs/${job.id}`}
+      href={`/job/${job.slug}`}
       className="block rounded-lg border border-emce-border bg-white p-4 shadow-emce transition-all hover:-translate-y-0.5 hover:shadow-emce-hover focus-visible:ring-2 focus-visible:ring-emce-mid"
     >
       <div className="flex items-start gap-3">
