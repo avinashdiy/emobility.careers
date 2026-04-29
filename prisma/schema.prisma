@@ -82,6 +82,7 @@ model User {
   teamInvitesSent     TeamInvite[]            @relation("TeamInviteInviter")
   recommendationsGiven    Recommendation[]    @relation("RecommendationGiver")
   recommendationsReceived Recommendation[]    @relation("RecommendationReceiver")
+  skillEndorsementsGiven  SkillEndorsement[]  @relation("SkillEndorser")
 
   // Social graph
   connectionRequests  Connection[]   @relation("ConnectionRequester")
@@ -416,7 +417,31 @@ model CandidateSkill {
   candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   skill       Skill            @relation(fields: [skillId], references: [id], onDelete: Cascade)
 
+  // LinkedIn-style peer endorsements. Anyone signed-in (and not the
+  // owner) can toggle an endorsement on each of the candidate's
+  // skills; counts surface on the public profile next to each skill.
+  endorsements SkillEndorsement[]
+
   @@id([candidateId, skillId])
+}
+
+// Peer endorsement on a single skill. Composite-keyed by
+// (candidateId, skillId, fromUserId) so each user can endorse any
+// given skill at most once — toggling re-clicks delete the row.
+// Joins back to CandidateSkill via the (candidateId, skillId) pair
+// so cascading a skill removal cascades the endorsements with it.
+model SkillEndorsement {
+  candidateId String
+  skillId     String
+  fromUserId  String
+  createdAt   DateTime @default(now())
+
+  candidateSkill CandidateSkill @relation(fields: [candidateId, skillId], references: [candidateId, skillId], onDelete: Cascade)
+  fromUser       User           @relation("SkillEndorser", fields: [fromUserId], references: [id], onDelete: Cascade)
+
+  @@id([candidateId, skillId, fromUserId])
+  @@index([candidateId, skillId])
+  @@index([fromUserId])
 }
 
 model Experience {

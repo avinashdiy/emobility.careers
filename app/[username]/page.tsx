@@ -11,7 +11,10 @@ import { SiteHeader } from "@/components/layout/site-header";
 // Profile pages render no footer at all — keeps the LinkedIn-style focus
 // on the profile content with no visual interruption at the bottom.
 import { saveCandidate } from "@/server/employer/actions";
+import { toggleSkillEndorsement } from "@/server/candidates/actions";
 import { ShareButton } from "@/components/profile/ShareButton";
+import { ExpandableText } from "@/components/profile/ExpandableText";
+import { EditPencil } from "@/components/profile/EditPencil";
 import {
   RecommendationsSection,
   WriteRecommendationForm,
@@ -101,7 +104,15 @@ export default async function PublicCandidateProfile({
       user: { select: { id: true, role: true } },
       experiences: { orderBy: { startDate: "desc" } },
       education: { orderBy: { startYear: "desc" } },
-      skills: { include: { skill: true } },
+      skills: {
+        include: {
+          skill: true,
+          // Endorsement count surfaces next to each skill name on the
+          // public profile. Cheap on the SQL side because the
+          // (candidateId, skillId) prefix index covers it.
+          _count: { select: { endorsements: true } },
+        },
+      },
       certifications: { orderBy: { issueDate: "desc" } },
       projects: { orderBy: { createdAt: "desc" } },
       awards: { orderBy: { date: "desc" } },
@@ -265,10 +276,11 @@ export default async function PublicCandidateProfile({
     }),
   ]);
 
-  // Featured posts + recommendations + similar profiles. Done in
-  // parallel so the right-rail "Similar profiles" widget doesn't
-  // serialise behind the main profile load.
-  const [featuredPosts, visibleRecs, viewerRec, similarProfiles] = await Promise.all([
+  // Featured posts + recommendations + similar profiles + the
+  // viewer's own skill endorsements. Done in parallel so the
+  // right-rail "Similar profiles" widget doesn't serialise behind
+  // the main profile load.
+  const [featuredPosts, visibleRecs, viewerRec, similarProfiles, viewerEndorsements] = await Promise.all([
     db.post.findMany({
       where: { authorId: profile.user.id, featured: true, visibility: "PUBLIC" },
       orderBy: { featuredAt: "desc" },
@@ -361,7 +373,18 @@ export default async function PublicCandidateProfile({
           openToWork: boolean;
           hiringNow: boolean;
         }>),
+    // Skills the viewer has already endorsed on this profile — used
+    // to flip the per-skill button label from "+ Endorse" to
+    // "✓ Endorsed". Empty set when anonymous or self.
+    session?.user && session.user.id !== profile.user.id
+      ? db.skillEndorsement.findMany({
+          where: { candidateId: profile.id, fromUserId: session.user.id },
+          select: { skillId: true },
+        })
+      : Promise.resolve([] as { skillId: string }[]),
   ]);
+
+  const endorsedSkillIds = new Set(viewerEndorsements.map((e) => e.skillId));
 
   // Person JSON-LD for richer snippets when public.
   const personJsonLd =
@@ -666,56 +689,28 @@ export default async function PublicCandidateProfile({
 
         </Card>
 
-            {/* Body sections continue in the same lg:col-span-2 column
-                that started at the top with the banner. The right rail
-                (declared further below) carries jobs / similar people /
-                mentor info. */}
-            {true && (
-              <>
-                {/* Activity header bar — LinkedIn renders this as a slim
-                    counter line above the post list, not a separate card. */}
-                <div className="flex items-center justify-between rounded-lg border border-emce-border bg-white px-5 py-3 shadow-sm">
-                  <div>
-                    <h2 className="text-base font-bold text-emce-text">Activity</h2>
-                    <p className="text-xs text-emce-text-sec">
-                      {profile.followersCount} follower{profile.followersCount === 1 ? "" : "s"} · {postsCount} post{postsCount === 1 ? "" : "s"}
-                    </p>
-                  </div>
-                  {!isOwner && session?.user && (
-                    <FollowUserButton
-                      userId={profile.user.id}
-                      initialFollowing={isFollowing}
-                      signedIn={true}
-                    />
-                  )}
-                </div>
-                {recentPosts.length === 0 ? (
-                  <div className="rounded-lg border border-dashed border-emce-border bg-white p-10 text-center">
-                    <p className="text-sm font-bold text-emce-text">
-                      {isOwner ? "You haven't posted yet" : `${profile.firstName} hasn't posted yet`}
-                    </p>
-                    <p className="mt-1 text-hint text-emce-text-sec">
-                      {isOwner ? "Share an update from your /feed to start showing activity here." : "Follow to get notified when they post."}
-                    </p>
-                  </div>
-                ) : (
-                  recentPosts.map((p) => (
-                    <PostCard key={p.id} post={p as unknown as FeedPostShape} viewerId={session?.user?.id ?? null} />
-                  ))
-                )}
-              </>
-            )}
+            {/* Body sections — ordered to match LinkedIn's public
+                profile: Featured → About → Activity → Experience →
+                Education → Volunteer → Skills → Projects →
+                Certifications → Awards → Languages → Recommendations.
+                Long lists (Experience/Education/Skills/Projects) show
+                the first few inline and collapse the rest behind a
+                native <details> "Show all N →" link — no client JS
+                required. */}
 
             {/* Featured posts — pinned strip above About. Renders only
                 when the user has actually pinned something; quietly
                 skipped otherwise so we don't show an empty rail. */}
-            {true && featuredPosts.length > 0 && (
+            {featuredPosts.length > 0 && (
               <Card>
-                <div className="flex items-end justify-between">
+                <div className="flex items-end justify-between gap-2">
                   <h2 className="text-[16px] font-semibold text-emce-text">📌 Featured</h2>
-                  <span className="text-hint text-emce-text-muted">
-                    {featuredPosts.length} pinned
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-hint text-emce-text-muted">
+                      {featuredPosts.length} pinned
+                    </span>
+                    {isOwner && <EditPencil href="/me/profile#featured" label="Edit featured posts" />}
+                  </div>
                 </div>
                 <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
                   {featuredPosts.map((p) => (
@@ -747,32 +742,194 @@ export default async function PublicCandidateProfile({
               </Card>
             )}
 
-            {true && (
-              <Card>
+            {/* About — long bios collapse to 3 lines with a "…see more"
+                toggle (ExpandableText is a small client component). */}
+            <Card>
+              <div className="flex items-center justify-between">
                 <h2 className="text-[16px] font-semibold text-emce-text">About</h2>
-                {profile.summary ? (
-                  <p className="mt-3 whitespace-pre-line text-body text-emce-text-sec">{profile.summary}</p>
-                ) : (
-                  <p className="mt-3 text-hint text-emce-text-muted">No bio yet.</p>
-                )}
-                {profile.representsCompany && (
-                  <div className="mt-4 rounded-md bg-emce-light-soft p-3 text-sm">
-                    Represents{" "}
-                    <Link href={`/company/${profile.representsCompany.slug}`} className="font-bold text-emce-dark hover:underline">
-                      {profile.representsCompany.name}
-                    </Link>
-                  </div>
-                )}
-              </Card>
+                {isOwner && <EditPencil href="/me/profile#header" label="Edit about" />}
+              </div>
+              {profile.summary ? (
+                <div className="mt-3">
+                  <ExpandableText text={profile.summary} />
+                </div>
+              ) : (
+                <p className="mt-3 text-hint text-emce-text-muted">No bio yet.</p>
+              )}
+              {profile.representsCompany && (
+                <div className="mt-4 rounded-md bg-emce-light-soft p-3 text-sm">
+                  Represents{" "}
+                  <Link href={`/company/${profile.representsCompany.slug}`} className="font-bold text-emce-dark hover:underline">
+                    {profile.representsCompany.name}
+                  </Link>
+                </div>
+              )}
+            </Card>
+
+            {/* Activity — counter line + recent posts, LinkedIn-style. */}
+            <div className="flex items-center justify-between rounded-lg border border-emce-border bg-white px-5 py-3 shadow-sm">
+              <div>
+                <h2 className="text-base font-bold text-emce-text">Activity</h2>
+                <p className="text-xs text-emce-text-sec">
+                  {profile.followersCount} follower{profile.followersCount === 1 ? "" : "s"} · {postsCount} post{postsCount === 1 ? "" : "s"}
+                </p>
+              </div>
+              {!isOwner && session?.user && (
+                <FollowUserButton
+                  userId={profile.user.id}
+                  initialFollowing={isFollowing}
+                  signedIn={true}
+                />
+              )}
+            </div>
+            {recentPosts.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-emce-border bg-white p-10 text-center">
+                <p className="text-sm font-bold text-emce-text">
+                  {isOwner ? "You haven't posted yet" : `${profile.firstName} hasn't posted yet`}
+                </p>
+                <p className="mt-1 text-hint text-emce-text-sec">
+                  {isOwner ? "Share an update from your /feed to start showing activity here." : "Follow to get notified when they post."}
+                </p>
+              </div>
+            ) : (
+              recentPosts.map((p) => (
+                <PostCard key={p.id} post={p as unknown as FeedPostShape} viewerId={session?.user?.id ?? null} />
+              ))
             )}
 
-            {/* Volunteer experience — separate card on the About tab so
-                paid Experience stays the primary signal but volunteer
-                roles still surface. Hidden when there are no entries
-                so the tab doesn't carry an empty placeholder. */}
-            {true && profile.volunteerExperiences.length > 0 && (
+            {/* Experience — first 3 inline, rest behind "Show all N →". */}
+            <Card>
+              <div className="flex items-center justify-between">
+                <h2 className="text-[16px] font-semibold text-emce-text flex items-center gap-2">
+                  <Briefcase className="h-4 w-4 text-emce-mid" /> Experience
+                </h2>
+                {isOwner && <EditPencil href="/me/profile#experience" label="Edit experience" />}
+              </div>
+              {profile.experiences.length === 0 ? (
+                <p className="mt-3 text-hint text-emce-text-muted">No experience listed.</p>
+              ) : (
+                <>
+                  <ul className="mt-4 space-y-5">
+                    {profile.experiences.slice(0, 3).map((e) => (
+                      <li key={e.id} className="border-l-2 border-emce-mid pl-4">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-bold text-emce-text">{e.title}</span>
+                          {e.verifiedAt && (
+                            <Badge variant="success" className="text-[10px]">
+                              ✓ Verified{e.verifiedMethod === "EMAIL_DOMAIN" ? " · email" : e.verifiedMethod === "RECRUITER_APPROVAL" ? " · recruiter" : ""}
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-sm text-emce-text-sec">{e.company}</div>
+                        <div className="text-hint text-emce-text-muted">
+                          {formatMonthYear(e.startDate)} – {e.current ? "Present" : formatMonthYear(e.endDate)}
+                          {e.location ? ` · ${e.location}` : ""}
+                        </div>
+                        {e.description && (
+                          <p className="mt-2 whitespace-pre-line text-body text-emce-text-sec">{e.description}</p>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                  {profile.experiences.length > 3 && (
+                    <details className="group mt-4">
+                      <summary className="cursor-pointer list-none border-t border-emce-border pt-3 text-center text-sm font-bold text-emce-dark hover:underline">
+                        <span className="group-open:hidden">Show all {profile.experiences.length} experiences →</span>
+                        <span className="hidden group-open:inline">Show less</span>
+                      </summary>
+                      <ul className="mt-4 space-y-5">
+                        {profile.experiences.slice(3).map((e) => (
+                          <li key={e.id} className="border-l-2 border-emce-mid pl-4">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="font-bold text-emce-text">{e.title}</span>
+                              {e.verifiedAt && (
+                                <Badge variant="success" className="text-[10px]">
+                                  ✓ Verified{e.verifiedMethod === "EMAIL_DOMAIN" ? " · email" : e.verifiedMethod === "RECRUITER_APPROVAL" ? " · recruiter" : ""}
+                                </Badge>
+                              )}
+                            </div>
+                            <div className="text-sm text-emce-text-sec">{e.company}</div>
+                            <div className="text-hint text-emce-text-muted">
+                              {formatMonthYear(e.startDate)} – {e.current ? "Present" : formatMonthYear(e.endDate)}
+                              {e.location ? ` · ${e.location}` : ""}
+                            </div>
+                            {e.description && (
+                              <p className="mt-2 whitespace-pre-line text-body text-emce-text-sec">{e.description}</p>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </>
+              )}
+            </Card>
+
+            {/* Education — first 3 inline, rest behind "Show all N →". */}
+            <Card>
+              <div className="flex items-center justify-between">
+                <h2 className="text-[16px] font-semibold text-emce-text flex items-center gap-2">
+                  <GraduationCap className="h-4 w-4 text-emce-mid" /> Education
+                </h2>
+                {isOwner && <EditPencil href="/me/profile#education" label="Edit education" />}
+              </div>
+              {profile.education.length === 0 ? (
+                <p className="mt-3 text-hint text-emce-text-muted">No education listed.</p>
+              ) : (
+                <>
+                  <ul className="mt-4 space-y-3">
+                    {profile.education.slice(0, 3).map((e) => (
+                      <li key={e.id}>
+                        <div className="font-bold text-emce-text">{e.institution}</div>
+                        <div className="text-sm text-emce-text-sec">
+                          {[e.degree, e.field].filter(Boolean).join(" · ")}
+                        </div>
+                        <div className="text-hint text-emce-text-muted">
+                          {e.startYear ?? "?"}–{e.endYear ?? "?"}
+                          {e.grade ? ` · ${e.grade}` : ""}
+                        </div>
+                      </li>
+                    ))}
+                  </ul>
+                  {profile.education.length > 3 && (
+                    <details className="group mt-4">
+                      <summary className="cursor-pointer list-none border-t border-emce-border pt-3 text-center text-sm font-bold text-emce-dark hover:underline">
+                        <span className="group-open:hidden">Show all {profile.education.length} education entries →</span>
+                        <span className="hidden group-open:inline">Show less</span>
+                      </summary>
+                      <ul className="mt-4 space-y-3">
+                        {profile.education.slice(3).map((e) => (
+                          <li key={e.id}>
+                            <div className="font-bold text-emce-text">{e.institution}</div>
+                            <div className="text-sm text-emce-text-sec">
+                              {[e.degree, e.field].filter(Boolean).join(" · ")}
+                            </div>
+                            <div className="text-hint text-emce-text-muted">
+                              {e.startYear ?? "?"}–{e.endYear ?? "?"}
+                              {e.grade ? ` · ${e.grade}` : ""}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </details>
+                  )}
+                </>
+              )}
+            </Card>
+
+            {/* Volunteer experience — separate card so paid Experience
+                stays the primary signal but volunteer roles still
+                surface. Hidden when there are no entries (or showing
+                an empty editable card just for owners). */}
+            {(profile.volunteerExperiences.length > 0 || isOwner) && (
               <Card>
-                <h2 className="text-[16px] font-semibold text-emce-text">🤝 Volunteer experience</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[16px] font-semibold text-emce-text">🤝 Volunteer experience</h2>
+                  {isOwner && <EditPencil href="/me/profile#volunteer" label="Edit volunteer experience" />}
+                </div>
+                {profile.volunteerExperiences.length === 0 && isOwner && (
+                  <p className="mt-2 text-hint text-emce-text-muted">No volunteer entries yet — add some to round out your profile.</p>
+                )}
                 <ul className="mt-3 space-y-3">
                   {profile.volunteerExperiences.map((v) => (
                     <li key={v.id}>
@@ -803,108 +960,97 @@ export default async function PublicCandidateProfile({
               </Card>
             )}
 
-            {/* Recommendations — visible peer endorsements + a
-                "Write a recommendation" form for signed-in viewers
-                who aren't the profile owner. The form pre-fills any
-                existing rec the viewer has already written, so
-                editing doesn't create a duplicate. */}
-            {true && (
-              <>
-                {visibleRecs.length > 0 && (
-                  <RecommendationsSection recs={visibleRecs} />
-                )}
-                {session?.user && session.user.id !== profile.user.id && (
-                  <WriteRecommendationForm
-                    toUserSlug={profile.slug}
-                    existing={viewerRec ?? undefined}
-                  />
-                )}
-              </>
-            )}
-
-            {true && (
-              <Card>
-                <h2 className="text-[16px] font-semibold text-emce-text flex items-center gap-2">
-                  <Briefcase className="h-4 w-4 text-emce-mid" /> Experience
-                </h2>
-                {profile.experiences.length === 0 ? (
-                  <p className="mt-3 text-hint text-emce-text-muted">No experience listed.</p>
-                ) : (
-                  <ul className="mt-4 space-y-5">
-                    {profile.experiences.map((e) => (
-                      <li key={e.id} className="border-l-2 border-emce-mid pl-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-emce-text">{e.title}</span>
-                          {/* Verified-Company badge — green chip when stamped.
-                              The most visible cue that this candidate's
-                              employment claim has been corroborated. */}
-                          {e.verifiedAt && (
-                            <Badge variant="success" className="text-[10px]">
-                              ✓ Verified{e.verifiedMethod === "EMAIL_DOMAIN" ? " · email" : e.verifiedMethod === "RECRUITER_APPROVAL" ? " · recruiter" : ""}
-                            </Badge>
-                          )}
-                        </div>
-                        <div className="text-sm text-emce-text-sec">{e.company}</div>
-                        <div className="text-hint text-emce-text-muted">
-                          {formatMonthYear(e.startDate)} – {e.current ? "Present" : formatMonthYear(e.endDate)}
-                          {e.location ? ` · ${e.location}` : ""}
-                        </div>
-                        {e.description && (
-                          <p className="mt-2 whitespace-pre-line text-body text-emce-text-sec">{e.description}</p>
-                        )}
-                      </li>
+            {/* Skills — list view (LinkedIn-style) with peer endorsement
+                count + endorse toggle. First 5 inline, rest collapsed.
+                Each row shows the skill name, an endorsement count
+                line when > 0, and an Endorse / ✓ Endorsed button for
+                signed-in non-owner viewers. */}
+            <Card>
+              <div className="flex items-center justify-between">
+                <h2 className="text-[16px] font-semibold text-emce-text">Skills</h2>
+                {isOwner && <EditPencil href="/me/profile#skills" label="Edit skills" />}
+              </div>
+              {profile.skills.length === 0 ? (
+                <p className="mt-3 text-hint text-emce-text-muted">No skills listed yet.</p>
+              ) : (
+                <>
+                  <ul className="mt-3 divide-y divide-emce-border">
+                    {profile.skills.slice(0, 5).map((s) => (
+                      <SkillRow
+                        key={s.skill.name}
+                        name={s.skill.name}
+                        skillId={s.skillId}
+                        count={s._count.endorsements}
+                        endorsed={endorsedSkillIds.has(s.skillId)}
+                        canEndorse={!!session?.user && !isOwner}
+                        slug={profile.slug}
+                      />
                     ))}
                   </ul>
-                )}
-              </Card>
-            )}
-
-            {true && (
-              <Card>
-                <h2 className="text-[16px] font-semibold text-emce-text flex items-center gap-2">
-                  <GraduationCap className="h-4 w-4 text-emce-mid" /> Education
-                </h2>
-                {profile.education.length === 0 ? (
-                  <p className="mt-3 text-hint text-emce-text-muted">No education listed.</p>
-                ) : (
-                  <ul className="mt-4 space-y-3">
-                    {profile.education.map((e) => (
-                      <li key={e.id}>
-                        <div className="font-bold text-emce-text">{e.institution}</div>
-                        <div className="text-sm text-emce-text-sec">
-                          {[e.degree, e.field].filter(Boolean).join(" · ")}
-                        </div>
-                        <div className="text-hint text-emce-text-muted">
-                          {e.startYear ?? "?"}–{e.endYear ?? "?"}
-                          {e.grade ? ` · ${e.grade}` : ""}
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </Card>
-            )}
-
-            {true && (
-              <>
-                <Card>
-                  <h2 className="text-[16px] font-semibold text-emce-text">Skills</h2>
-                  {profile.skills.length === 0 ? (
-                    <p className="mt-3 text-hint text-emce-text-muted">No skills listed yet.</p>
-                  ) : (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {profile.skills.map((s) => (
-                        <Badge key={s.skill.name} variant="default">{s.skill.name}</Badge>
-                      ))}
-                    </div>
+                  {profile.skills.length > 5 && (
+                    <details className="group mt-3">
+                      <summary className="cursor-pointer list-none border-t border-emce-border pt-3 text-center text-sm font-bold text-emce-dark hover:underline">
+                        <span className="group-open:hidden">Show all {profile.skills.length} skills →</span>
+                        <span className="hidden group-open:inline">Show less</span>
+                      </summary>
+                      <ul className="mt-3 divide-y divide-emce-border">
+                        {profile.skills.slice(5).map((s) => (
+                          <SkillRow
+                            key={s.skill.name}
+                            name={s.skill.name}
+                            skillId={s.skillId}
+                            count={s._count.endorsements}
+                            endorsed={endorsedSkillIds.has(s.skillId)}
+                            canEndorse={!!session?.user && !isOwner}
+                            slug={profile.slug}
+                          />
+                        ))}
+                      </ul>
+                    </details>
                   )}
-                </Card>
+                </>
+              )}
+            </Card>
 
-                {profile.projects.length > 0 && (
-                  <Card>
-                    <h2 className="text-[16px] font-semibold text-emce-text">Projects</h2>
+            {/* Projects — first 3 inline, rest collapsed. */}
+            {profile.projects.length > 0 && (
+              <Card>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[16px] font-semibold text-emce-text">Projects</h2>
+                  {isOwner && <EditPencil href="/me/profile#projects" label="Edit projects" />}
+                </div>
+                <ul className="mt-4 space-y-4">
+                  {profile.projects.slice(0, 3).map((p) => (
+                    <li key={p.id} className="rounded-md border border-emce-border p-4">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="font-bold text-emce-text">{p.title}</div>
+                        {p.url && (
+                          <a href={p.url} target="_blank" rel="noopener noreferrer" className="text-hint font-bold text-emce-dark hover:underline">
+                            View →
+                          </a>
+                        )}
+                      </div>
+                      {p.description && (
+                        <p className="mt-1 text-body text-emce-text-sec">{p.description}</p>
+                      )}
+                      {p.techStack.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {p.techStack.map((t) => (
+                            <Badge key={t} variant="outline">{t}</Badge>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+                {profile.projects.length > 3 && (
+                  <details className="group mt-4">
+                    <summary className="cursor-pointer list-none border-t border-emce-border pt-3 text-center text-sm font-bold text-emce-dark hover:underline">
+                      <span className="group-open:hidden">Show all {profile.projects.length} projects →</span>
+                      <span className="hidden group-open:inline">Show less</span>
+                    </summary>
                     <ul className="mt-4 space-y-4">
-                      {profile.projects.map((p) => (
+                      {profile.projects.slice(3).map((p) => (
                         <li key={p.id} className="rounded-md border border-emce-border p-4">
                           <div className="flex items-start justify-between gap-2">
                             <div className="font-bold text-emce-text">{p.title}</div>
@@ -927,46 +1073,52 @@ export default async function PublicCandidateProfile({
                         </li>
                       ))}
                     </ul>
-                  </Card>
+                  </details>
                 )}
+              </Card>
+            )}
 
-                {profile.certifications.length > 0 && (
-                  <Card>
-                    <h2 className="text-[16px] font-semibold text-emce-text flex items-center gap-2">
-                      <Award className="h-4 w-4 text-emce-mid" /> Certifications
-                    </h2>
-                    <ul className="mt-3 space-y-3">
-                      {profile.certifications.map((c) => (
-                        <li key={c.id}>
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-emce-text">{c.name}</span>
-                            {c.diyguruVerified && <Badge variant="verified">⭐</Badge>}
-                          </div>
-                          {c.issuer && (
-                            <div className="text-hint text-emce-text-sec">{c.issuer}</div>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  </Card>
-                )}
+            {profile.certifications.length > 0 && (
+              <Card>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[16px] font-semibold text-emce-text flex items-center gap-2">
+                    <Award className="h-4 w-4 text-emce-mid" /> Certifications
+                  </h2>
+                  {isOwner && <EditPencil href="/me/profile#certifications" label="Edit certifications" />}
+                </div>
+                <ul className="mt-3 space-y-3">
+                  {profile.certifications.map((c) => (
+                    <li key={c.id}>
+                      <div className="flex items-center gap-2">
+                        <span className="font-bold text-emce-text">{c.name}</span>
+                        {c.diyguruVerified && <Badge variant="verified">⭐</Badge>}
+                      </div>
+                      {c.issuer && (
+                        <div className="text-hint text-emce-text-sec">{c.issuer}</div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
 
-                {profile.awards.length > 0 && (
-                  <Card>
-                    <h2 className="text-[16px] font-semibold text-emce-text">Awards</h2>
-                    <ul className="mt-3 space-y-2">
-                      {profile.awards.map((a) => (
-                        <li key={a.id}>
-                          <div className="font-bold text-emce-text">{a.title}</div>
-                          <div className="text-hint text-emce-text-sec">
-                            {[a.issuer, a.date ? formatMonthYear(a.date) : null].filter(Boolean).join(" · ")}
-                          </div>
-                        </li>
-                      ))}
-                    </ul>
-                  </Card>
-                )}
-              </>
+            {profile.awards.length > 0 && (
+              <Card>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[16px] font-semibold text-emce-text">Awards</h2>
+                  {isOwner && <EditPencil href="/me/profile#awards" label="Edit awards" />}
+                </div>
+                <ul className="mt-3 space-y-2">
+                  {profile.awards.map((a) => (
+                    <li key={a.id}>
+                      <div className="font-bold text-emce-text">{a.title}</div>
+                      <div className="text-hint text-emce-text-sec">
+                        {[a.issuer, a.date ? formatMonthYear(a.date) : null].filter(Boolean).join(" · ")}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </Card>
             )}
 
             {/* Languages — moved out of the right rail to match
@@ -974,7 +1126,10 @@ export default async function PublicCandidateProfile({
                 the candidate has populated the field. */}
             {profile.languagesSpoken.length > 0 && (
               <Card>
-                <h2 className="text-[16px] font-semibold text-emce-text">Languages</h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[16px] font-semibold text-emce-text">Languages</h2>
+                  {isOwner && <EditPencil href="/me/profile#languages" label="Edit languages" />}
+                </div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {profile.languagesSpoken.map((l) => (
                     <Badge key={l} variant="outline">
@@ -984,14 +1139,31 @@ export default async function PublicCandidateProfile({
                 </div>
               </Card>
             )}
+
+            {/* Recommendations — visible peer endorsements + a
+                "Write a recommendation" form for signed-in viewers
+                who aren't the profile owner. The form pre-fills any
+                existing rec the viewer has already written, so
+                editing doesn't create a duplicate. */}
+            {visibleRecs.length > 0 && (
+              <RecommendationsSection recs={visibleRecs} />
+            )}
+            {session?.user && session.user.id !== profile.user.id && (
+              <WriteRecommendationForm
+                toUserSlug={profile.slug}
+                existing={viewerRec ?? undefined}
+              />
+            )}
           </div>
 
           {/* Right rail — runs parallel to the banner from the very
               top of the page (LinkedIn pattern). Cards inside use the
               same Card component as the main column but with tighter
               line heights / smaller text to read as supporting
-              widgets, not primary content. */}
-          <aside className="space-y-3">
+              widgets, not primary content. `lg:sticky lg:top-16`
+              keeps the rail pinned just below SiteHeader (h-14 + a
+              little air) while the main column scrolls. */}
+          <aside className="space-y-3 lg:sticky lg:top-16 lg:self-start">
             {mentorProfile && mentorProfile.isPublished && mentorProfile.kycStatus === "APPROVED" && (
               <Card className="border-emce-mid">
                 <div className="flex items-center gap-2">
@@ -1193,5 +1365,55 @@ export default async function PublicCandidateProfile({
         </div>
       </div>
     </>
+  );
+}
+
+/**
+ * One row in the public-profile Skills list. Owner viewers see name +
+ * count only. Signed-in non-owner viewers also see an Endorse / ✓
+ * Endorsed toggle that posts to `toggleSkillEndorsement`. Anonymous
+ * viewers see name + count only — clicking would force them through
+ * /signin which would be jarring without a clear CTA, so we hide
+ * the button until they're logged in.
+ */
+function SkillRow({
+  name,
+  skillId,
+  count,
+  endorsed,
+  canEndorse,
+  slug,
+}: {
+  name: string;
+  skillId: string;
+  count: number;
+  endorsed: boolean;
+  canEndorse: boolean;
+  slug: string;
+}) {
+  return (
+    <li className="flex items-center justify-between gap-3 py-2.5">
+      <div className="min-w-0 flex-1">
+        <p className="font-bold text-emce-text">{name}</p>
+        {count > 0 && (
+          <p className="text-hint text-emce-text-muted">
+            {count} endorsement{count === 1 ? "" : "s"}
+          </p>
+        )}
+      </div>
+      {canEndorse && (
+        <form action={toggleSkillEndorsement}>
+          <input type="hidden" name="slug" value={slug} />
+          <input type="hidden" name="skillId" value={skillId} />
+          <Button
+            type="submit"
+            size="sm"
+            variant={endorsed ? "outline" : "ghost"}
+          >
+            {endorsed ? "✓ Endorsed" : "+ Endorse"}
+          </Button>
+        </form>
+      )}
+    </li>
   );
 }

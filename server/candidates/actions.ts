@@ -1102,6 +1102,68 @@ export async function removeSkillFromProfile(formData: FormData) {
   revalidatePath(`/${profile.slug}`);
 }
 
+// Toggle a peer endorsement on a candidate's skill. Idempotent —
+// the same viewer clicking twice will end up un-endorsed (delete on
+// second hit). Refuses self-endorsement and refuses endorsement of
+// a skill the candidate doesn't actually have on their profile.
+export async function toggleSkillEndorsement(formData: FormData) {
+  const session = await auth();
+  if (!session?.user) redirect("/signin");
+
+  const slug = z.string().parse(formData.get("slug"));
+  const skillId = z.string().parse(formData.get("skillId"));
+
+  const target = await db.candidateProfile.findUnique({
+    where: { slug },
+    select: { id: true, userId: true, slug: true },
+  });
+  if (!target) return;
+  if (target.userId === session.user.id) return; // no self-endorse
+
+  // Per-user rate limit — endorsements cluster on the same profile
+  // visit, so the saveItem preset (60/min) sits in the right ballpark
+  // and matches the spam-shape of saved-jobs/save-candidate clicks.
+  await rateLimitOrThrow(`endorse:${session.user.id}`, "saveItem");
+
+  const fromUserId = session.user.id;
+
+  const existing = await db.skillEndorsement.findUnique({
+    where: {
+      candidateId_skillId_fromUserId: {
+        candidateId: target.id,
+        skillId,
+        fromUserId,
+      },
+    },
+  });
+
+  if (existing) {
+    await db.skillEndorsement.delete({
+      where: {
+        candidateId_skillId_fromUserId: {
+          candidateId: target.id,
+          skillId,
+          fromUserId,
+        },
+      },
+    });
+  } else {
+    // Confirm the candidate actually lists this skill before we
+    // accept the endorsement — silently no-op otherwise so a stale
+    // form (skill removed mid-render) doesn't 500.
+    const has = await db.candidateSkill.findUnique({
+      where: { candidateId_skillId: { candidateId: target.id, skillId } },
+      select: { candidateId: true },
+    });
+    if (!has) return;
+    await db.skillEndorsement.create({
+      data: { candidateId: target.id, skillId, fromUserId },
+    });
+  }
+
+  revalidatePath(`/${target.slug}`);
+}
+
 // ─── Certifications CRUD ───────────────────────────────────
 
 const certSchema = z.object({

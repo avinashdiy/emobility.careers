@@ -209,47 +209,80 @@ export default async function MyProfilePage({
           </div>
         </Card>
 
+        {/* Anchor wrappers — each section gets a stable id so the
+            pencil-edit links on the public profile (`/[username]`) can
+            deep-link straight to the matching editor. `scroll-mt-20`
+            offsets the SiteHeader sticky bar when the browser scrolls
+            on hash navigation. */}
         <div className="space-y-4">
           <CustomizeUrlEditor
             currentSlug={profile.slug}
             domain={env.NEXT_PUBLIC_APP_URL.replace(/^https?:\/\//, "")}
           />
-          <HeaderEditor profile={profile} />
-          <AvailabilityEditor
-            openToWork={profile.openToWork}
-            hiringNow={profile.hiringNow}
-          />
-          <CustomCtaEditor value={profile.customCta} />
-          <FeaturedPostsEditor
-            posts={ownPosts.map((p) => ({
-              ...p,
-              kind: p.kind as string,
-            }))}
-          />
-          <ExperienceEditor experiences={profile.experiences} />
-          <EducationEditor education={profile.education} />
-          <VolunteerExperienceEditor entries={profile.volunteerExperiences} />
-          <SkillsEditor
-            initialSkills={profile.skills.map((s) => ({
-              skillId: s.skillId,
-              name: s.skill.name,
-              proficiency: s.proficiency,
-            }))}
-            evDomains={profile.evDomains.map((d) => ({ slug: d.evDomain.slug, name: d.evDomain.name }))}
-          />
-          <CertificationsEditor certifications={profile.certifications} />
-          <ProjectsEditor projects={profile.projects} />
-          <AwardsEditor awards={profile.awards} />
-          <LanguagesEditor languages={profile.languagesSpoken} />
-          <RecommendationsInbox recs={receivedRecs} />
-          <PrivacyEditor
-            contactVisibility={profile.contactVisibility}
-            resumeVisibility={profile.resumeVisibility}
-            useAiResume={profile.useAiResume}
-            hasManualResume={Boolean(profile.resumeUrl)}
-            hasAiResume={Boolean(profile.aiResumeUrl)}
-            aiResumeGeneratedAt={profile.aiResumeGeneratedAt}
-          />
+          <div id="header" className="scroll-mt-20">
+            <HeaderEditor profile={profile} />
+          </div>
+          <div id="availability" className="scroll-mt-20">
+            <AvailabilityEditor
+              openToWork={profile.openToWork}
+              hiringNow={profile.hiringNow}
+            />
+          </div>
+          <div id="custom-cta" className="scroll-mt-20">
+            <CustomCtaEditor value={profile.customCta} />
+          </div>
+          <div id="featured" className="scroll-mt-20">
+            <FeaturedPostsEditor
+              posts={ownPosts.map((p) => ({
+                ...p,
+                kind: p.kind as string,
+              }))}
+            />
+          </div>
+          <div id="experience" className="scroll-mt-20">
+            <ExperienceEditor experiences={profile.experiences} />
+          </div>
+          <div id="education" className="scroll-mt-20">
+            <EducationEditor education={profile.education} />
+          </div>
+          <div id="volunteer" className="scroll-mt-20">
+            <VolunteerExperienceEditor entries={profile.volunteerExperiences} />
+          </div>
+          <div id="skills" className="scroll-mt-20">
+            <SkillsEditor
+              initialSkills={profile.skills.map((s) => ({
+                skillId: s.skillId,
+                name: s.skill.name,
+                proficiency: s.proficiency,
+              }))}
+              evDomains={profile.evDomains.map((d) => ({ slug: d.evDomain.slug, name: d.evDomain.name }))}
+            />
+          </div>
+          <div id="certifications" className="scroll-mt-20">
+            <CertificationsEditor certifications={profile.certifications} />
+          </div>
+          <div id="projects" className="scroll-mt-20">
+            <ProjectsEditor projects={profile.projects} />
+          </div>
+          <div id="awards" className="scroll-mt-20">
+            <AwardsEditor awards={profile.awards} />
+          </div>
+          <div id="languages" className="scroll-mt-20">
+            <LanguagesEditor languages={profile.languagesSpoken} />
+          </div>
+          <div id="recommendations" className="scroll-mt-20">
+            <RecommendationsInbox recs={receivedRecs} />
+          </div>
+          <div id="privacy" className="scroll-mt-20">
+            <PrivacyEditor
+              contactVisibility={profile.contactVisibility}
+              resumeVisibility={profile.resumeVisibility}
+              useAiResume={profile.useAiResume}
+              hasManualResume={Boolean(profile.resumeUrl)}
+              hasAiResume={Boolean(profile.aiResumeUrl)}
+              aiResumeGeneratedAt={profile.aiResumeGeneratedAt}
+            />
+          </div>
         </div>
       </main>
     </div>
