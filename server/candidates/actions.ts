@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { objectKey, presignUpload, presignDownload, buckets, s3, publicUrl } from "@/lib/storage";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { resumeParseQueue, embeddingsQueue } from "@/lib/queues";
+import { resumeParseQueue, embeddingsQueue, resumeDraftQueue } from "@/lib/queues";
 import { parseResume } from "@/lib/ai/resume-parser";
 import { logger } from "@/lib/logger";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
@@ -31,6 +31,30 @@ async function requireCandidate() {
   });
   if (!profile) redirect("/onboarding");
   return { session, profile };
+}
+
+/**
+ * Enqueue an AI résumé draft for this candidate. Coalesces multiple edits
+ * in a 5-minute window into a single PDF generation by reusing the same
+ * BullMQ jobId (the BullMQ behaviour is "ignore duplicate add of pending
+ * jobId"). Fire-and-forget — never throws into the caller, so a queue
+ * outage doesn't break profile-edit UX.
+ */
+async function enqueueResumeDraft(candidateId: string) {
+  try {
+    await resumeDraftQueue.add(
+      "draft",
+      { candidateId },
+      {
+        // Same jobId per 5-min window deduplicates rapid edits.
+        jobId: `${candidateId}-${Math.floor(Date.now() / 300_000)}`,
+        // Small delay so a burst of edits all land before the worker fires.
+        delay: 8_000,
+      },
+    );
+  } catch (err) {
+    logger.warn({ err, candidateId }, "[resume-draft] enqueue failed");
+  }
 }
 
 // ─── Onboarding step 1: profile mode ───────────────────────
@@ -364,6 +388,7 @@ export async function saveHeader(formData: FormData) {
     data: parsed.data,
   });
   await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
+  await enqueueResumeDraft(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -402,6 +427,7 @@ export async function saveExperience(formData: FormData) {
     await db.experience.create({ data });
   }
   await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
+  await enqueueResumeDraft(profile.id);
   revalidatePath("/me/profile");
 }
 
@@ -410,6 +436,7 @@ export async function deleteExperience(formData: FormData) {
   const id = formData.get("id");
   if (typeof id !== "string") return;
   await db.experience.deleteMany({ where: { id, candidateId: profile.id } });
+  await enqueueResumeDraft(profile.id);
   revalidatePath("/me/profile");
 }
 
@@ -437,6 +464,7 @@ export async function saveEducation(formData: FormData) {
   } else {
     await db.education.create({ data: { ...rest, candidateId: profile.id } });
   }
+  await enqueueResumeDraft(profile.id);
   revalidatePath("/me/profile");
 }
 
@@ -445,6 +473,7 @@ export async function deleteEducation(formData: FormData) {
   const id = formData.get("id");
   if (typeof id !== "string") return;
   await db.education.deleteMany({ where: { id, candidateId: profile.id } });
+  await enqueueResumeDraft(profile.id);
   revalidatePath("/me/profile");
 }
 
@@ -686,6 +715,7 @@ export async function addSkillToProfile(formData: FormData) {
     },
   });
   await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
+  await enqueueResumeDraft(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -697,6 +727,7 @@ export async function removeSkillFromProfile(formData: FormData) {
     where: { candidateId: profile.id, skillId },
   });
   await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
+  await enqueueResumeDraft(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -731,6 +762,7 @@ export async function saveCertification(formData: FormData) {
   } else {
     await db.certification.create({ data: { ...data, candidateId: profile.id } });
   }
+  await enqueueResumeDraft(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -739,6 +771,7 @@ export async function deleteCertification(formData: FormData) {
   const { profile } = await requireCandidate();
   const id = z.string().parse(formData.get("id"));
   await db.certification.deleteMany({ where: { id, candidateId: profile.id } });
+  await enqueueResumeDraft(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -774,6 +807,7 @@ export async function saveProject(formData: FormData) {
   } else {
     await db.project.create({ data: { ...data, candidateId: profile.id } });
   }
+  await enqueueResumeDraft(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -782,6 +816,7 @@ export async function deleteProject(formData: FormData) {
   const { profile } = await requireCandidate();
   const id = z.string().parse(formData.get("id"));
   await db.project.deleteMany({ where: { id, candidateId: profile.id } });
+  await enqueueResumeDraft(profile.id);
   revalidatePath("/me/profile");
   revalidatePath(`/${profile.slug}`);
 }
@@ -840,4 +875,37 @@ export async function presignAvatarUpload(contentType: string) {
   const key = objectKey(`avatars/${profile.id}`, ext);
   const { url } = await presignUpload("avatars", key, contentType);
   return { url, key, publicKey: `avatars/${key}` };
+}
+
+// ─── Privacy + résumé visibility ────────────────────────────
+// Both visibility settings default to PRIVATE on a fresh profile. The user
+// opts in to wider audiences from /me/profile. The AI-résumé toggle picks
+// which file is served to viewers who pass the visibility gate.
+
+const PrivacySchema = z.object({
+  contactVisibility: z.enum(["PRIVATE", "CONNECTIONS", "EMPLOYERS_ONLY", "EVERYONE"]),
+  resumeVisibility: z.enum(["PRIVATE", "EMPLOYERS_ONLY", "EVERYONE"]),
+  useAiResume: z.coerce.boolean().default(false),
+});
+
+export async function updatePrivacySettings(formData: FormData): Promise<{ ok: boolean; message?: string }> {
+  const { profile } = await requireCandidate();
+  const parsed = PrivacySchema.safeParse({
+    contactVisibility: formData.get("contactVisibility"),
+    resumeVisibility: formData.get("resumeVisibility"),
+    useAiResume: formData.get("useAiResume") === "on" || formData.get("useAiResume") === "true",
+  });
+  if (!parsed.success) return { ok: false, message: "Invalid visibility values." };
+
+  await db.candidateProfile.update({
+    where: { id: profile.id },
+    data: {
+      contactVisibility: parsed.data.contactVisibility,
+      resumeVisibility: parsed.data.resumeVisibility,
+      useAiResume: parsed.data.useAiResume,
+    },
+  });
+  revalidatePath("/me/profile");
+  revalidatePath(`/${profile.slug}`);
+  return { ok: true, message: "Privacy settings saved." };
 }

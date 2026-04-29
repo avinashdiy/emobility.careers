@@ -195,6 +195,22 @@ enum CVVisibility {
   PRIVATE
 }
 
+// Granular gates for sensitive fields. Both default to PRIVATE so first-time
+// users don't leak personal data. The candidate can loosen each independently
+// from /me/profile.
+enum ContactVisibility {
+  PRIVATE // owner only
+  CONNECTIONS // 1st-degree connections
+  EMPLOYERS_ONLY // verified employers (the LinkedIn cold-outreach pattern)
+  EVERYONE // public — surfaced on the profile page
+}
+
+enum ResumeVisibility {
+  PRIVATE // owner only — must apply to a job to share
+  EMPLOYERS_ONLY // verified employers can download
+  EVERYONE // public download link
+}
+
 enum RelocationPref {
   ANYWHERE
   WITHIN_STATE
@@ -239,7 +255,26 @@ model CandidateProfile {
   websiteUrl            String?
   languagesSpoken       String[]           @default([])
   cvVisibility          CVVisibility       @default(EVERYONE)
+  // ContactVisibility gates email + phone display on every public surface
+  // (profile page, mentor page, search result hover). PRIVATE is the
+  // default so a fresh signup never leaks contact info accidentally.
+  // EMPLOYERS_ONLY is the LinkedIn pattern: verified employers can see
+  // contact for cold-outreach within rate limits; everyone else cannot.
+  contactVisibility     ContactVisibility  @default(PRIVATE)
+  // ResumeVisibility gates the resume download (and CV-card surfacing)
+  // independent of profile visibility. A user might keep their profile
+  // public but hide the resume until applying to specific jobs.
+  resumeVisibility      ResumeVisibility   @default(PRIVATE)
   openToWork            Boolean            @default(true)
+
+  // AI-drafted resume — refreshed by the resume-draft worker whenever the
+  // candidate edits experience/education/skills/headline/summary. The user
+  // can flip `useAiResume` off in profile settings to surface their own
+  // uploaded `resumeUrl` instead. Both are stored; the visibility gate
+  // determines who can download whichever is active.
+  aiResumeUrl         String?
+  aiResumeGeneratedAt DateTime?
+  useAiResume         Boolean   @default(true)
 
   // DIYguru verification
   isDIYguruVerified Boolean   @default(false)
@@ -316,7 +351,13 @@ model Experience {
   id          String           @id @default(cuid())
   candidateId String
   candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  // Always required as plain text — survives company deletion / unmapped
+  // companies. Optional FK below upgrades the entry to a structured link
+  // (logo, page, follow-able). LinkedIn does the same: free-text fallback
+  // for jobs at companies not on the platform.
   company     String
+  companyId   String?
+  companyRef  Company?         @relation("ExperienceCompany", fields: [companyId], references: [id], onDelete: SetNull)
   title       String
   location    String?
   startDate   DateTime
@@ -324,20 +365,29 @@ model Experience {
   current     Boolean          @default(false)
   description String?          @db.Text
   createdAt   DateTime         @default(now())
+
+  @@index([companyId])
 }
 
 model Education {
-  id          String           @id @default(cuid())
-  candidateId String
-  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  institution String
-  degree      String?
-  field       String?
-  startYear   Int?
-  endYear     Int?
-  grade       String?
-  description String?          @db.Text
-  createdAt   DateTime         @default(now())
+  id              String           @id @default(cuid())
+  candidateId     String
+  candidate       CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  // Always required as plain text. Optional institutionId promotes the entry
+  // to a structured link with logo + alumni listing. The user can opt out
+  // and leave it as text only.
+  institution     String
+  institutionId   String?
+  institutionRef  Institution?     @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  degree          String?
+  field           String?
+  startYear       Int?
+  endYear         Int?
+  grade           String?
+  description     String?          @db.Text
+  createdAt       DateTime         @default(now())
+
+  @@index([institutionId])
 }
 
 model Certification {
@@ -453,6 +503,10 @@ model Company {
 
   // Competitions hosted by this company
   competitions Competition[] @relation("CompanyCompetitions")
+
+  // Candidate-experience entries that link to this company (LinkedIn-style
+  // "X people work here" surfacing on the company page)
+  experienceLinks Experience[] @relation("ExperienceCompany")
 
   // WordPress legacy tracking
   wpLegacyId Int? @unique

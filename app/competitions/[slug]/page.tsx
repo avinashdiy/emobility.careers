@@ -9,6 +9,7 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { getCompetitionBySlug, getMyRegistration } from "@/server/competitions/queries";
 import { formatMinor } from "@/components/mentorship/PriceLabel";
+import { breadcrumbJsonLd, competitionEventJsonLd } from "@/lib/seo/schemas";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -33,8 +34,17 @@ export default async function CompetitionDetailPage({ params }: { params: Promis
     && (!c.registrationOpensAt || c.registrationOpensAt.getTime() <= now)
     && (!c.registrationClosesAt || c.registrationClosesAt.getTime() >= now);
 
+  const eventLd = competitionEventJsonLd(c);
+  const breadcrumbLd = breadcrumbJsonLd([
+    { name: "Home", href: "/" },
+    { name: "Competitions", href: "/competitions" },
+    { name: c.title, href: `/competitions/${c.slug}` },
+  ]);
+
   return (
     <>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(eventLd) }} />
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }} />
       <SiteHeader />
 
       <div className="bg-emce-light-soft">

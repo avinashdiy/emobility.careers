@@ -1,6 +1,25 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
+import { CompactFooter } from "@/components/layout/compact-footer";
 
-export function SiteFooter() {
+/**
+ * Session-aware footer wrapper.
+ *
+ * Logged-out visitors on marketing pages (/, /jobs, /companies, /diyguru,
+ * /about, …) get the full four-column marketing footer below — heavy on
+ * positioning + benefits, intentional for SEO and conversion.
+ *
+ * Logged-in users get the compact, LinkedIn-style inline-link footer so
+ * the bottom of every page reads as a slim navigation strip rather than
+ * a marketing block. Profile pages opt out entirely (don't render the
+ * footer at all — see app/[username]/page.tsx).
+ */
+export async function SiteFooter() {
+  const session = await auth();
+  if (session?.user) {
+    return <CompactFooter />;
+  }
+
   return (
     <footer className="mt-24 border-t border-emce-border bg-emce-darkest text-emce-light-soft">
       <div className="container grid gap-10 py-12 md:grid-cols-4">

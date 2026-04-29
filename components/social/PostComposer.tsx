@@ -56,26 +56,30 @@ export function PostComposer({ user, companies = [] }: Props) {
   }
 
   if (!open) {
+    // LinkedIn-density collapsed composer:
+    //   avatar 48 · borderless pill placeholder · 2 action buttons
     return (
-      <Card className="cursor-pointer p-3 sm:p-4" onClick={() => {
+      <Card className="cursor-pointer p-3" onClick={() => {
         setOpen(true);
         setTimeout(() => ref.current?.focus(), 50);
       }}>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <Avatar src={user.profilePhotoUrl} name={user.name} size="md" />
           <button
             type="button"
-            className="flex-1 rounded-full border border-emce-border bg-white px-4 py-2.5 text-left text-sm text-emce-text-muted hover:bg-emce-light-soft"
+            className="flex-1 rounded-full border border-emce-border bg-white px-4 py-2 text-left text-sm font-semibold text-emce-text-sec hover:bg-emce-light-soft"
           >
-            Start a post, {user.name?.split(" ")[0] ?? "there"}…
+            Start a post
           </button>
         </div>
-        <div className="mt-2 flex flex-wrap gap-2 border-t border-emce-border pt-2 text-hint text-emce-text-sec">
-          <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-emce-light-soft">
-            <ImageIcon className="h-4 w-4 text-emce-mid" /> Photo
+        <div className="mt-1.5 flex items-center gap-1 pt-1.5 text-sm font-semibold text-emce-text-sec">
+          <span className="inline-flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-emce-light-soft">
+            <ImageIcon className="h-5 w-5 text-emce-mid-muted" />
+            <span>Photo</span>
           </span>
-          <span className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 hover:bg-emce-light-soft">
-            <BriefcaseIcon className="h-4 w-4 text-emce-orange" /> Share a job
+          <span className="inline-flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-emce-light-soft">
+            <BriefcaseIcon className="h-5 w-5 text-emce-orange" />
+            <span>Share a job</span>
           </span>
         </div>
       </Card>
@@ -83,7 +87,7 @@ export function PostComposer({ user, companies = [] }: Props) {
   }
 
   return (
-    <Card className="p-4 sm:p-6">
+    <Card className="p-4">
       <div className="flex items-start justify-between gap-3">
         <Link href={`/${user.slug}`} className="flex items-center gap-3">
           <Avatar src={user.profilePhotoUrl} name={user.name} size="md" />

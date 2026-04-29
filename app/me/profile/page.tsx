@@ -16,6 +16,7 @@ import { CertificationsEditor } from "@/components/profile/sections/Certificatio
 import { ProjectsEditor } from "@/components/profile/sections/ProjectsEditor";
 import { AwardsEditor } from "@/components/profile/sections/AwardsEditor";
 import { LanguagesEditor } from "@/components/profile/sections/LanguagesEditor";
+import { PrivacyEditor } from "@/components/profile/sections/PrivacyEditor";
 import { env } from "@/lib/env";
 
 export const metadata = { title: "Edit my profile" };
@@ -118,6 +119,14 @@ export default async function MyProfilePage() {
           <ProjectsEditor projects={profile.projects} />
           <AwardsEditor awards={profile.awards} />
           <LanguagesEditor languages={profile.languagesSpoken} />
+          <PrivacyEditor
+            contactVisibility={profile.contactVisibility}
+            resumeVisibility={profile.resumeVisibility}
+            useAiResume={profile.useAiResume}
+            hasManualResume={Boolean(profile.resumeUrl)}
+            hasAiResume={Boolean(profile.aiResumeUrl)}
+            aiResumeGeneratedAt={profile.aiResumeGeneratedAt}
+          />
         </div>
       </main>
     </div>

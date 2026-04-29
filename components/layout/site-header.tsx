@@ -11,15 +11,15 @@ import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 
 /**
- * Top navigation, integrated across all four pillars (recruitment / social /
- * mentorship / competitions). Layout, left to right:
+ * Top navigation — LinkedIn-style: WHITE background, thin bottom border,
+ * dark text. Sits above the slightly-greenish page background so the seam
+ * reads as a clean horizontal rule rather than a dramatic colour swap.
  *
- *   logo · Discover ▾ · Feed · Network · Notifications · search · lang · Me ▾
+ *   logo · Discover ▾ · search · | · Feed · Network · Notifications · lang · Me ▾
  *
- * Discover collapses the secondary nav (Jobs, Competitions, Mentors, People,
- * Companies) so we don't crowd the primary social actions. The "Me" dropdown
- * is the entry point for everything role-specific (applications, mentor inbox,
- * employer dashboard, admin queues) — keeps the surface flat for the user.
+ * Brand accents (lime + dark teal) appear only on the logo tile and inside
+ * pills/badges — the chrome itself stays neutral so cards and content cards
+ * are the visual focus, just like LinkedIn's UI.
  */
 export async function SiteHeader() {
   const [session, locale] = await Promise.all([auth(), getLocale()]);
@@ -85,21 +85,18 @@ export async function SiteHeader() {
   ];
 
   return (
-    <header className="sticky top-0 z-40 w-full bg-emce-dark text-white shadow-emce">
-      <div className="container flex h-14 items-center gap-3 py-2 md:h-15 md:gap-4 md:py-3">
-        {/* Logged-in users land on /feed (LinkedIn pattern); visitors go to
-            the marketing home. The href flips on the server so there's no
-            client-side flash of the wrong destination. */}
-        <Link href={user ? "/feed" : "/"} className="flex shrink-0 items-center gap-2">
+    <header className="sticky top-0 z-40 w-full border-b border-emce-border bg-white text-emce-text">
+      <div className="container flex h-14 items-center gap-3 py-2 md:gap-4 md:py-2.5">
+        <Link href={user ? "/feed" : "/"} className="flex shrink-0 items-center gap-2" aria-label="Home">
           <span className="grid h-8 w-8 place-items-center rounded-md bg-emce-mid font-extrabold text-emce-darkest">
             eM
           </span>
-          <span className="hidden text-sm font-extrabold tracking-tight md:inline md:text-base">
-            eMobility<span className="text-emce-mid">.careers</span>
+          <span className="hidden text-sm font-extrabold tracking-tight text-emce-text md:inline">
+            eMobility<span className="text-emce-mid-muted">.careers</span>
           </span>
         </Link>
 
-        <nav className="hidden items-center gap-3 md:flex">
+        <nav className="hidden items-center md:flex">
           <DiscoverMenu label="Discover" />
         </nav>
 
@@ -107,8 +104,14 @@ export async function SiteHeader() {
           <HeaderSearch placeholder="Search people, jobs, mentors, competitions…" />
 
           {user && (
-            <nav className="hidden items-center gap-0.5 md:flex">
+            // Primary nav slots — always visible. On phones we drop the
+            // text label under each icon so the bar stays narrow; on desktop
+            // we show icon + label like LinkedIn. Jobs is promoted to the
+            // primary nav (LinkedIn always has Jobs there) — keep the same
+            // route in Discover too for redundancy.
+            <nav className="flex items-center gap-0.5">
               <SocialNavLink href="/feed" label={t("nav.feed", locale)} icon="feed" />
+              <SocialNavLink href="/jobs" label={t("nav.findJobs", locale)} icon="jobs" />
               <SocialNavLink
                 href="/me/network"
                 label={t("nav.network", locale)}
@@ -124,8 +127,8 @@ export async function SiteHeader() {
             </nav>
           )}
 
-          <div className="ml-1 flex items-center gap-2">
-            <LanguageSwitcher current={locale} variant="dark" />
+          <div className="ml-1 flex items-center gap-2 border-l border-emce-border pl-2">
+            <LanguageSwitcher current={locale} variant="light" />
             {user ? (
               <HeaderUserMenu
                 user={{
@@ -143,12 +146,12 @@ export async function SiteHeader() {
                 <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
                   <Link href="/signin">{t("nav.signIn", locale)}</Link>
                 </Button>
-                <Button asChild variant="accent" size="sm" className="hidden sm:inline-flex">
+                <Button asChild variant="default" size="sm" className="hidden sm:inline-flex">
                   <Link href="/signup">{t("nav.joinFree", locale)}</Link>
                 </Button>
               </>
             )}
-            <MobileNav items={mobileItems} variant="dark" />
+            <MobileNav items={mobileItems} variant="light" />
           </div>
         </div>
       </div>
@@ -164,20 +167,22 @@ function SocialNavLink({
 }: {
   href: string;
   label: string;
-  icon: "feed" | "network" | "bell";
+  icon: "feed" | "jobs" | "network" | "bell";
   badge?: number;
 }) {
   return (
     <Link
       href={href}
-      className="relative flex flex-col items-center justify-center rounded-md px-3 py-1 text-[11px] font-semibold text-white/80 hover:text-white"
+      // Icon-only on phones (no label), icon-with-label on md+. Padding
+      // shrinks on mobile so 4 icons + logo + search + me-menu fit.
+      className="relative flex flex-col items-center justify-center rounded-md px-2 py-1 text-emce-text-sec hover:text-emce-text md:px-3"
       aria-label={label}
       title={label}
     >
       <SocialIcon name={icon} />
-      <span className="mt-0.5 leading-none">{label}</span>
+      <span className="mt-0.5 hidden text-[11px] font-semibold leading-none md:block">{label}</span>
       {badge > 0 && (
-        <span className="absolute right-1 top-0.5 grid h-4 min-w-4 place-items-center rounded-full bg-emce-mid px-1 text-[9px] font-bold text-emce-darkest">
+        <span className="absolute right-0.5 top-0 grid h-4 min-w-4 place-items-center rounded-full bg-emce-red px-1 text-[9px] font-bold text-white md:right-1 md:top-0.5">
           {badge > 99 ? "99+" : badge}
         </span>
       )}
@@ -185,13 +190,22 @@ function SocialNavLink({
   );
 }
 
-function SocialIcon({ name }: { name: "feed" | "network" | "bell" }) {
+function SocialIcon({ name }: { name: "feed" | "jobs" | "network" | "bell" }) {
   if (name === "feed") {
     return (
       <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
         <rect x="3" y="3" width="18" height="18" rx="2" />
         <path d="M3 9h18" />
         <path d="M9 21V9" />
+      </svg>
+    );
+  }
+  if (name === "jobs") {
+    return (
+      <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        <rect x="2" y="6" width="20" height="14" rx="2" />
+        <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+        <path d="M2 13h20" />
       </svg>
     );
   }

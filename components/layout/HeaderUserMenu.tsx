@@ -50,11 +50,11 @@ export function HeaderUserMenu({ user }: { user: UserMenuViewerData }) {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-white/10"
+        className="flex items-center gap-1 rounded-md px-1.5 py-1 hover:bg-emce-light-soft"
         aria-label="Open account menu"
       >
         <Avatar src={user.avatarUrl} name={user.name} size="sm" />
-        <ChevronDown className="h-3.5 w-3.5 text-white/80" />
+        <ChevronDown className="h-3.5 w-3.5 text-emce-text-sec" />
       </button>
 
       {open && (

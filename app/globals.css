@@ -7,11 +7,11 @@
     /* shadcn/ui semantic tokens, mapped to the eMC brand palette
        (HSL components without hsl() wrapper, per shadcn convention). */
     --background: 132 50% 97%;        /* #f4fdf6 emce-light-bg */
-    --foreground: 162 17% 14%;        /* #1e2d2a emce-darkest */
+    --foreground: 0 0% 10%;           /* #191919 — neutral near-black for crisp body text (was green-tinted #1e2d2a) */
     --card: 0 0% 100%;
-    --card-foreground: 162 17% 14%;
+    --card-foreground: 0 0% 10%;
     --popover: 0 0% 100%;
-    --popover-foreground: 162 17% 14%;
+    --popover-foreground: 0 0% 10%;
     --primary: 168 13% 25%;           /* #374a47 emce-dark */
     --primary-foreground: 110 100% 85%;  /* #c1ffb4 emce-light */
     --secondary: 130 50% 89%;         /* emce-light-soft tone */
@@ -25,7 +25,7 @@
     --border: 130 32% 87%;            /* #d4e8d8 emce-border */
     --input: 130 32% 87%;
     --ring: 132 49% 69%;              /* emce-mid focus ring */
-    --radius: 0.875rem;               /* 14px from --emce-radius */
+    --radius: 0.5rem;                 /* 8px — LinkedIn-tight; was 14px */
   }
 
   .dark {
@@ -60,7 +60,12 @@
   }
   body {
     @apply bg-background text-foreground font-sans;
+    /* Inter rendering polish — `cv11` enables single-storey lowercase a/g
+       (LinkedIn uses these), `ss01` enables old-style figures. The slight
+       negative letter-spacing tightens body type to LinkedIn density. */
     font-feature-settings: "cv11", "ss01";
+    letter-spacing: -0.005em;
+    text-rendering: optimizeLegibility;
   }
 }
 

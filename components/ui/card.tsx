@@ -6,7 +6,10 @@ const Card = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivElemen
     <div
       ref={ref}
       className={cn(
-        "rounded-lg border border-emce-border bg-white p-6 shadow-emce",
+        // LinkedIn-density default: 16px padding (p-4) instead of 24px.
+        // Pages that genuinely need more breathing room (auth forms, modal-
+        // like containers) override with `p-5` / `p-6` / `p-8` per-instance.
+        "rounded-lg border border-emce-border bg-white p-4 shadow-emce",
         // hover lift only on links / explicitly interactive cards
         className,
       )}

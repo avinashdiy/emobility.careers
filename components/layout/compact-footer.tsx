@@ -1,0 +1,48 @@
+import Link from "next/link";
+import { getSetting } from "@/lib/settings";
+
+/**
+ * Compact, LinkedIn-style footer for logged-in / inside pages. Renders as
+ * an inline list of links + a small copyright line — the four-column
+ * marketing footer would dominate on a feed/profile/jobs view, so we use
+ * this lighter version everywhere except the public marketing pages.
+ *
+ * Visual reference: LinkedIn shows a wrapping list of small links
+ * (About · Accessibility · Help Center · Privacy & Terms · …) below the
+ * profile sidebar. Same pattern here.
+ */
+export async function CompactFooter() {
+  const siteName = (await getSetting("site.name").catch(() => "")) || "eMobility Careers";
+  const year = new Date().getFullYear();
+
+  return (
+    <footer className="mt-8 border-t border-emce-border bg-emce-light-bg py-4">
+      <div className="container flex flex-col items-center gap-2">
+        <ul className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-emce-text-sec">
+          {LINKS.map((l) => (
+            <li key={l.href}>
+              <Link href={l.href} className="hover:text-emce-text hover:underline">
+                {l.label}
+              </Link>
+            </li>
+          ))}
+        </ul>
+        <div className="flex items-center gap-1.5 text-[11px] text-emce-text-muted">
+          <span className="grid h-4 w-4 place-items-center rounded-sm bg-emce-mid text-[8px] font-extrabold text-emce-darkest">eM</span>
+          <span>{siteName} Corporation © {year}</span>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+const LINKS = [
+  { href: "/about", label: "About" },
+  { href: "/accessibility", label: "Accessibility" },
+  { href: "/contact", label: "Help Center" },
+  { href: "/privacy", label: "Privacy & Terms" },
+  { href: "/jobs", label: "Browse jobs" },
+  { href: "/companies", label: "Companies" },
+  { href: "/diyguru", label: "DIYguru" },
+  { href: "/employer", label: "For employers" },
+];

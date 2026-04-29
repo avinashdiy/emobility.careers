@@ -41,9 +41,13 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   { key: "email.reply_to", category: "email", type: "EMAIL", label: "Reply-To address", default: "", description: "Where replies to platform emails are routed. Leave empty to use FROM." },
 
   // ─── SEO ────────────────────────────────────────────────────
-  { key: "seo.meta_description", category: "seo", type: "TEXT", label: "Default meta description", default: "Find EV jobs, mentors, and competitions across India's electric mobility ecosystem." },
-  { key: "seo.default_og_image", category: "seo", type: "URL", label: "Default OG image URL", default: "" },
-  { key: "seo.twitter_handle", category: "seo", type: "STRING", label: "Twitter @handle", default: "" },
+  { key: "seo.meta_description", category: "seo", type: "TEXT", label: "Default meta description", default: "Find EV jobs, mentors, and competitions across India's electric mobility ecosystem.", description: "Used on every page that doesn't define its own description. Aim for 140–160 characters." },
+  { key: "seo.keywords", category: "seo", type: "TEXT", label: "Meta keywords", default: "EV jobs India, electric vehicle careers, battery jobs, charging infrastructure jobs, EV technician, EV engineer, DIYguru", description: "Comma-separated. Google ignores these; Bing and some India-focused engines still parse them." },
+  { key: "seo.default_og_image", category: "seo", type: "URL", label: "Default OG image URL", default: "", description: "Override the auto-generated home OG image. Leave empty to use the dynamic /opengraph-image." },
+  { key: "seo.twitter_handle", category: "seo", type: "STRING", label: "Twitter / X handle", default: "", description: "Without the @. Used for the twitter:creator card metadata." },
+  { key: "seo.robots_index", category: "seo", type: "BOOLEAN", label: "Allow search engine indexing", default: "true", description: "Turn OFF on staging or during a soft launch. Affects every page via the global robots meta." },
+  { key: "seo.google_verification", category: "seo", type: "STRING", label: "Google Search Console verification token", default: "", description: "Optional — overrides the GOOGLE_SITE_VERIFICATION env var when set." },
+  { key: "seo.bing_verification", category: "seo", type: "STRING", label: "Bing Webmaster verification token", default: "", description: "Optional — overrides the BING_SITE_VERIFICATION env var when set." },
 
   // ─── Legal ──────────────────────────────────────────────────
   { key: "legal.terms_url", category: "legal", type: "URL", label: "Terms of Service URL", default: "/terms" },

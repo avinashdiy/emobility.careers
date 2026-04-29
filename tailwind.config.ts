@@ -29,9 +29,15 @@ const config: Config = {
           light: "#c1ffb4",
           "light-soft": "#e8fff3",
           "light-bg": "#f4fdf6",
-          text: "#1e2d2a",
-          "text-sec": "#5a6e6a",
-          "text-muted": "#8a9e9a",
+          // Body text colours used to be green-tinted (#1e2d2a etc.) which
+          // made paragraphs read "dim" against the greenish background.
+          // LinkedIn uses near-neutral darks (rgba(0,0,0,0.9 / 0.6)) so type
+          // looks crisp. We match that — accents (logo, buttons, badges,
+          // links via emce-dark/mid) stay green; only neutral body / heading /
+          // muted text moves to neutral darks.
+          text: "#191919",         // ~rgba(0,0,0,0.9) — LinkedIn body
+          "text-sec": "#5e676b",   // slightly cool grey — LinkedIn secondary
+          "text-muted": "#8b95a0", // captions / timestamps
           border: "#d4e8d8",
           "border-light": "#e8f5eb",
           orange: "#e8833a",

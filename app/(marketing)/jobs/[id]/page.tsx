@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { applyToJob, saveJob } from "@/server/jobs/actions";
 import { ReportJobButton } from "@/components/jobs/ReportJobButton";
 import { jobPostingJsonLd } from "@/lib/seo/job-schema";
+import { breadcrumbJsonLd } from "@/lib/seo/schemas";
 import { env } from "@/lib/env";
 import { formatSalaryRange, relativeTime } from "@/lib/utils";
 import { MapPin, Briefcase, Building2 } from "lucide-react";
@@ -107,14 +108,25 @@ export default async function PublicJobDetail({
     }
   }
 
-  // JSON-LD JobPosting schema (Google for Jobs spec)
+  // JSON-LD JobPosting schema (Google for Jobs spec) + breadcrumb trail.
+  // Two scripts on a page is fully spec-compliant; Google merges them.
   const jsonLd = jobPostingJsonLd(job);
+  const breadcrumbLd = breadcrumbJsonLd([
+    { name: "Home", href: "/" },
+    { name: "Jobs", href: "/jobs" },
+    { name: job.company.name, href: `/company/${job.company.slug}` },
+    { name: job.title, href: `/jobs/${job.id}` },
+  ]);
 
   return (
     <div className="container max-w-4xl py-10">
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
       />
 
       {sp.error && (

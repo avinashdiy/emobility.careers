@@ -34,11 +34,11 @@ export function HeaderSearch({ placeholder }: { placeholder?: string }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-label="Search"
-        className="grid h-9 w-9 place-items-center rounded-md text-white/80 hover:bg-white/10 hover:text-white sm:hidden"
+        className="grid h-9 w-9 place-items-center rounded-md text-emce-text-sec hover:bg-emce-light-soft hover:text-emce-text sm:hidden"
       >
         <Search className="h-4 w-4" />
       </button>
-      <div className={`hidden items-center sm:flex ${open ? "" : ""}`}>
+      <div className="hidden items-center sm:flex">
         <Search className="pointer-events-none absolute left-3 h-4 w-4 text-emce-text-sec" />
         <input
           ref={inputRef}
@@ -46,7 +46,7 @@ export function HeaderSearch({ placeholder }: { placeholder?: string }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder={placeholder ?? "Search people, jobs, mentors, competitions…"}
-          className="h-9 w-64 rounded-md bg-white/10 pl-9 pr-3 text-sm text-white placeholder-white/60 outline-none ring-0 transition-colors focus:bg-white focus:text-emce-text focus:placeholder-emce-text-sec md:w-72"
+          className="h-9 w-64 rounded-md bg-emce-light-soft pl-9 pr-3 text-sm text-emce-text placeholder-emce-text-sec outline-none ring-0 transition-colors focus:bg-white focus:ring-1 focus:ring-emce-mid md:w-80"
           aria-label="Search the platform"
         />
       </div>

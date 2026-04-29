@@ -46,7 +46,7 @@ export function DiscoverMenu({ label }: { label: string }) {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="flex items-center gap-1 rounded-md px-2 py-1 text-sm font-semibold hover:bg-white/10 hover:text-emce-light"
+        className="flex items-center gap-1 rounded-md px-2 py-1 text-sm font-semibold text-emce-text-sec hover:bg-emce-light-soft hover:text-emce-text"
       >
         {label}
         <ChevronDown className="h-3.5 w-3.5" />

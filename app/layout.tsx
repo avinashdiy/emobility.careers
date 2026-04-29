@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { DM_Sans } from "next/font/google";
+import { Inter } from "next/font/google";
 import { Suspense } from "react";
 import "./globals.css";
 import { cn } from "@/lib/utils";
@@ -9,7 +9,10 @@ import { MaintenanceGate } from "@/components/layout/MaintenanceGate";
 import { MessagingWidget } from "@/components/messaging/MessagingWidget";
 import { getSettings } from "@/lib/settings";
 
-const dmSans = DM_Sans({
+// Inter is the modern professional sans-serif standard (LinkedIn uses Source
+// Sans 3, which is functionally identical at body sizes). The CSS variable
+// keeps the existing token name so Tailwind config doesn't need to change.
+const inter = Inter({
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],
   variable: "--font-dm-sans",
@@ -25,16 +28,25 @@ export async function generateMetadata(): Promise<Metadata> {
   let description = "India's specialised EV-industry talent platform. Battery, charging, powertrain, and motor-control jobs for technicians and engineers. DIYguru-verified candidates.";
   let twitterHandle = "";
   let ogImage = "";
+  let keywords = "";
+  let allowIndex = true;
+  let googleVerify = process.env.GOOGLE_SITE_VERIFICATION ?? "";
+  let bingVerify = process.env.BING_SITE_VERIFICATION ?? "";
   try {
     const s = await getSettings(
-      "site.name", "site.tagline", "seo.meta_description",
-      "seo.twitter_handle", "seo.default_og_image",
+      "site.name", "site.tagline", "seo.meta_description", "seo.keywords",
+      "seo.twitter_handle", "seo.default_og_image", "seo.robots_index",
+      "seo.google_verification", "seo.bing_verification",
     );
     if (s["site.name"]) siteName = s["site.name"];
     if (s["site.tagline"]) tagline = s["site.tagline"];
     if (s["seo.meta_description"]) description = s["seo.meta_description"];
+    if (s["seo.keywords"]) keywords = s["seo.keywords"];
     if (s["seo.twitter_handle"]) twitterHandle = s["seo.twitter_handle"];
     if (s["seo.default_og_image"]) ogImage = s["seo.default_og_image"];
+    if (s["seo.robots_index"] === "false") allowIndex = false;
+    if (s["seo.google_verification"]) googleVerify = s["seo.google_verification"];
+    if (s["seo.bing_verification"]) bingVerify = s["seo.bing_verification"];
   } catch {
     // Pre-migration boot — defaults stand.
   }
@@ -42,7 +54,21 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: { default: `${siteName} — ${tagline}`, template: `%s | ${siteName}` },
     description,
+    keywords: keywords ? keywords.split(",").map((k) => k.trim()).filter(Boolean) : undefined,
     metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
+    robots: allowIndex
+      ? {
+          index: true,
+          follow: true,
+          googleBot: {
+            index: true,
+            follow: true,
+            "max-image-preview": "large",
+            "max-video-preview": -1,
+            "max-snippet": -1,
+          },
+        }
+      : { index: false, follow: false, googleBot: { index: false, follow: false } },
     openGraph: {
       title: siteName,
       description,
@@ -57,12 +83,8 @@ export async function generateMetadata(): Promise<Metadata> {
       ...(twitterHandle ? { creator: twitterHandle.startsWith("@") ? twitterHandle : `@${twitterHandle}` } : {}),
     },
     verification: {
-      google: process.env.GOOGLE_SITE_VERIFICATION,
-      other: {
-        ...(process.env.BING_SITE_VERIFICATION
-          ? { "msvalidate.01": process.env.BING_SITE_VERIFICATION }
-          : {}),
-      },
+      ...(googleVerify ? { google: googleVerify } : {}),
+      ...(bingVerify ? { other: { "msvalidate.01": bingVerify } } : {}),
     },
   };
 }
@@ -102,7 +124,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={cn(dmSans.variable, "font-sans bg-emce-light-bg text-emce-text")}>
+      <body className={cn(inter.variable, "font-sans bg-emce-light-bg text-emce-text antialiased")}>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_JSON_LD) }}

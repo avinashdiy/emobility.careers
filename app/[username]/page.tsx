@@ -8,13 +8,16 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { SiteHeader } from "@/components/layout/site-header";
-import { SiteFooter } from "@/components/layout/site-footer";
+// Profile pages render no footer at all — keeps the LinkedIn-style focus
+// on the profile content with no visual interruption at the bottom.
 import { saveCandidate } from "@/server/employer/actions";
 import { ShareButton } from "@/components/profile/ShareButton";
 import { ConnectButton } from "@/components/social/ConnectButton";
 import { FollowUserButton } from "@/components/social/FollowButton";
 import { PostCard, type FeedPostShape } from "@/components/social/PostCard";
 import { getConnectionStatus, isFollowingUser } from "@/server/social/queries";
+import { breadcrumbJsonLd } from "@/lib/seo/schemas";
+import { getViewerContext, canSeeContact, canSeeResume } from "@/lib/profile-visibility";
 import { env } from "@/lib/env";
 import { formatMonthYear } from "@/lib/utils";
 import { RESERVED_SLUGS } from "@/lib/reserved-slugs";
@@ -113,7 +116,6 @@ export default async function PublicCandidateProfile({
             They&apos;ll appear in employer searches once they apply to a job.
           </p>
         </main>
-        <SiteFooter />
       </>
     );
   }
@@ -135,7 +137,6 @@ export default async function PublicCandidateProfile({
             </Link>
           </p>
         </main>
-        <SiteFooter />
       </>
     );
   }
@@ -144,6 +145,18 @@ export default async function PublicCandidateProfile({
   const isOwner = session?.user?.id === profile.userId;
   const isEmployer = session?.user?.role === "EMPLOYER" || session?.user?.role === "ADMIN";
   const totalYears = (profile.totalExperienceMonths / 12).toFixed(1);
+
+  // Privacy gates — central helpers so every surface follows the same rules.
+  // ContactVisibility hides email/phone by default; ResumeVisibility hides
+  // the download CTA by default. Both can be loosened from /me/profile.
+  const viewerCtx = await getViewerContext(
+    session?.user?.id ?? null,
+    profile.userId,
+    (session?.user?.role as "ADMIN" | "EMPLOYER" | "CANDIDATE" | undefined) ?? null,
+  );
+  const showContact = canSeeContact(profile.contactVisibility, viewerCtx);
+  const showResume = canSeeResume(profile.resumeVisibility, viewerCtx) && Boolean(profile.resumeUrl || profile.aiResumeUrl);
+  const activeResumeUrl = profile.useAiResume && profile.aiResumeUrl ? profile.aiResumeUrl : profile.resumeUrl;
 
   const [connectionStatus, isFollowing, postsCount, recentPosts, mentorProfile, competitionWins] = await Promise.all([
     session?.user
@@ -243,12 +256,26 @@ export default async function PublicCandidateProfile({
     connectionStatus.status === "PENDING_IN" ? "PENDING_IN" :
     "NONE";
 
+  const breadcrumbLd = profile.cvVisibility === "EVERYONE"
+    ? breadcrumbJsonLd([
+        { name: "Home", href: "/" },
+        { name: "People", href: "/people" },
+        { name: fullName, href: `/${profile.slug}` },
+      ])
+    : null;
+
   return (
     <>
       {personJsonLd && (
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(personJsonLd) }}
+        />
+      )}
+      {breadcrumbLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
         />
       )}
       <SiteHeader />
@@ -381,7 +408,46 @@ export default async function PublicCandidateProfile({
                 </>
               )}
               <ShareButton url={`${env.NEXT_PUBLIC_APP_URL}/${profile.slug}`} />
+              {showResume && activeResumeUrl && (
+                <Button asChild variant="outline" size="sm">
+                  <a href={activeResumeUrl} target="_blank" rel="noopener noreferrer">
+                    📄 Download résumé
+                  </a>
+                </Button>
+              )}
             </div>
+
+            {/* Contact info — gated. Renders only when ContactVisibility allows
+                the viewer; default PRIVATE means visitors see nothing. The
+                owner always sees their own + a small "private" hint so they
+                can flip the toggle in /me/profile if they want it public. */}
+            {(showContact || isOwner) && (profile.email || profile.phone) && (
+              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-emce-border pt-3 text-xs">
+                {showContact ? (
+                  <>
+                    {profile.email && (
+                      <a href={`mailto:${profile.email}`} className="inline-flex items-center gap-1 font-semibold text-emce-dark hover:underline">
+                        ✉️ {profile.email}
+                      </a>
+                    )}
+                    {profile.phone && (
+                      <a href={`tel:${profile.phone.replace(/\s/g, "")}`} className="inline-flex items-center gap-1 font-semibold text-emce-dark hover:underline">
+                        📞 {profile.phone}
+                      </a>
+                    )}
+                  </>
+                ) : (
+                  <span className="inline-flex items-center gap-1 text-emce-text-sec">
+                    🔒 Contact info is {profile.contactVisibility.toLowerCase().replace("_", " ")}.
+                    {isOwner && (
+                      <Link href="/me/profile?tab=privacy" className="font-bold text-emce-dark hover:underline">
+                        Change visibility →
+                      </Link>
+                    )}
+                  </span>
+                )}
+              </div>
+            )}
 
             {/* External links — small icon row, only when present */}
             {(profile.linkedinUrl || profile.githubUrl || profile.portfolioUrl) && (
@@ -723,8 +789,6 @@ export default async function PublicCandidateProfile({
           </aside>
         </div>
       </div>
-
-      <SiteFooter />
     </>
   );
 }

@@ -101,29 +101,31 @@ export default async function FeedPage() {
       <div className="container max-w-6xl py-4 md:py-6">
         <div className="grid gap-4 lg:grid-cols-12">
         {/* ─── Left rail — profile card + stats + shortcuts ─── */}
-        <aside className="hidden space-y-3 lg:col-span-3 lg:block">
-          {/* Profile mini-card */}
+        <aside className="hidden space-y-2 lg:col-span-3 lg:block">
+          {/* Profile mini-card — LinkedIn-density: 56px banner, 72px
+              avatar overlapping by 50%, 12px padding, no breathing room
+              wasted under the headline. */}
           <Card className="overflow-hidden p-0">
             <div className="emce-hero-gradient h-14" />
-            <div className="-mt-7 px-4 pb-4 text-center">
+            <div className="-mt-8 px-3 pb-3 text-center">
               <Avatar
                 src={me.profilePhotoUrl}
                 name={fullName}
                 size="lg"
-                className="mx-auto h-16 w-16 ring-4 ring-white"
+                className="mx-auto h-[72px] w-[72px] ring-4 ring-white"
               />
               <Link
                 href={`/${me.slug}`}
-                className="mt-2 block font-bold text-emce-text hover:underline"
+                className="mt-1.5 block text-sm font-bold text-emce-text hover:underline"
               >
                 {fullName}
               </Link>
               {me.headline && (
-                <p className="mt-1 line-clamp-2 text-hint text-emce-text-sec">{me.headline}</p>
+                <p className="mt-0.5 line-clamp-2 text-xs text-emce-text-sec">{me.headline}</p>
               )}
             </div>
             {/* Inline stats — link-coloured, LinkedIn-style */}
-            <div className="border-t border-emce-border bg-emce-light-soft/40 px-4 py-2 text-hint">
+            <div className="border-t border-emce-border bg-emce-light-soft/40 px-2 py-1 text-xs">
               <Link
                 href="/me/network"
                 className="flex items-center justify-between rounded-md px-2 py-1 hover:bg-white"
@@ -143,7 +145,7 @@ export default async function FeedPage() {
 
           {/* Weekly stats — LinkedIn's "Profile viewers / Post impressions" analogue */}
           <Card className="p-0">
-            <div className="px-4 py-3 text-hint">
+            <div className="px-3 py-2.5 text-xs">
               <Link
                 href={`/${me.slug}?tab=activity`}
                 className="flex items-center justify-between rounded-md px-1 py-1 hover:bg-emce-light-soft"
@@ -218,14 +220,17 @@ export default async function FeedPage() {
             companies={teamCompanies.map((t) => t.company)}
           />
 
-          {/* Sort tag — LinkedIn shows "Sort by: Top" inline */}
-          <div className="mt-3 flex items-center gap-2 px-1 text-[11px] uppercase tracking-wide text-emce-text-sec">
-            <span className="h-px flex-1 bg-emce-border" />
-            <span>Sort by: <strong className="text-emce-text">Top</strong></span>
-            <span className="h-px flex-1 bg-emce-border" />
+          {/* Sort tag — LinkedIn right-aligns this with a thin divider
+              underneath, not centred between two lines. */}
+          <div className="mt-2 flex items-center justify-end px-1 pb-1.5 text-xs text-emce-text-sec">
+            <span className="hidden sm:inline">Sort by:</span>
+            <button type="button" className="ml-1 inline-flex items-center gap-0.5 font-bold text-emce-text hover:text-emce-dark">
+              Top <span aria-hidden>▾</span>
+            </button>
           </div>
+          <div className="border-t border-emce-border" />
 
-          <div className="mt-3 space-y-3">
+          <div className="mt-2 space-y-2">
             {posts.length === 0 ? (
               <EmptyState
                 icon="👋"
@@ -247,7 +252,7 @@ export default async function FeedPage() {
         </main>
 
         {/* ─── Right rail — suggestions, competitions, news ─── */}
-        <aside className="hidden space-y-3 lg:col-span-3 lg:block">
+        <aside className="hidden space-y-2 lg:col-span-3 lg:block">
           {upcomingMentorshipSession && (
             <Card>
               <div className="flex items-start gap-2">
