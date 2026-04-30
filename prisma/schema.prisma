@@ -1746,6 +1746,7 @@ enum PostKind {
   DOCUMENT // single PDF / DOCX / PPTX (≤10MB)
   ARTICLE // long-form, with title + cover image
   POLL // attached Poll (free or paid response)
+  QUESTION // Quora-style — body is the question; community submits Answer rows
 }
 
 enum EmbedProvider {

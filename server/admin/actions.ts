@@ -252,3 +252,52 @@ export async function setJobStatus(formData: FormData) {
   });
   revalidatePath("/admin/jobs");
 }
+
+// ─── Email diagnostics ───────────────────────────────────────
+//
+// Triggered from /admin/settings?tab=email. Tries to send a test email
+// to the supplied address using whichever provider is configured. We
+// surface the raw provider error message back as a query-string flash
+// so the admin can see (e.g.) "SignatureDoesNotMatch" or "domain not
+// verified" without SSH-ing to the box.
+export async function sendTestEmail(formData: FormData) {
+  await requireAdmin();
+  const to = z.string().email().parse(formData.get("to"));
+
+  const { sendMail, activeMailProvider } = await import("@/lib/mail");
+  const provider = activeMailProvider();
+
+  if (provider === "none") {
+    redirect(
+      `/admin/settings?tab=email&testEmail=err&testMsg=${encodeURIComponent(
+        "No email provider is configured. Set AWS_SES_REGION + AWS_SES_ACCESS_KEY_ID + AWS_SES_SECRET_ACCESS_KEY (or RESEND_API_KEY) in .env on the host and restart the web container.",
+      )}`,
+    );
+  }
+
+  try {
+    await sendMail({
+      to,
+      subject: "eMobility Careers — test email",
+      html: `<p>This is a test email from your <strong>eMobility Careers</strong> admin settings.</p>
+<p>Provider: <code>${provider}</code></p>
+<p>If you see this in your inbox, transactional emails (sign-up verification, magic links, password resets, etc.) are delivering correctly.</p>`,
+      text: `This is a test email from eMobility Careers admin settings.\nProvider: ${provider}.\nIf you see this in your inbox, transactional email is delivering.`,
+    });
+    redirect(
+      `/admin/settings?tab=email&testEmail=ok&testMsg=${encodeURIComponent(
+        `Sent via ${provider} to ${to}. Check the inbox (and spam) within a minute.`,
+      )}`,
+    );
+  } catch (err) {
+    // Re-throw redirect errors that Next.js uses for redirect()
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    const message =
+      err instanceof Error
+        ? `${err.name}: ${err.message}`.slice(0, 600)
+        : "Unknown error — check server logs (pm2 logs emce-web).";
+    redirect(
+      `/admin/settings?tab=email&testEmail=err&testMsg=${encodeURIComponent(message)}`,
+    );
+  }
+}

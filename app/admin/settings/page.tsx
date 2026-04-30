@@ -8,9 +8,15 @@ import { db } from "@/lib/db";
 import { redis } from "@/lib/redis";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { SettingsForm } from "@/components/admin/SettingsForm";
 import { SETTING_DEFINITIONS, getAllSettings } from "@/lib/settings";
+import { sendTestEmail } from "@/server/admin/actions";
+import { activeMailProvider } from "@/lib/mail";
+import { env } from "@/lib/env";
 
 export const metadata = { title: "Settings" };
 
@@ -58,13 +64,14 @@ function probe(varName: string): boolean {
 export default async function SettingsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: Tab }>;
+  searchParams: Promise<{ tab?: Tab; testEmail?: "ok" | "err"; testMsg?: string }>;
 }) {
   const session = await auth();
   if (session?.user?.role !== "ADMIN") redirect("/403");
 
   const sp = await searchParams;
   const tab: Tab = sp.tab && TABS.some((t) => t.value === sp.tab) ? sp.tab : "identity";
+  const sessionEmail = session.user.email ?? "";
 
   const values = await getAllSettings();
 
@@ -118,7 +125,7 @@ export default async function SettingsPage({
             };
             return (
               <div className="grid gap-6 lg:grid-cols-3">
-                <div className="lg:col-span-2">
+                <div className="lg:col-span-2 space-y-6">
                   <SettingsForm
                     category={tab}
                     title={titleByTab[tab] ?? tab}
@@ -126,6 +133,13 @@ export default async function SettingsPage({
                     definitions={definitions}
                     values={values}
                   />
+                  {tab === "email" && (
+                    <TestEmailCard
+                      defaultTo={sessionEmail}
+                      result={sp.testEmail}
+                      message={sp.testMsg}
+                    />
+                  )}
                 </div>
                 <aside className="space-y-6">
                   <Card className="bg-emce-light-soft">
@@ -259,6 +273,104 @@ async function IntegrationsView() {
           );
         })}
       </ul>
+    </Card>
+  );
+}
+
+
+/**
+ * Send-test-email diagnostic. Renders below the Email-defaults form.
+ * Surfaces the active provider, the resolved From address from
+ * env.EMAIL_FROM, and a tiny form that fires `sendTestEmail` against
+ * whatever address the admin types. The action redirects back with
+ * `?testEmail=ok|err&testMsg=...` so the result (including any raw
+ * provider error like SignatureDoesNotMatch / domain-not-verified)
+ * lands on screen without an SSH dive.
+ */
+function TestEmailCard({
+  defaultTo,
+  result,
+  message,
+}: {
+  defaultTo: string;
+  result?: "ok" | "err";
+  message?: string;
+}) {
+  const provider = activeMailProvider();
+  const providerLabel =
+    provider === "ses" ? "Amazon SES" : provider === "resend" ? "Resend" : "Not configured";
+  const providerVariant: "success" | "warning" | "outline" =
+    provider === "ses" ? "success" : provider === "resend" ? "success" : "warning";
+
+  return (
+    <Card className="p-6">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h3 className="text-section text-emce-text">Send a test email</h3>
+          <p className="mt-1 text-hint text-emce-text-sec">
+            Verifies the configured provider can deliver a transactional email end to end.
+            Use this whenever signup verifications stop arriving — the response below quotes
+            the raw provider error so you can fix it without log-diving.
+          </p>
+        </div>
+        <Badge variant={providerVariant}>{providerLabel}</Badge>
+      </div>
+
+      <dl className="mt-4 grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+        <div>
+          <dt className="font-bold text-emce-text">From address (env.EMAIL_FROM)</dt>
+          <dd className="font-mono text-xs text-emce-text-sec break-all">{env.EMAIL_FROM}</dd>
+        </div>
+        <div>
+          <dt className="font-bold text-emce-text">Active provider</dt>
+          <dd className="text-emce-text-sec">
+            {provider === "none"
+              ? "None — set AWS_SES_* or RESEND_API_KEY in .env and restart."
+              : provider === "ses"
+              ? "Amazon SES (preferred). Uses AWS API credentials, NOT SMTP credentials."
+              : "Resend (fallback). Set AWS_SES_* to switch back to SES."}
+          </dd>
+        </div>
+      </dl>
+
+      {result === "ok" && message && (
+        <div className="mt-4 rounded-md border border-emce-mid bg-emce-light-soft p-3 text-sm text-emce-text">
+          ✅ {message}
+        </div>
+      )}
+      {result === "err" && message && (
+        <div className="mt-4 rounded-md border border-emce-orange bg-emce-orange-light p-3 text-sm">
+          <p className="font-bold text-emce-orange">❌ Test send failed</p>
+          <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-emce-text">{message}</pre>
+          <p className="mt-2 text-hint text-emce-text-muted">
+            Common causes:{" "}
+            <strong>SignatureDoesNotMatch / InvalidClientTokenId</strong> — you pasted SES SMTP
+            credentials. The SDK needs IAM API credentials (Access Key ID + Secret) from
+            <code className="mx-1">IAM &rarr; Users &rarr; Security credentials &rarr; Access keys</code>
+            with <code>ses:SendEmail</code> permission, not the SES SMTP user/password.{" "}
+            <strong>MessageRejected: Email address is not verified</strong> — verify either
+            the sending domain (DKIM) or the specific noreply@ address in the SES console
+            and, if your account is still in the SES sandbox, also verify the recipient.
+          </p>
+        </div>
+      )}
+
+      <form action={sendTestEmail} className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+        <div className="flex-1">
+          <Label htmlFor="testTo">Send to</Label>
+          <Input
+            id="testTo"
+            name="to"
+            type="email"
+            required
+            defaultValue={defaultTo}
+            placeholder="you@example.com"
+          />
+        </div>
+        <Button type="submit" disabled={provider === "none"}>
+          Send test
+        </Button>
+      </form>
     </Card>
   );
 }
