@@ -38,13 +38,37 @@ export default async function OnboardingHome() {
   const session = await auth();
   if (!session?.user) redirect("/signin?next=/onboarding");
 
-  const profile = await db.candidateProfile.findUnique({
+  let profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
   });
+  // Lazy-create the profile if it's missing. Normally `events.createUser`
+  // in lib/auth.ts seeds one for OAuth signups, but this is a safety net:
+  // if that hook ever misses (legacy account, transient DB error during
+  // sign-in), we'd otherwise loop between /me → /onboarding → /me forever.
   if (!profile) {
-    // Employer or admin shouldn't be here
     if (session.user.role === "EMPLOYER") redirect("/employer/onboarding");
-    redirect("/me");
+    if (session.user.role !== "CANDIDATE") redirect("/me");
+
+    const dbUser = await db.user.findUnique({
+      where: { id: session.user.id },
+      select: { email: true, name: true },
+    });
+    const fullName = (dbUser?.name ?? "").trim();
+    const [firstName, ...rest] = fullName.split(/\s+/).filter(Boolean);
+    const slugSeed = fullName || dbUser?.email?.split("@")[0] || "member";
+
+    const { withUniqueSlug } = await import("@/lib/slug");
+    profile = await withUniqueSlug(slugSeed, (slug) =>
+      db.candidateProfile.create({
+        data: {
+          userId: session.user!.id,
+          slug,
+          firstName: firstName || "Member",
+          lastName: rest.join(" ") || null,
+          email: dbUser?.email ?? null,
+        },
+      }),
+    );
   }
 
   return (

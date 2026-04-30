@@ -237,12 +237,47 @@ export const { handlers, auth, signIn, signOut } = NextAuth(async () => ({
     // OAuth-created users default to CANDIDATE via the schema default; we only
     // record lastLoginAt here. Do NOT clobber an existing role — that breaks
     // employers and admins who later sign in via OAuth.
+    //
+    // We also seed a stub CandidateProfile here. Without it, /me sees no
+    // profile → redirects to /onboarding, /onboarding sees no profile →
+    // redirects back to /me — an infinite loop on first Google/LinkedIn
+    // sign-in. The email/password signup path already creates a profile in
+    // the same transaction; the OAuth path never had an equivalent step.
     async createUser({ user }) {
-      if (user.id) {
-        await db.user.update({
-          where: { id: user.id },
-          data: { lastLoginAt: new Date() },
-        });
+      if (!user.id) return;
+
+      await db.user.update({
+        where: { id: user.id },
+        data: { lastLoginAt: new Date() },
+      });
+
+      const dbUser = await db.user.findUnique({
+        where: { id: user.id },
+        select: { role: true, email: true, name: true },
+      });
+      if (!dbUser || dbUser.role !== "CANDIDATE") return;
+
+      const fullName = (dbUser.name ?? user.name ?? "").trim();
+      const [firstName, ...rest] = fullName.split(/\s+/).filter(Boolean);
+      const slugSeed = fullName || dbUser.email?.split("@")[0] || "member";
+
+      try {
+        const { withUniqueSlug } = await import("@/lib/slug");
+        await withUniqueSlug(slugSeed, (slug) =>
+          db.candidateProfile.create({
+            data: {
+              userId: user.id!,
+              slug,
+              firstName: firstName || "Member",
+              lastName: rest.join(" ") || null,
+              email: dbUser.email,
+            },
+          }),
+        );
+      } catch (err) {
+        logger.error({ err, userId: user.id }, "[auth] failed to seed CandidateProfile for OAuth user");
+        // Don't throw — the user is still authenticated; they'll hit
+        // /onboarding which can render a recovery state.
       }
     },
     async signIn({ user }) {
