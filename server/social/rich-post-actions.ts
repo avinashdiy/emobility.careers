@@ -10,6 +10,7 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { requireEmailVerified, EmailNotVerifiedError } from "@/lib/anti-spam";
 import { notificationsQueue } from "@/lib/queues";
 import { detectEmbed } from "@/lib/social/embeds";
+import { extractHashtags, extractMentions } from "@/lib/social/extract";
 import { objectKey, presignUpload, publicUrl } from "@/lib/storage";
 import type { FormState } from "@/lib/form-state";
 
@@ -130,7 +131,7 @@ const PollSchema = z.object({
 });
 
 const RichPostSchema = z.object({
-  kind: z.enum(["TEXT", "IMAGE", "VIDEO", "EMBED", "DOCUMENT", "ARTICLE", "POLL"]),
+  kind: z.enum(["TEXT", "IMAGE", "VIDEO", "EMBED", "DOCUMENT", "ARTICLE", "POLL", "QUESTION"]),
   body: z.string().min(1).max(20_000),
   visibility: z.enum(["PUBLIC", "CONNECTIONS", "PRIVATE"]).default("PUBLIC"),
   asCompanyId: z.string().optional().nullable(),
@@ -142,21 +143,6 @@ const RichPostSchema = z.object({
   articleTitle: z.string().min(3).max(200).optional(),
   articleCoverUrl: z.string().url().optional(),
 });
-
-const HASHTAG_RE = /(?:^|\s)#([a-z0-9][a-z0-9_-]{1,30})/gi;
-const MENTION_RE = /(?:^|\s)@([a-z0-9][a-z0-9_-]{1,30})/gi;
-function extractHashtags(body: string): string[] {
-  const tags = new Set<string>();
-  let m;
-  while ((m = HASHTAG_RE.exec(body))) tags.add(m[1].toLowerCase());
-  return [...tags].slice(0, 10);
-}
-function extractMentions(body: string): string[] {
-  const set = new Set<string>();
-  let m;
-  while ((m = MENTION_RE.exec(body))) set.add(m[1].toLowerCase());
-  return [...set].slice(0, 20);
-}
 
 export async function createRichPost(
   input: z.input<typeof RichPostSchema>,

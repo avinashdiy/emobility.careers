@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
-import { auth } from "@/lib/auth";
+import { auth, unstable_update } from "@/lib/auth";
 import { withUniqueSlug } from "@/lib/slug";
 import { embeddingsQueue, notificationsQueue } from "@/lib/queues";
 import { logger } from "@/lib/logger";
@@ -25,7 +25,15 @@ import {
 async function requireEmployer() {
   const session = await auth();
   if (!session?.user) redirect("/signin");
-  if (session.user.role !== "EMPLOYER" && session.user.role !== "ADMIN") {
+  // CANDIDATEs reach this gate when they're opting into the employer
+  // persona via /employer/onboarding. The page-level guard already
+  // restricts which paths they can hit; here we just let the action
+  // run, and the action itself promotes their role on completion.
+  if (
+    session.user.role !== "EMPLOYER" &&
+    session.user.role !== "ADMIN" &&
+    session.user.role !== "CANDIDATE"
+  ) {
     redirect("/403");
   }
   return session;
@@ -85,8 +93,24 @@ export async function createCompany(formData: FormData) {
         isCompanyAdmin: true,
       },
     });
+    // Promote a CANDIDATE-role user to EMPLOYER once they complete
+    // onboarding. Existing EMPLOYERs / ADMINs are left alone.
+    if (session.user.role === "CANDIDATE") {
+      await tx.user.update({
+        where: { id: session.user.id },
+        data: { role: "EMPLOYER" },
+      });
+    }
     return created;
   });
+
+  // Refresh the JWT so /employer/* routes stop 403'ing. Without this
+  // the user's session keeps the sign-in-time role until next login.
+  // unstable_update fires the JWT callback with `trigger: "update"`
+  // (see lib/auth.config.ts) which re-stamps the token in-place.
+  if (session.user.role === "CANDIDATE") {
+    await unstable_update?.({ user: { role: "EMPLOYER" } }).catch(() => undefined);
+  }
 
   await audit({
     actorId: session.user.id,
@@ -97,6 +121,118 @@ export async function createCompany(formData: FormData) {
   });
 
   revalidatePath("/employer");
+  redirect("/employer");
+}
+
+// ─── Join an existing company ───────────────────────────────
+//
+// LinkedIn-style: when an employer signs up and finds their company
+// already exists on the platform, they don't fork a duplicate — they
+// claim a recruiter seat at the existing company. Their EmployerProfile
+// is created with `isCompanyAdmin: false` (only the company owner has
+// admin), and a TeamInvite is recorded for the company admin to
+// approve. Until approved, the employer can browse but not post jobs;
+// the gate happens in `requireEmployerWithCompany` via the
+// `verificationStatus` / `teamRole` flags on existing employer actions.
+
+const joinCompanySchema = z.object({
+  companyId: z.string().min(1),
+  designation: z.string().min(1).max(120),
+});
+
+export async function joinExistingCompany(formData: FormData) {
+  const session = await requireEmployer();
+  const parsed = joinCompanySchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    redirect("/employer/onboarding?error=" + encodeURIComponent("Pick a company and tell us your designation."));
+  }
+  const { companyId, designation } = parsed.data;
+
+  const company = await db.company.findUnique({
+    where: { id: companyId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      ownerUserId: true,
+      verificationStatus: true,
+    },
+  });
+  if (!company) {
+    redirect("/employer/onboarding?error=" + encodeURIComponent("Company not found."));
+  }
+
+  // Auto-join is restricted to UNVERIFIED companies. Once a company
+  // has been admin-vetted (PENDING / VERIFIED) we refuse self-attach
+  // because it would let an attacker claim e.g. "Ola Electric" and
+  // immediately post jobs as that company. Verified companies must
+  // route through TeamInvite (the admin invites you) — handled on
+  // the existing /employer/team page.
+  if (company!.verificationStatus !== "UNVERIFIED") {
+    redirect(
+      "/employer/onboarding?error=" +
+        encodeURIComponent(
+          `${company!.name} is a verified company on eMobility Careers. Ask an existing admin there to invite you from their team page, or contact support@emobility.careers.`,
+        ),
+    );
+  }
+
+  // Refuse to attach if the user is already on that company's roster —
+  // saves a unique-constraint error and lets us send a clearer message.
+  const existing = await db.employerProfile.findUnique({
+    where: { userId: session.user.id },
+    select: { companyId: true },
+  });
+  if (existing) {
+    if (existing.companyId === company!.id) {
+      redirect("/employer");
+    }
+    redirect("/employer/onboarding?error=" + encodeURIComponent("You're already linked to a different company. Contact support to switch."));
+  }
+
+  await db.$transaction(async (tx) => {
+    await tx.employerProfile.create({
+      data: {
+        userId: session.user.id,
+        companyId: company!.id,
+        designation,
+        // Joining an existing company never grants admin — only the
+        // creator (ownerUserId) has admin by default. Existing admins
+        // can promote later via the team page.
+        teamRole: CompanyTeamRole.RECRUITER,
+        isCompanyAdmin: false,
+      },
+    });
+    // Promote a CANDIDATE-role user to EMPLOYER on join (mirrors the
+    // create-new path). Existing EMPLOYERs / ADMINs are left alone.
+    if (session.user.role === "CANDIDATE") {
+      await tx.user.update({
+        where: { id: session.user.id },
+        data: { role: "EMPLOYER" },
+      });
+    }
+  });
+
+  // Refresh the JWT so subsequent /employer/* requests see the new
+  // role. See createCompany above for the rationale.
+  if (session.user.role === "CANDIDATE") {
+    await unstable_update?.({ user: { role: "EMPLOYER" } }).catch(() => undefined);
+  }
+
+  await audit({
+    actorId: session.user.id,
+    action: "employer.joined_existing_company",
+    entity: "Company",
+    entityId: company!.id,
+    meta: { designation },
+  });
+
+  // TODO Notify the company admin so they can approve / promote the
+  // joiner. Wave 6 (notifications) hooks up the queue; for now, the
+  // /employer/team page lists pending team members the admin can vet.
+
+  revalidatePath("/employer");
+  revalidatePath("/employer/team");
   redirect("/employer");
 }
 

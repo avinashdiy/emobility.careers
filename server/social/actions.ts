@@ -9,6 +9,7 @@ import { notificationsQueue } from "@/lib/queues";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { audit } from "@/lib/audit";
 import { requireEmailVerified } from "@/lib/anti-spam";
+import { extractHashtags, extractMentions } from "@/lib/social/extract";
 import {
   ConnectionStatus,
   PostVisibility,
@@ -39,22 +40,6 @@ async function requireUserVerified() {
 }
 
 // ─── Posts ─────────────────────────────────────────────────
-
-const HASHTAG_RE = /(?:^|\s)#([a-z0-9][a-z0-9_-]{1,30})/gi;
-const MENTION_RE = /(?:^|\s)@([a-z0-9][a-z0-9_-]{1,30})/gi;
-
-function extractHashtags(body: string): string[] {
-  const tags = new Set<string>();
-  let m;
-  while ((m = HASHTAG_RE.exec(body))) tags.add(m[1].toLowerCase());
-  return [...tags].slice(0, 10);
-}
-function extractMentions(body: string): string[] {
-  const set = new Set<string>();
-  let m;
-  while ((m = MENTION_RE.exec(body))) set.add(m[1].toLowerCase());
-  return [...set].slice(0, 20);
-}
 
 const postCreateSchema = z.object({
   body: z.string().min(1).max(8000),

@@ -135,7 +135,7 @@ async function buildOAuthProviders(): Promise<NextAuthConfig["providers"]> {
  * the provider list on each sign-in flow — this is what lets admins
  * change OAuth credentials live from /admin/settings/auth.
  */
-export const { handlers, auth, signIn, signOut } = NextAuth(async () => ({
+export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth(async () => ({
   ...authConfig,
   adapter: bridgePrismaAdapter(),
   secret: env.AUTH_SECRET,

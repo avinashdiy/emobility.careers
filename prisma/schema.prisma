@@ -84,6 +84,15 @@ model User {
   recommendationsReceived Recommendation[]    @relation("RecommendationReceiver")
   skillEndorsementsGiven  SkillEndorsement[]  @relation("SkillEndorser")
 
+  // Q&A — answers the user has authored, and the helpful-votes they've cast
+  answersAuthored      Answer[]         @relation("AnswerAuthor")
+  answerHelpfulVotes   AnswerHelpful[]  @relation("AnswerVoter")
+
+  // Events — events the user has created (as a company admin) and
+  // registrations they hold.
+  eventsCreated     Event[]              @relation("EventCreator")
+  eventRegistrations EventRegistration[] @relation("EventAttendee")
+
   // Social graph
   connectionRequests  Connection[]   @relation("ConnectionRequester")
   connectionsReceived Connection[]   @relation("ConnectionRecipient")
@@ -636,6 +645,9 @@ model Company {
   // Candidate-experience entries that link to this company (LinkedIn-style
   // "X people work here" surfacing on the company page)
   experienceLinks Experience[] @relation("ExperienceCompany")
+
+  // Events & webinars hosted by this company
+  events Event[]
 
   // WordPress legacy tracking
   wpLegacyId Int? @unique
@@ -1829,6 +1841,12 @@ model Post {
   comments    PostComment[]
   attachments PostAttachment[]
   poll        Poll?
+  // Quora-style answers — populated only when `kind == QUESTION`.
+  answers     Answer[]
+  // Denormalised count, kept in sync inside the same transaction as
+  // answer create/delete. Mirrors `commentsCount` so feed cards can
+  // surface "12 answers" without a per-row aggregate query.
+  answerCount Int @default(0)
 
   @@index([authorId, createdAt])
   @@index([visibility, createdAt])
@@ -1934,6 +1952,138 @@ model PostComment {
 
   @@index([postId, createdAt])
   @@index([parentId, createdAt])
+}
+
+// ─── Answers (Quora-style, attached to a QUESTION-kind Post) ──
+//
+// Comments stay attached to all post kinds (short clarifications,
+// reactions). Answers are first-class entities for QUESTION posts —
+// they have their own body, helpful-vote count, and rank on the post
+// detail page above comments.
+model Answer {
+  id           String   @id @default(cuid())
+  postId       String
+  post         Post     @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId     String
+  author       User     @relation("AnswerAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  body         String   @db.Text
+  // Helpful-vote count surfaced as a sort key. Vote rows live in
+  // AnswerHelpful so we can show "you've already voted" UI.
+  helpfulCount Int      @default(0)
+  // Hashtag + mention slugs extracted from the body at write time.
+  // Mirrors Post.hashtags / Post.mentions so the same surfacing logic
+  // (tag pages, mention notifications) can apply uniformly later.
+  hashtags     String[] @default([])
+  mentions     String[] @default([])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  helpfulVotes AnswerHelpful[]
+
+  @@index([postId, helpfulCount])
+  @@index([authorId])
+  @@index([hashtags])
+}
+
+model AnswerHelpful {
+  answerId String
+  userId   String
+  createdAt DateTime @default(now())
+
+  answer Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  user   User   @relation("AnswerVoter", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([answerId, userId])
+  @@index([userId])
+}
+
+// ─── Events & Webinars ────────────────────────────────────────
+//
+// Hosted by a Company. Users register via EventRegistration. The
+// public list page (/events) shows OPEN events ordered by startsAt;
+// each event detail page (/events/[slug]) renders a register button
+// for signed-in users and is embedded under /company/[slug]/events.
+
+enum EventType {
+  WEBINAR // 100% online
+  IN_PERSON // physical location only
+  HYBRID // both
+}
+
+enum EventStatus {
+  DRAFT // not visible publicly yet
+  OPEN // visible, accepting registrations
+  CANCELLED // shown with a "cancelled" banner so registered users see the change
+  COMPLETED // past event — kept for archive + companies' history tab
+}
+
+enum EventRegistrationStatus {
+  REGISTERED
+  CANCELLED
+  ATTENDED // post-event mark-up (used for analytics + certificates later)
+  NO_SHOW
+}
+
+model Event {
+  id          String      @id @default(cuid())
+  slug        String      @unique
+  companyId   String
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  // Nullable so SetNull can fire when a creator is deleted — events
+  // outlive their creator (recruiter leaves the company, event stays
+  // bookable for everyone who already registered).
+  createdById String?
+  createdBy   User?       @relation("EventCreator", fields: [createdById], references: [id], onDelete: SetNull)
+
+  title       String
+  description String      @db.Text
+  eventType   EventType   @default(WEBINAR)
+  status      EventStatus @default(DRAFT)
+
+  // Timing — startsAt is required; endsAt optional for short demos that
+  // don't need a hard end. timezone is the IANA name shown to users
+  // alongside the local-time conversion ("19:00 IST"). All timestamps
+  // are stored in UTC.
+  startsAt              DateTime
+  endsAt                DateTime?
+  timezone              String   @default("Asia/Kolkata")
+  registrationDeadline  DateTime?
+
+  // For IN_PERSON / HYBRID events. Optional — falls back to "TBA" in UI.
+  location String?
+
+  // For WEBINAR / HYBRID events. Visible only to registered users (the
+  // page hides it from anonymous viewers to discourage gate-jumping).
+  meetingUrl String?
+
+  coverImageUrl String?
+  // Soft cap. Enforced at register time; set to null for unlimited.
+  capacity      Int?
+
+  registrations EventRegistration[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([companyId, startsAt])
+  @@index([status, startsAt])
+}
+
+model EventRegistration {
+  id        String                  @id @default(cuid())
+  eventId   String
+  event     Event                   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User                    @relation("EventAttendee", fields: [userId], references: [id], onDelete: Cascade)
+  status    EventRegistrationStatus @default(REGISTERED)
+  // Optional free-text the registrant types when signing up — questions
+  // they want answered, dietary needs for in-person, etc.
+  notes     String?                 @db.Text
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  @@unique([eventId, userId])
+  @@index([userId, createdAt])
 }
 
 // ─── Broadcasts (admin → user fanout) ──────────────────────

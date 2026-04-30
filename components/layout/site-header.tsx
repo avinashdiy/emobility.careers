@@ -27,7 +27,7 @@ export async function SiteHeader() {
   const [session, locale] = await Promise.all([auth(), getLocale()]);
   const user = session?.user;
 
-  const [unreadNotifs, pendingInvites, viewerCard, viewerUser] = user
+  const [unreadNotifs, pendingInvites, viewerCard, viewerUser, viewerEmployer] = user
     ? await Promise.all([
         db.notification.count({
           where: { userId: user.id, channel: "IN_APP", readAt: null },
@@ -52,8 +52,19 @@ export async function SiteHeader() {
           where: { id: user.id },
           select: { isPlacementOfficer: true },
         }),
+        // Surface whether the user has an EmployerProfile so the
+        // persona-switcher in the dropdown can render either a
+        // "Switch view" toggle (both personas exist) or a "Hire on
+        // eMobility" CTA (employer persona not yet adopted).
+        db.employerProfile.findUnique({
+          where: { userId: user.id },
+          select: {
+            companyId: true,
+            company: { select: { name: true, slug: true, logoUrl: true } },
+          },
+        }),
       ])
-    : [0, 0, null, null];
+    : [0, 0, null, null, null];
 
   const isMentor = user
     ? Boolean(await db.mentorProfile.findUnique({ where: { userId: user.id }, select: { id: true } }))
@@ -78,6 +89,7 @@ export async function SiteHeader() {
     { href: "/digest", label: "📱 Digest" },
     { href: "/jobs", label: t("nav.findJobs", locale) },
     { href: "/competitions", label: t("nav.competitions", locale) },
+    { href: "/events", label: "Events" },
     { href: "/mentors", label: t("nav.mentors", locale) },
     { href: "/people", label: t("nav.people", locale) },
     { href: "/companies", label: t("nav.companies", locale) },
@@ -182,6 +194,15 @@ export async function SiteHeader() {
                   isMentor,
                   isVerified: viewerCard?.isDIYguruVerified ?? false,
                   isPlacementOfficer,
+                  hasCandidateProfile: !!viewerCard,
+                  hasEmployerProfile: !!viewerEmployer,
+                  employerCompany: viewerEmployer?.company
+                    ? {
+                        name: viewerEmployer.company.name,
+                        slug: viewerEmployer.company.slug,
+                        logoUrl: viewerEmployer.company.logoUrl,
+                      }
+                    : null,
                 }}
               />
             ) : (

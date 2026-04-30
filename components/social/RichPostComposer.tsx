@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
-import { Image as ImageIcon, Video, FileText, BarChart3, Newspaper, Link2, X, Plus } from "lucide-react";
+import { Image as ImageIcon, Video, FileText, BarChart3, Newspaper, Link2, X, Plus, HelpCircle } from "lucide-react";
 import { createRichPost, presignPostAttachmentUpload } from "@/server/social/rich-post-actions";
 import { detectEmbed } from "@/lib/social/embeds";
 
@@ -31,7 +31,7 @@ import { detectEmbed } from "@/lib/social/embeds";
  * which enforces the 10MB cap + MIME whitelist server-side.
  */
 
-type Mode = "TEXT" | "IMAGE" | "VIDEO" | "EMBED" | "DOCUMENT" | "POLL" | "ARTICLE";
+type Mode = "TEXT" | "IMAGE" | "VIDEO" | "EMBED" | "DOCUMENT" | "POLL" | "ARTICLE" | "QUESTION";
 
 interface UploadedAttachment {
   type: "IMAGE" | "VIDEO" | "DOCUMENT";
@@ -170,6 +170,10 @@ export function RichPostComposer({ user, companies }: Props) {
       toast.error("Articles need a title.");
       return;
     }
+    if (mode === "QUESTION" && body.trim().length < 15) {
+      toast.error("Add a clearer question — at least a sentence (15+ chars).");
+      return;
+    }
     if ((mode === "IMAGE" || mode === "VIDEO" || mode === "DOCUMENT") && attachments.length === 0) {
       toast.error(`Add at least one ${mode.toLowerCase()}.`);
       return;
@@ -260,7 +264,7 @@ export function RichPostComposer({ user, companies }: Props) {
       </div>
 
       {/* Mode tabs */}
-      <div className="mt-3 grid grid-cols-3 gap-1 sm:grid-cols-7">
+      <div className="mt-3 grid grid-cols-4 gap-1 sm:grid-cols-8">
         <ModeTab active={mode === "TEXT"} onClick={() => setMode("TEXT")} label="Text" />
         <ModeTab active={mode === "IMAGE"} onClick={() => setMode("IMAGE")} label="Image" />
         <ModeTab active={mode === "VIDEO"} onClick={() => setMode("VIDEO")} label="Video" />
@@ -268,6 +272,7 @@ export function RichPostComposer({ user, companies }: Props) {
         <ModeTab active={mode === "DOCUMENT"} onClick={() => setMode("DOCUMENT")} label="Doc" icon={<FileText className="h-3.5 w-3.5" />} />
         <ModeTab active={mode === "POLL"} onClick={() => setMode("POLL")} label="Poll" icon={<BarChart3 className="h-3.5 w-3.5" />} />
         <ModeTab active={mode === "ARTICLE"} onClick={() => setMode("ARTICLE")} label="Article" icon={<Newspaper className="h-3.5 w-3.5" />} />
+        <ModeTab active={mode === "QUESTION"} onClick={() => setMode("QUESTION")} label="Question" icon={<HelpCircle className="h-3.5 w-3.5" />} />
       </div>
 
       {/* Body — common to all modes */}
@@ -280,6 +285,8 @@ export function RichPostComposer({ user, companies }: Props) {
             ? "Write your article. The first paragraph is the preview shown in the feed."
             : mode === "POLL"
             ? "Optional caption for the poll…"
+            : mode === "QUESTION"
+            ? "Ask a clear, specific question — e.g. 'What's the typical battery degradation rate for LFP cells in Indian climate after 2 years?' Include any context that helps people answer."
             : "What do you want to share?"
         }
         className="mt-3 resize-none border-0 px-0 text-base shadow-none focus:ring-0"
@@ -438,7 +445,9 @@ export function RichPostComposer({ user, companies }: Props) {
       <div className="mt-3 flex items-center justify-end gap-2 border-t border-emce-border pt-3">
         <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(false); reset(); }}>Cancel</Button>
         <Button type="button" disabled={pending} onClick={submit}>
-          {pending ? "Posting…" : "Post"}
+          {pending
+            ? (mode === "QUESTION" ? "Asking…" : "Posting…")
+            : (mode === "QUESTION" ? "Ask question" : "Post")}
         </Button>
       </div>
     </Card>

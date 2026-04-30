@@ -18,7 +18,7 @@ import { ResponseTimePill } from "@/components/recruiter/ResponseTimePill";
 import { RecruiterRating } from "@/components/recruiter/RecruiterRating";
 import { Globe, MapPin, Users } from "lucide-react";
 
-const TABS = ["home", "jobs", "people"] as const;
+const TABS = ["home", "jobs", "events", "people"] as const;
 type Tab = (typeof TABS)[number];
 
 export async function generateMetadata({
@@ -65,9 +65,32 @@ export default async function PublicCompanyPage({
   // Recruiter response-time stats — median time from APPLIED to first
   // forward stage move, scoped to last 90 days. Returns null when there
   // aren't enough samples; the pill component hides itself in that case.
-  const [responseStats, recruiterRating] = await Promise.all([
+  const [responseStats, recruiterRating, upcomingEvents, pastEvents] = await Promise.all([
     getCompanyResponseStats(company.id),
     getRecruiterRating(company.id),
+    db.event.findMany({
+      where: {
+        companyId: company.id,
+        status: { in: ["OPEN", "CANCELLED"] },
+        startsAt: { gte: new Date() },
+      },
+      orderBy: { startsAt: "asc" },
+      take: 12,
+      include: {
+        _count: { select: { registrations: { where: { status: "REGISTERED" } } } },
+      },
+    }),
+    db.event.findMany({
+      where: {
+        companyId: company.id,
+        OR: [{ status: "COMPLETED" }, { startsAt: { lt: new Date() } }],
+      },
+      orderBy: { startsAt: "desc" },
+      take: 6,
+      include: {
+        _count: { select: { registrations: { where: { status: "REGISTERED" } } } },
+      },
+    }),
   ]);
 
   // People who currently work here (Experience.current === true linked to
@@ -280,6 +303,86 @@ export default async function PublicCompanyPage({
                   </ul>
                 )}
               </Card>
+            )}
+
+            {activeTab === "events" && (
+              <>
+                <Card>
+                  <div className="flex items-center justify-between">
+                    <h2 className="text-section text-emce-text">
+                      Upcoming events & webinars
+                    </h2>
+                    <Badge variant="outline" className="text-[10px]">{upcomingEvents.length}</Badge>
+                  </div>
+                  {upcomingEvents.length === 0 ? (
+                    <EmptyState
+                      className="mt-3 border-0 p-6"
+                      icon="📅"
+                      title="No upcoming events"
+                      body={`Follow ${company.name} to be notified when they host one.`}
+                    />
+                  ) : (
+                    <ul className="mt-3 space-y-2">
+                      {upcomingEvents.map((e) => (
+                        <li key={e.id}>
+                          <Link
+                            href={`/events/${e.slug}`}
+                            className="block rounded-md border border-emce-border p-3 transition hover:border-emce-mid hover:shadow-emce-hover"
+                          >
+                            <div className="flex flex-wrap items-center gap-2">
+                              <Badge variant="default" className="text-[10px]">
+                                {e.eventType === "WEBINAR" ? "Webinar" : e.eventType === "IN_PERSON" ? "In person" : "Hybrid"}
+                              </Badge>
+                              {e.status === "CANCELLED" && (
+                                <Badge variant="outline" className="text-[10px] text-emce-orange">Cancelled</Badge>
+                              )}
+                            </div>
+                            <p className="mt-1 text-sm font-bold text-emce-text">{e.title}</p>
+                            <p className="text-hint text-emce-text-sec">
+                              {new Intl.DateTimeFormat("en-IN", {
+                                weekday: "short",
+                                day: "numeric",
+                                month: "short",
+                                hour: "numeric",
+                                minute: "2-digit",
+                                timeZone: e.timezone,
+                              }).format(e.startsAt)}
+                              {" · "}
+                              {e._count.registrations} registered
+                            </p>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </Card>
+                {pastEvents.length > 0 && (
+                  <Card>
+                    <h2 className="text-section text-emce-text">Past events</h2>
+                    <ul className="mt-3 space-y-2">
+                      {pastEvents.map((e) => (
+                        <li key={e.id}>
+                          <Link
+                            href={`/events/${e.slug}`}
+                            className="block rounded-md border border-emce-border p-3 transition hover:border-emce-mid hover:bg-emce-light-soft"
+                          >
+                            <p className="text-sm font-bold text-emce-text">{e.title}</p>
+                            <p className="text-hint text-emce-text-sec">
+                              {new Intl.DateTimeFormat("en-IN", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              }).format(e.startsAt)}
+                              {" · "}
+                              {e._count.registrations} attended
+                            </p>
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </Card>
+                )}
+              </>
             )}
 
             {activeTab === "people" && (

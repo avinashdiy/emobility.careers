@@ -33,29 +33,68 @@ const APPLICATION_STAGE_TONE: Record<string, "default" | "warning" | "verified" 
 export default async function MeDashboard() {
   const session = await auth();
   if (!session?.user) redirect("/signin?next=/me");
-  if (session.user.role === "EMPLOYER") redirect("/employer");
   if (session.user.role === "ADMIN") redirect("/admin");
+  // EMPLOYERs are intentionally NOT redirected away. Both personas
+  // coexist now; /me always renders the candidate view, /employer
+  // renders the recruiter view, and the persona switcher in the header
+  // navigates between them. The candidate dashboard query below uses
+  // CandidateProfile (auto-seeded at signup), so an employer who
+  // clicks "Switch to candidate view" lands here without a 404.
 
-  const profile = await db.candidateProfile.findUnique({
-    where: { userId: session.user.id },
-    include: {
-      _count: { select: { applications: true, savedJobs: true, experiences: true, education: true } },
-      evDomains: { include: { evDomain: true } },
-      skills: { select: { skillId: true } },
-      experiences: { select: { id: true } },
-      education: { select: { id: true } },
-      certifications: { select: { id: true } },
-      projects: { select: { id: true } },
-      user: {
-        select: {
-          email: true,
-          emailVerifiedAt: true,
-          phoneVerifiedAt: true,
-          productTourCompletedAt: true,
-        },
+  const profileInclude = {
+    _count: { select: { applications: true, savedJobs: true, experiences: true, education: true } },
+    evDomains: { include: { evDomain: true } },
+    skills: { select: { skillId: true } },
+    experiences: { select: { id: true } },
+    education: { select: { id: true } },
+    certifications: { select: { id: true } },
+    projects: { select: { id: true } },
+    user: {
+      select: {
+        email: true,
+        emailVerifiedAt: true,
+        phoneVerifiedAt: true,
+        productTourCompletedAt: true,
       },
     },
+  } as const;
+
+  let profile = await db.candidateProfile.findUnique({
+    where: { userId: session.user.id },
+    include: profileInclude,
   });
+  // Legacy employer-only users (signed up before the auto-create
+  // landed) reach here without a CandidateProfile. Switching to the
+  // candidate persona shouldn't bounce them through /onboarding;
+  // lazy-create a stub with their existing User name/email and
+  // continue rendering the dashboard. New signups already get a
+  // profile created in events.createUser + the email signup action,
+  // so this branch only ever fires for back-compat users.
+  if (!profile) {
+    const dbUser = await db.user.findUnique({
+      where: { id: session.user.id },
+      select: { email: true, name: true },
+    });
+    const fullName = (dbUser?.name ?? "").trim();
+    const [firstName, ...rest] = fullName.split(/\s+/).filter(Boolean);
+    const slugSeed = fullName || dbUser?.email?.split("@")[0] || "member";
+    const { withUniqueSlug } = await import("@/lib/slug");
+    await withUniqueSlug(slugSeed, (slug) =>
+      db.candidateProfile.create({
+        data: {
+          userId: session.user.id,
+          slug,
+          firstName: firstName || "Member",
+          lastName: rest.join(" ") || null,
+          email: dbUser?.email ?? null,
+        },
+      }),
+    );
+    profile = await db.candidateProfile.findUnique({
+      where: { userId: session.user.id },
+      include: profileInclude,
+    });
+  }
   if (!profile) redirect("/onboarding");
 
   // Pillar pulls — kept narrow + parallel so the dashboard stays snappy.

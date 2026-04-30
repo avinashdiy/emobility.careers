@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, LogOut, Settings, User as UserIcon, Briefcase, GraduationCap, Trophy, Eye, BarChart3 } from "lucide-react";
+import { ChevronDown, LogOut, Settings, User as UserIcon, Briefcase, GraduationCap, Trophy, Eye, BarChart3, Building2, ArrowLeftRight } from "lucide-react";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 
@@ -18,6 +19,16 @@ export interface UserMenuViewerData {
       "TPO" group is rendered with the /tpo dashboard link, even though
       the user's `role` is not ADMIN. */
   isPlacementOfficer: boolean;
+  /** True when the user has a CandidateProfile row (signed up as a
+      candidate, or an employer who got auto-seeded one). Drives the
+      "Personal" half of the persona switcher. */
+  hasCandidateProfile: boolean;
+  /** True when the user has an EmployerProfile row. Drives the
+      "Hiring" half of the switcher; when false a "Hire on eMobility"
+      CTA is rendered instead. */
+  hasEmployerProfile: boolean;
+  /** Company shown next to the "Hiring" persona row. */
+  employerCompany: { name: string; slug: string; logoUrl: string | null } | null;
 }
 
 /**
@@ -29,6 +40,13 @@ export interface UserMenuViewerData {
 export function HeaderUserMenu({ user }: { user: UserMenuViewerData }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const pathname = usePathname();
+  // The dropdown's persona switcher decides which view is "active"
+  // from the current URL prefix — /employer/* means employer view,
+  // anything else (including /me/*) is the candidate view. Cookie-
+  // based state would be more correct in theory but the URL is
+  // already authoritative and avoids a round-trip.
+  const inEmployerView = pathname?.startsWith("/employer") ?? false;
 
   useEffect(() => {
     function onClick(e: MouseEvent) {
@@ -89,6 +107,34 @@ export function HeaderUserMenu({ user }: { user: UserMenuViewerData }) {
             )}
           </div>
 
+          {/* Persona switcher — LinkedIn pattern. Renders only when both
+              personas exist; otherwise shows a single-line "current view"
+              indicator. The "Hire on eMobility" CTA below still appears
+              for candidates who haven't adopted the employer persona. */}
+          {user.hasCandidateProfile && user.hasEmployerProfile && (
+            <div className="border-b border-emce-border bg-emce-light-soft p-2">
+              <div className="px-1 pb-1 text-[10px] font-bold uppercase tracking-wide text-emce-text-sec">
+                <ArrowLeftRight className="mr-1 inline h-3 w-3" /> Switch view
+              </div>
+              <ul className="space-y-0.5">
+                <PersonaRow
+                  href="/me"
+                  active={!inEmployerView}
+                  icon={<UserIcon className="h-4 w-4" />}
+                  label="Personal"
+                  sub="Your candidate profile + applications"
+                />
+                <PersonaRow
+                  href="/employer"
+                  active={inEmployerView}
+                  icon={<Building2 className="h-4 w-4" />}
+                  label={user.employerCompany?.name ?? "Hiring"}
+                  sub={user.employerCompany ? "Recruiter dashboard" : "Employer dashboard"}
+                />
+              </ul>
+            </div>
+          )}
+
           <Group title="Profile">
             <Item href="/me" icon={<UserIcon className="h-4 w-4" />} label="Dashboard" />
             <Item href="/me/profile" label="Edit profile" />
@@ -109,12 +155,28 @@ export function HeaderUserMenu({ user }: { user: UserMenuViewerData }) {
             <Item href="/competitions" label="Browse competitions" />
           </Group>
 
-          {user.role === "EMPLOYER" && (
+          {/* Hiring group renders for anyone with an EmployerProfile
+              (covers both EMPLOYER-role primary and dual-persona
+              candidates who later opted in). Candidates without one
+              get a "Hire on eMobility" CTA so they can adopt the
+              employer persona without leaving the dropdown. */}
+          {user.hasEmployerProfile ? (
             <Group title="Hiring">
               <Item href="/employer" label="Employer dashboard" />
               <Item href="/employer/jobs" label="Jobs" />
+              <Item href="/employer/events" label="Events" />
               <Item href="/employer/competitions" label="Host a competition" />
             </Group>
+          ) : (
+            user.role !== "ADMIN" && (
+              <Group title="Hiring">
+                <Item
+                  href="/employer/onboarding"
+                  icon={<Building2 className="h-4 w-4" />}
+                  label="Hire on eMobility →"
+                />
+              </Group>
+            )
           )}
 
           {user.role === "ADMIN" && (
@@ -165,6 +227,57 @@ function Item({ href, label, icon }: { href: string; label: string; icon?: React
       >
         {icon && <span className="text-emce-text-sec">{icon}</span>}
         <span>{label}</span>
+      </Link>
+    </li>
+  );
+}
+
+/**
+ * One row of the persona switcher. The active row gets a checkmark and
+ * a darker background; the inactive row is the link the user clicks to
+ * flip views. Two-line layout: persona label on top, short caption
+ * below describing what the view contains.
+ */
+function PersonaRow({
+  href,
+  active,
+  icon,
+  label,
+  sub,
+}: {
+  href: string;
+  active: boolean;
+  icon: React.ReactNode;
+  label: string;
+  sub: string;
+}) {
+  return (
+    <li>
+      <Link
+        href={href}
+        aria-current={active ? "true" : undefined}
+        className={`flex items-start gap-2 rounded-md px-2 py-1.5 ${
+          active
+            ? "bg-white shadow-emce ring-1 ring-emce-mid/40"
+            : "hover:bg-white"
+        }`}
+      >
+        <span
+          className={`mt-0.5 ${active ? "text-emce-darkest" : "text-emce-text-sec"}`}
+        >
+          {icon}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate text-sm font-bold text-emce-text">
+            {label}
+            {active && (
+              <span className="ml-1 text-[10px] font-extrabold text-emce-mid">
+                ✓ Current
+              </span>
+            )}
+          </span>
+          <span className="block truncate text-[11px] text-emce-text-sec">{sub}</span>
+        </span>
       </Link>
     </li>
   );

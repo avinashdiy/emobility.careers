@@ -10,6 +10,14 @@ const PROTECTED_PREFIXES: Array<{ prefix: string; roles: string[] }> = [
   { prefix: "/me", roles: ["CANDIDATE", "EMPLOYER", "ADMIN"] },
 ];
 
+// Onboarding paths candidates can hit even though their role is still
+// CANDIDATE. Adding the employer persona happens here: the page itself
+// gates on signed-in (any role) and the action layer bumps the user's
+// role from CANDIDATE → EMPLOYER on completion. Without this exception
+// candidates clicking "Hire on eMobility" would get a 403 before the
+// page ever rendered.
+const PERSONA_OPTIN_PATHS = ["/employer/onboarding"];
+
 export default auth((req: NextRequest & { auth: { user?: { role?: string } } | null }) => {
   const { pathname } = req.nextUrl;
 
@@ -32,7 +40,12 @@ export default auth((req: NextRequest & { auth: { user?: { role?: string } } | n
   }
 
   const role = session.user.role;
-  if (!role || !match.roles.includes(role)) {
+  // Persona-opt-in paths (e.g. /employer/onboarding for a CANDIDATE)
+  // bypass the prefix's role list. Any signed-in user can land there;
+  // the page itself does fine-grained checks and the server action
+  // handles role transitions.
+  const isOptIn = PERSONA_OPTIN_PATHS.some((p) => pathname.startsWith(p));
+  if (!isOptIn && (!role || !match.roles.includes(role))) {
     const url = req.nextUrl.clone();
     url.pathname = "/403";
     return NextResponse.redirect(url);

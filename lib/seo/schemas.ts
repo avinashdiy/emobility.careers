@@ -182,3 +182,62 @@ export function mentorServiceJsonLd(m: {
 export function jsonLdScriptTag(obj: unknown): string {
   return JSON.stringify(obj).replace(/</g, "\\u003c");
 }
+
+/**
+ * QAPage schema for a Quora-style question post. Surfaces the
+ * question text + accepted/top answers to Google so the page is
+ * eligible for the "People also ask" rich result. We set the
+ * highest-helpful-count answer as `acceptedAnswer` and include the
+ * remaining as `suggestedAnswer`. Pass `null` for the upvote count
+ * if you don't want to expose vote totals.
+ *
+ * Spec: https://developers.google.com/search/docs/appearance/structured-data/qapage
+ */
+export function qaPageJsonLd(input: {
+  url: string;
+  question: {
+    text: string; // the question itself (no HTML)
+    askedAt: Date;
+    askedByName: string;
+    upvoteCount?: number;
+    answerCount: number;
+  };
+  answers: Array<{
+    text: string;
+    answeredAt: Date;
+    authorName: string;
+    upvoteCount: number;
+    url: string;
+  }>;
+}) {
+  const sorted = [...input.answers].sort((a, b) => b.upvoteCount - a.upvoteCount);
+  const accepted = sorted[0];
+  const suggested = sorted.slice(1);
+
+  const answerObj = (a: typeof input.answers[number]) => ({
+    "@type": "Answer",
+    text: a.text,
+    dateCreated: a.answeredAt.toISOString(),
+    upvoteCount: a.upvoteCount,
+    url: a.url,
+    author: { "@type": "Person", name: a.authorName },
+  });
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "QAPage",
+    mainEntity: {
+      "@type": "Question",
+      name: input.question.text.split("\n")[0].slice(0, 240),
+      text: input.question.text,
+      dateCreated: input.question.askedAt.toISOString(),
+      author: { "@type": "Person", name: input.question.askedByName },
+      answerCount: input.question.answerCount,
+      ...(input.question.upvoteCount !== undefined && {
+        upvoteCount: input.question.upvoteCount,
+      }),
+      ...(accepted && { acceptedAnswer: answerObj(accepted) }),
+      ...(suggested.length > 0 && { suggestedAnswer: suggested.map(answerObj) }),
+    },
+  };
+}

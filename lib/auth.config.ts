@@ -27,10 +27,19 @@ export const authConfig: NextAuthConfig = {
     newUser: "/onboarding",
   },
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user, trigger, session }) {
       if (user) {
         token.role = (user as { role?: Role }).role;
         token.sub = user.id;
+      }
+      // The persona-opt-in flow (CANDIDATE → EMPLOYER promotion in
+      // createCompany / joinExistingCompany) calls `unstable_update`
+      // with a fresh role. Without this branch the JWT keeps the
+      // sign-in-time role and the user 403s on /employer/* until
+      // they sign out and back in.
+      if (trigger === "update" && session && typeof session === "object" && "user" in session) {
+        const next = (session as { user?: { role?: Role } }).user;
+        if (next?.role) token.role = next.role;
       }
       return token;
     },

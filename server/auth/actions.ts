@@ -118,20 +118,24 @@ export async function signupAction(_prev: FormState, formData: FormData): Promis
         signupUserAgent: userAgent?.slice(0, 500) ?? null,
       },
     });
-    if (role === "CANDIDATE") {
-      const [firstName, ...rest] = name.split(" ");
-      await withUniqueSlug(name, (slug) =>
-        tx.candidateProfile.create({
-          data: {
-            userId: created.id,
-            slug,
-            firstName: firstName ?? name,
-            lastName: rest.join(" ") || null,
-            email,
-          },
-        }),
-      );
-    }
+    // Always seed a CandidateProfile, regardless of which persona the
+    // user picked at signup. This is the LinkedIn pattern: every user
+    // has an underlying personal profile, and "employer" is just an
+    // additional hat they wear. It also makes the persona-switcher
+    // dropdown work the moment they finish employer onboarding —
+    // they can flip back to /me without a profile-creation step.
+    const [firstName, ...rest] = name.split(" ");
+    await withUniqueSlug(name, (slug) =>
+      tx.candidateProfile.create({
+        data: {
+          userId: created.id,
+          slug,
+          firstName: firstName ?? name,
+          lastName: rest.join(" ") || null,
+          email,
+        },
+      }),
+    );
     return created;
   });
 

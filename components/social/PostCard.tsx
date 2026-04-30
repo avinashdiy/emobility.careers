@@ -44,6 +44,8 @@ export interface FeedPostShape {
   reactionsCount: number;
   commentsCount: number;
   repostsCount: number;
+  /** Denormalised count of Answer rows; only meaningful for QUESTION posts. */
+  answerCount?: number;
   author: FeedAuthor;
   asCompany: { id: string; slug: string; name: string; logoUrl: string | null } | null;
   attachedJob: {
@@ -158,6 +160,22 @@ export function PostCard({
         <PostActions postId={post.id} authorId={post.author.id} viewerId={viewerId} />
       </div>
 
+      {/* Question header — Quora-style "?" prefix so questions are visually
+          distinct from posts in feed scroll. The first line is the question
+          itself; any extra context lines render in the body block below. */}
+      {post.kind === "QUESTION" && (
+        <Link href={`/posts/${post.id}`} className="mt-3 block">
+          <div className="flex items-start gap-2">
+            <span className="mt-0.5 grid h-7 w-7 shrink-0 place-items-center rounded-full bg-emce-light-soft text-base font-extrabold text-emce-darkest">
+              ?
+            </span>
+            <h2 className="text-section text-emce-text hover:underline">
+              {post.body.split("\n")[0].slice(0, 200)}
+            </h2>
+          </div>
+        </Link>
+      )}
+
       {/* Article header — banner-style cover above body */}
       {post.kind === "ARTICLE" && post.articleCoverUrl && (
         <Link href={`/posts/${post.id}`} className="mt-3 block overflow-hidden rounded-md">
@@ -175,10 +193,21 @@ export function PostCard({
         </Link>
       )}
 
-      {/* Body */}
-      <div className="mt-3 whitespace-pre-line text-body text-emce-text">
-        {renderBodyWithLinks(post.body)}
-      </div>
+      {/* Body — for QUESTION posts the first line is the question (rendered
+          above); only the optional context below it goes in the body block.
+          Empty body for short single-line questions stays hidden. */}
+      {(() => {
+        const bodyToRender =
+          post.kind === "QUESTION"
+            ? post.body.split("\n").slice(1).join("\n").trim()
+            : post.body;
+        if (!bodyToRender) return null;
+        return (
+          <div className="mt-3 whitespace-pre-line text-body text-emce-text">
+            {renderBodyWithLinks(bodyToRender)}
+          </div>
+        );
+      })()}
 
       {/* Image attachments — 1 / 2 / 3 / 4+ layouts */}
       {post.attachments && post.attachments.filter((a) => a.type === "IMAGE").length > 0 && (
@@ -316,21 +345,42 @@ export function PostCard({
       )}
 
       {/* Engagement strip */}
-      {(post.reactionsCount > 0 || post.commentsCount > 0 || post.repostsCount > 0) && (
+      {(post.reactionsCount > 0 ||
+        post.commentsCount > 0 ||
+        post.repostsCount > 0 ||
+        (post.kind === "QUESTION" && (post.answerCount ?? 0) > 0)) && (
         <div className="mt-3 flex items-center justify-between text-hint text-emce-text-muted">
           <div className="flex items-center gap-1">
             {post.reactionsCount > 0 && <span>{post.reactionsCount} reactions</span>}
           </div>
           <div className="flex items-center gap-3">
+            {post.kind === "QUESTION" && (post.answerCount ?? 0) > 0 && (
+              <Link
+                href={`/posts/${post.id}`}
+                className="font-bold text-emce-dark hover:underline"
+              >
+                {post.answerCount} {post.answerCount === 1 ? "answer" : "answers"}
+              </Link>
+            )}
             {post.commentsCount > 0 && <span>{post.commentsCount} comments</span>}
             {post.repostsCount > 0 && <span>{post.repostsCount} reposts</span>}
           </div>
         </div>
       )}
 
-      {/* Action bar */}
+      {/* Action bar — questions promote "Answer" as the primary CTA next
+          to reactions; the standard comment toggle still sits there for
+          short clarifications on the question itself. */}
       <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-emce-border pt-2">
         <ReactionBar postId={post.id} initialReaction={myReaction} count={post.reactionsCount} />
+        {post.kind === "QUESTION" ? (
+          <Link
+            href={`/posts/${post.id}#answers`}
+            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-bold text-emce-dark hover:bg-emce-light-soft"
+          >
+            💬 Answer
+          </Link>
+        ) : null}
         <CommentToggleLink postId={post.id} count={post.commentsCount} />
         <RepostButton postId={post.id} />
       </div>
