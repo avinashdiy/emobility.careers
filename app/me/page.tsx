@@ -40,7 +40,7 @@ export default async function MeDashboard() {
     where: { userId: session.user.id },
     include: {
       _count: { select: { applications: true, savedJobs: true, experiences: true, education: true } },
-      evDomains: { include: { evDomain: true }, select: { evDomainId: true, evDomain: true } },
+      evDomains: { include: { evDomain: true } },
       skills: { select: { skillId: true } },
       experiences: { select: { id: true } },
       education: { select: { id: true } },
