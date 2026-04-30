@@ -93,10 +93,19 @@ async function buildOAuthProviders(): Promise<NextAuthConfig["providers"]> {
       Google({
         clientId: googleId,
         clientSecret: googleSecret,
-        // Account linking is opt-in: users must explicitly link
-        // OAuth providers from their account settings after first
-        // sign-in with credentials.
-        allowDangerousEmailAccountLinking: false,
+        // Auto-link this OAuth identity to an existing email/password
+        // user when the email matches. Without this NextAuth throws
+        // `OAuthAccountNotLinked` whenever a user who already
+        // signed up with email/password later tries Google.
+        //
+        // The flag is named "dangerous" because providers that don't
+        // verify email ownership (custom OAuth, self-hosted IdPs)
+        // could let an attacker take over an account by claiming the
+        // email. Google ALWAYS issues OAuth tokens for emails it has
+        // confirmed, so the takeover surface is the same as the
+        // attacker already controlling the victim's Google account —
+        // a compromise that is out of scope for our threat model.
+        allowDangerousEmailAccountLinking: true,
       }),
     );
   }
@@ -108,7 +117,10 @@ async function buildOAuthProviders(): Promise<NextAuthConfig["providers"]> {
       LinkedIn({
         clientId: liId,
         clientSecret: liSecret,
-        allowDangerousEmailAccountLinking: false,
+        // LinkedIn also issues tokens only for verified emails, so
+        // the same reasoning as Google above applies. See the
+        // comment on the Google provider for the threat model.
+        allowDangerousEmailAccountLinking: true,
       }),
     );
   }
