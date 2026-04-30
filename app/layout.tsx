@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import { Suspense } from "react";
 import "./globals.css";
@@ -19,6 +19,19 @@ const inter = Inter({
   variable: "--font-dm-sans",
   display: "swap",
 });
+
+// Explicit viewport — Next.js's default still emits a viewport meta tag,
+// but pinning it here means we control width/scale and can guarantee
+// `viewport-fit=cover` so iPhone notch / Dynamic-Island safe-areas work.
+// `maximumScale: 5` keeps accessibility zoom available (LinkedIn does
+// the same — never use `user-scalable=no`).
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  viewportFit: "cover",
+  themeColor: "#1e2d2a",
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   // SiteSetting reads are cheap (cached in lib/settings) but we wrap in

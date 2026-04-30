@@ -141,12 +141,17 @@ export async function SiteHeader() {
           <HeaderSearch placeholder="Search people, jobs, mentors, competitions…" />
 
           {user && (
-            // Primary nav slots — always visible. On phones we drop the
-            // text label under each icon so the bar stays narrow; on desktop
-            // we show icon + label like LinkedIn. Jobs is promoted to the
-            // primary nav (LinkedIn always has Jobs there) — keep the same
-            // route in Discover too for redundancy.
-            <nav className="flex items-center gap-0.5">
+            // Primary nav slots — visible from `sm` (640px) and up.
+            // Below that the four icons + the language switcher + the
+            // user menu + the hamburger pile up wider than a 390px
+            // iPhone viewport, which on iOS Safari triggers a global
+            // shrink-to-fit and the page renders ~80% width with a
+            // tinted strip on the right. Same items remain reachable
+            // through the hamburger MobileNav (Feed/Network/
+            // Notifications already listed there). LinkedIn does the
+            // same — phones get the icons in a bottom bar instead of
+            // the top.
+            <nav className="hidden items-center gap-0.5 sm:flex">
               <SocialNavLink href="/feed" label={t("nav.feed", locale)} icon="feed" />
               <SocialNavLink href="/jobs" label={t("nav.findJobs", locale)} icon="jobs" />
               <SocialNavLink

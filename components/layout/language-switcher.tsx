@@ -71,19 +71,20 @@ export function LanguageSwitcher({
       title="Language"
     >
       <Globe className="h-4 w-4" />
+      {/* Visible closed-state label — clamped to ~2.5rem so the
+          phone header doesn't widen past the iPhone 14 viewport
+          (390px). The full "EN · English" label still appears
+          inside the dropdown options when tapped. We achieve the
+          truncation by setting an explicit width on the <select>
+          itself; the native picker behaviour is unaffected. */}
       <select
         value={current}
         disabled={pending}
         onChange={handleChange}
-        className={`bg-transparent text-xs font-bold uppercase tracking-wide outline-none ${
+        className={`w-9 bg-transparent text-xs font-bold uppercase tracking-wide outline-none sm:w-auto ${
           variant === "dark" ? "text-white/80" : "text-emce-text-sec"
         }`}
       >
-        {/* Closed-state label: ISO code (EN / HI / TA / TE / MR /
-            DE / AR / ZH / FR / JA). Compact enough for mobile
-            headers but still recognisable. Open dropdown shows the
-            language name in its native script next to the code so a
-            user who can't read English still finds their language. */}
         {locales.map((l) => (
           <option key={l} value={l} className="text-emce-text">
             {l.toUpperCase()} · {localeNames[l]}
