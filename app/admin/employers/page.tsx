@@ -122,6 +122,9 @@ export default async function AdminEmployersPage({
                     {c.website && <p className="text-hint text-emce-text-muted">{c.website}</p>}
                   </div>
                   <div className="flex flex-wrap gap-2">
+                    <Button asChild size="sm" variant="outline">
+                      <Link href={`/admin/employers/${c.id}/team`}>Manage team →</Link>
+                    </Button>
                     <form action={setCompanyVerification}>
                       <input type="hidden" name="companyId" value={c.id} />
                       <input type="hidden" name="status" value="VERIFIED" />

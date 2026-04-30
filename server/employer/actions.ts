@@ -22,13 +22,37 @@ import {
   CompanyTeamRole,
 } from "@prisma/client";
 
+/**
+ * Strict employer gate. Only EMPLOYER or ADMIN roles pass. Used by
+ * every employer-side mutation that isn't the onboarding flow itself
+ * — most importantly job posting, ATS moves, and company edits.
+ *
+ * A CANDIDATE who somehow has an EmployerProfile (e.g. an admin added
+ * them directly) is REJECTED here even though they're on the team
+ * roster. The user's role must be promoted to EMPLOYER (which happens
+ * automatically when they complete /employer/onboarding) before they
+ * can mutate company data. This is the platform-admin's job
+ * specifically asked for: "candidate associated with a page cannot
+ * add a job — they need to be employer".
+ */
 async function requireEmployer() {
   const session = await auth();
   if (!session?.user) redirect("/signin");
-  // CANDIDATEs reach this gate when they're opting into the employer
-  // persona via /employer/onboarding. The page-level guard already
-  // restricts which paths they can hit; here we just let the action
-  // run, and the action itself promotes their role on completion.
+  if (session.user.role !== "EMPLOYER" && session.user.role !== "ADMIN") {
+    redirect("/403");
+  }
+  return session;
+}
+
+/**
+ * Loose gate used ONLY by the onboarding flow (createCompany,
+ * joinExistingCompany). CANDIDATEs are allowed through because the
+ * action itself bumps their role to EMPLOYER on completion. Every
+ * other employer action uses the strict `requireEmployer` above.
+ */
+async function requireEmployerOrCandidate() {
+  const session = await auth();
+  if (!session?.user) redirect("/signin");
   if (
     session.user.role !== "EMPLOYER" &&
     session.user.role !== "ADMIN" &&
@@ -66,7 +90,7 @@ const companySchema = z.object({
 });
 
 export async function createCompany(formData: FormData) {
-  const session = await requireEmployer();
+  const session = await requireEmployerOrCandidate();
   const parsed = companySchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     redirect("/employer/onboarding?error=" + encodeURIComponent("Invalid input"));
@@ -141,7 +165,7 @@ const joinCompanySchema = z.object({
 });
 
 export async function joinExistingCompany(formData: FormData) {
-  const session = await requireEmployer();
+  const session = await requireEmployerOrCandidate();
   const parsed = joinCompanySchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     redirect("/employer/onboarding?error=" + encodeURIComponent("Pick a company and tell us your designation."));

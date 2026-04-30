@@ -178,7 +178,12 @@ export default async function PublicCompanyPage({
                 )}
               </div>
             </div>
-            <div className="h-14 sm:h-18" />
+            {/* Spacer below the floating logo. The avatar bottom edge sits
+                ~half-overlap below the banner (48px mobile / 64px desktop),
+                so we leave 80px / 96px before the name starts — plenty of
+                breathing room without feeling cavernous. NOTE: `h-18` is
+                NOT a valid Tailwind class (silently 0); use `h-20` / `h-24`. */}
+            <div className="h-20 sm:h-24" />
 
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">

@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
 import { EmployerShell } from "@/components/layout/employer-shell";
-import { inviteTeammate, revokeInvite, removeTeammate } from "@/server/employer/team-actions";
+import { inviteTeammate, revokeInvite, removeTeammate, setTeammateAdmin } from "@/server/employer/team-actions";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "Team" };
@@ -77,6 +77,27 @@ export default async function TeamPage() {
                 <div className="flex items-center gap-2">
                   <Badge variant="default">{m.teamRole}</Badge>
                   {m.isCompanyAdmin && <Badge variant="verified">Admin</Badge>}
+                  {/* Admins can promote / demote any teammate to fellow admin
+                      (multi-admin support). Demoting the owner is refused
+                      server-side. Self-step-down is allowed only if at
+                      least one other admin remains. */}
+                  {employer.isCompanyAdmin && (
+                    <form action={setTeammateAdmin}>
+                      <input type="hidden" name="userId" value={m.userId} />
+                      <input
+                        type="hidden"
+                        name="isCompanyAdmin"
+                        value={m.isCompanyAdmin ? "off" : "on"}
+                      />
+                      <Button
+                        type="submit"
+                        size="sm"
+                        variant={m.isCompanyAdmin ? "outline" : "ghost"}
+                      >
+                        {m.isCompanyAdmin ? "Revoke admin" : "Make admin"}
+                      </Button>
+                    </form>
+                  )}
                   {employer.isCompanyAdmin && m.userId !== employer.userId && (
                     <form action={removeTeammate}>
                       <input type="hidden" name="userId" value={m.userId} />
