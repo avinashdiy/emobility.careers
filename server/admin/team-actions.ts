@@ -6,7 +6,33 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
+import { notificationsQueue } from "@/lib/queues";
 import { CompanyTeamRole } from "@prisma/client";
+
+/**
+ * Best-effort notification fanout. Wraps the queue add in a catch so
+ * a queue outage never blocks an admin action — the audit log still
+ * captures the underlying mutation. Same pattern used in event-cancel
+ * and answer-create fanouts.
+ */
+async function notify(opts: {
+  userId: string;
+  type: string;
+  title: string;
+  body: string;
+  link?: string;
+}): Promise<void> {
+  await notificationsQueue
+    .add(opts.type, {
+      userId: opts.userId,
+      type: opts.type,
+      title: opts.title,
+      body: opts.body,
+      link: opts.link,
+      channels: ["IN_APP", "EMAIL"],
+    })
+    .catch(() => undefined);
+}
 
 /**
  * Platform-admin-only actions for managing a company's team roster.
@@ -43,6 +69,15 @@ const addSchema = z.object({
     .optional()
     .transform((v) => v === "on" || v === "true"),
   designation: z.string().min(1).max(120),
+  // Required when adding to a non-UNVERIFIED company. The
+  // `joinExistingCompany` self-serve path refuses self-attach to
+  // verified companies (impersonation defence); admins can override
+  // but must explicitly tick "I confirm this is a legitimate request"
+  // so the bypass is recorded with intent rather than silently used.
+  ackVerifiedBypass: z
+    .union([z.literal("on"), z.literal(""), z.string().optional()])
+    .optional()
+    .transform((v) => v === "on"),
 });
 
 /**
@@ -66,7 +101,7 @@ export async function adminAddTeamMember(formData: FormData) {
         encodeURIComponent("Pick a user, role, and designation."),
     );
   }
-  const { companyId, identifier, teamRole, isCompanyAdmin, designation } = parsed.data;
+  const { companyId, identifier, teamRole, isCompanyAdmin, designation, ackVerifiedBypass } = parsed.data;
 
   // Resolve the identifier — try email first, then slug.
   const id = identifier.trim();
@@ -80,6 +115,34 @@ export async function adminAddTeamMember(formData: FormData) {
     );
   }
   const targetUserId = "id" in user! ? user.id : user.userId;
+
+  // Verified-company bypass gate. The self-serve `joinExistingCompany`
+  // refuses to attach the user to anything past UNVERIFIED to prevent
+  // impersonation. Admins are allowed to override, but only when
+  // they explicitly tick the bypass-acknowledgement checkbox — that
+  // way the audit log captures the intent and the action can never be
+  // hand-waved as "I didn't realise this was a verified company".
+  const targetCompany = await db.company.findUnique({
+    where: { id: companyId },
+    select: { verificationStatus: true, name: true },
+  });
+  if (!targetCompany) {
+    redirect(
+      `/admin/employers/${companyId}/team?error=` +
+        encodeURIComponent("Company not found."),
+    );
+  }
+  const isVerifiedTier =
+    targetCompany!.verificationStatus === "VERIFIED" ||
+    targetCompany!.verificationStatus === "PENDING";
+  if (isVerifiedTier && !ackVerifiedBypass) {
+    redirect(
+      `/admin/employers/${companyId}/team?error=` +
+        encodeURIComponent(
+          `${targetCompany!.name} is ${targetCompany!.verificationStatus.toLowerCase()} — tick "I'm bypassing the self-join gate intentionally" before adding members. The self-serve path refuses this exact attach to prevent impersonation, so we record admin overrides explicitly.`,
+        ),
+    );
+  }
 
   // EmployerProfile.userId is unique — one company per user. If the
   // user already has a profile elsewhere, don't silently overwrite it.
@@ -118,8 +181,48 @@ export async function adminAddTeamMember(formData: FormData) {
     action: "admin.team.added",
     entity: "EmployerProfile",
     entityId: targetUserId,
-    meta: { companyId, teamRole, isCompanyAdmin, addedVia: "admin_panel" },
+    // companyVerificationStatus + bypass flag explicitly captured so
+    // the moderation history makes it obvious when an admin attached
+    // a user to a verified company (the "I'm overriding the
+    // impersonation defence" path) vs a routine UNVERIFIED add.
+    meta: {
+      companyId,
+      teamRole,
+      isCompanyAdmin,
+      addedVia: "admin_panel",
+      companyVerificationStatus: targetCompany!.verificationStatus,
+      bypassAcknowledged: isVerifiedTier ? true : undefined,
+    },
   });
+
+  // Notify the target user. Two cases:
+  //   • Their User.role is already EMPLOYER/ADMIN → straightforward
+  //     "you're now on Acme's team" message; signing-in as usual will
+  //     show the new dashboard.
+  //   • Role is still CANDIDATE → they need to sign out and back in
+  //     so the JWT picks up future role changes; ALSO, their current
+  //     EmployerProfile won't grant job-posting until role is bumped
+  //     via `adminSetEmployerRole`. The body explains both.
+  const target = await db.user.findUnique({
+    where: { id: targetUserId },
+    select: { role: true },
+  });
+  const company = await db.company.findUnique({
+    where: { id: companyId },
+    select: { name: true, slug: true },
+  });
+  if (company) {
+    const needsRoleBump = target?.role === "CANDIDATE";
+    await notify({
+      userId: targetUserId,
+      type: "company.team.added",
+      title: `You've been added to ${company.name}'s team`,
+      body: needsRoleBump
+        ? `An admin added you as ${teamRole.toLowerCase()} at ${company.name}. To post jobs on their behalf you'll need an EMPLOYER role — the admin can promote you, then sign out and back in to refresh your session.`
+        : `An admin added you as ${teamRole.toLowerCase()} at ${company.name}. Sign out and back in if you don't see the Employer dashboard yet.`,
+      link: `/company/${company.slug}`,
+    });
+  }
 
   revalidatePath(`/admin/employers/${companyId}/team`);
   revalidatePath("/admin/employers");
@@ -139,10 +242,11 @@ export async function adminRemoveTeamMember(formData: FormData) {
   // Refuse to remove the company owner — that would leave the
   // company orphaned (Company.ownerUserId is required). Platform
   // admin should transfer ownership first if they really need to
-  // remove the original creator.
+  // remove the original creator. Fetch name too so we can use it in
+  // the notification body further down without a second query.
   const company = await db.company.findUnique({
     where: { id: parsed.data.companyId },
-    select: { ownerUserId: true },
+    select: { ownerUserId: true, name: true },
   });
   if (company?.ownerUserId === parsed.data.userId) {
     redirect(
@@ -162,6 +266,20 @@ export async function adminRemoveTeamMember(formData: FormData) {
     entityId: parsed.data.userId,
     meta: { companyId: parsed.data.companyId },
   });
+
+  // Tell the removed user out-of-band so they don't discover the
+  // change by suddenly hitting 403s on /employer/*. The role-stale
+  // banner will also fire on their next page load if their JWT still
+  // says EMPLOYER while DB role got demoted (admin may run that
+  // demotion separately via adminSetEmployerRole).
+  if (company) {
+    await notify({
+      userId: parsed.data.userId,
+      type: "company.team.removed",
+      title: `Removed from ${company.name}'s team`,
+      body: `An admin removed you from ${company.name}. If your role was EMPLOYER specifically for this company, sign out and back in once your role is updated.`,
+    });
+  }
 
   revalidatePath(`/admin/employers/${parsed.data.companyId}/team`);
 }
@@ -189,19 +307,22 @@ export async function adminSetCompanyAdmin(formData: FormData) {
   const parsed = adminFlagSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return;
 
-  if (parsed.data.isCompanyAdmin === false) {
-    const company = await db.company.findUnique({
-      where: { id: parsed.data.companyId },
-      select: { ownerUserId: true },
-    });
-    if (company?.ownerUserId === parsed.data.userId) {
-      redirect(
-        `/admin/employers/${parsed.data.companyId}/team?error=` +
-          encodeURIComponent(
-            "Can't demote the company owner — that would leave them unable to manage their own page. Transfer ownership first.",
-          ),
-      );
-    }
+  // One company lookup — used for the owner-protect guard above and
+  // for the notification body further down.
+  const company = await db.company.findUnique({
+    where: { id: parsed.data.companyId },
+    select: { ownerUserId: true, name: true, slug: true },
+  });
+  if (
+    parsed.data.isCompanyAdmin === false &&
+    company?.ownerUserId === parsed.data.userId
+  ) {
+    redirect(
+      `/admin/employers/${parsed.data.companyId}/team?error=` +
+        encodeURIComponent(
+          "Can't demote the company owner — that would leave them unable to manage their own page. Transfer ownership first.",
+        ),
+    );
   }
 
   await db.employerProfile.updateMany({
@@ -216,6 +337,24 @@ export async function adminSetCompanyAdmin(formData: FormData) {
     entityId: parsed.data.userId,
     meta: { companyId: parsed.data.companyId },
   });
+
+  // Notify the user about their admin-flag change. company-admin is a
+  // permission flag on the EmployerProfile, NOT the global User.role,
+  // so no JWT refresh is required — the change takes effect on the
+  // next page load.
+  if (company) {
+    await notify({
+      userId: parsed.data.userId,
+      type: parsed.data.isCompanyAdmin ? "company.admin.granted" : "company.admin.revoked",
+      title: parsed.data.isCompanyAdmin
+        ? `You're now an admin at ${company.name}`
+        : `Admin access at ${company.name} was revoked`,
+      body: parsed.data.isCompanyAdmin
+        ? `You can now invite teammates and edit ${company.name}'s page.`
+        : `You're still on the team but no longer an admin. The remaining admins manage invites and the company page now.`,
+      link: `/employer/team`,
+    });
+  }
 
   revalidatePath(`/admin/employers/${parsed.data.companyId}/team`);
 }
@@ -260,12 +399,30 @@ export async function adminSetEmployerRole(formData: FormData) {
     meta: { newRole: parsed.data.role },
   });
 
-  // KNOWN LIMITATION: the target user's JWT cookie is stale until
-  // their next sign-in (we use stateless JWT sessions, see
-  // lib/auth.config.ts). This means a freshly-promoted user will
-  // still see role=CANDIDATE on their session and 403 on /employer/*
-  // until they sign back in. Migrating to DB-backed sessions would
-  // fix this; for now the admin sees a flash that says so.
+  // Tell the target user about the role bump out-of-band. The
+  // RoleStaleBanner (mounted under SiteHeader) will ALSO fire on
+  // their next page load — that catches the case where they haven't
+  // checked email/in-app notifications yet. Two channels reaching
+  // the same user is intentional: emails get filed and forgotten;
+  // the banner is unmissable.
+  const role = parsed.data.role;
+  await notify({
+    userId: parsed.data.userId,
+    type: "user.role_changed",
+    title:
+      role === "EMPLOYER"
+        ? "You now have employer access"
+        : role === "ADMIN"
+          ? "You're now a platform admin"
+          : "Your role was updated to candidate",
+    body:
+      role === "EMPLOYER"
+        ? "An admin promoted your account to EMPLOYER. Sign out and back in to use the Employer dashboard and post jobs."
+        : role === "ADMIN"
+          ? "An admin promoted your account to ADMIN. Sign out and back in to access /admin."
+          : "An admin changed your role to CANDIDATE. Sign out and back in to refresh your session.",
+    link: role === "EMPLOYER" ? "/employer" : role === "ADMIN" ? "/admin" : "/me",
+  });
 
   // Revalidate every page under /admin/employers so the team badge
   // updates immediately on this admin's view. The "layout" arg makes

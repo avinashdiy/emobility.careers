@@ -7,12 +7,30 @@ import { sendSMS } from "@/lib/sms";
 import { sendWhatsAppTemplate } from "@/lib/whatsapp/send";
 import { env } from "@/lib/env";
 import { QueueNames, type NotificationsJob } from "@/lib/queues";
+import { realtime, channels, events } from "@/lib/realtime";
+
+// Default TTL for IN_APP rows. The cleanup cron deletes anything past
+// `expiresAt` so notifications don't accumulate indefinitely. Callers
+// can override per-event by passing `expiresAt` in the queue payload
+// (e.g., interview reminders that are pointless after the event time).
+const DEFAULT_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 
 export function startNotificationsWorker() {
   const worker = new Worker<NotificationsJob>(
     QueueNames.Notifications,
     async (job) => {
-      const { userId, type, title, body, link, payload, channels = ["IN_APP"] } = job.data;
+      const {
+        userId,
+        type,
+        title,
+        body,
+        link,
+        payload,
+        channels: ch = ["IN_APP"],
+        actorId,
+        groupKey,
+        expiresAt: expiresAtOverride,
+      } = job.data;
 
       const user = await db.user.findUnique({
         where: { id: userId },
@@ -20,11 +38,18 @@ export function startNotificationsWorker() {
       });
       if (!user) return { ok: false, reason: "user-not-found" };
 
-      // In-app row is always written (even when EMAIL/SMS also fire)
-      if (channels.includes("IN_APP")) {
-        await db.notification.create({
+      // In-app row is always written (even when EMAIL/SMS also fire).
+      // After the row lands we push a Pusher event on the user's
+      // private channel so the bell icon + inbox can update in
+      // real-time without a full page reload.
+      if (ch.includes("IN_APP")) {
+        const expiresAt = expiresAtOverride
+          ? new Date(expiresAtOverride)
+          : new Date(Date.now() + DEFAULT_TTL_MS);
+        const created = await db.notification.create({
           data: {
             userId,
+            actorId: actorId ?? null,
             type,
             title,
             body,
@@ -32,8 +57,26 @@ export function startNotificationsWorker() {
             payload: payload ? (payload as object) : undefined,
             channel: "IN_APP",
             sentAt: new Date(),
+            groupKey: groupKey ?? null,
+            expiresAt,
           },
+          select: { id: true },
         });
+
+        // Best-effort realtime push — failure shouldn't block email/SMS.
+        try {
+          await realtime.trigger(channels.user(userId), events.notification, {
+            id: created.id,
+            type,
+            title,
+            body,
+            link,
+            actorId: actorId ?? null,
+            createdAt: new Date().toISOString(),
+          });
+        } catch (err) {
+          logger.warn({ err, userId }, "[notifications] realtime push failed");
+        }
       }
 
       // Per-event channel preferences. Map notification type prefix → preference field.
@@ -51,7 +94,7 @@ export function startNotificationsWorker() {
         (type.startsWith("interview.") && prefs.interviewsSMS) ||
         (type.startsWith("job.") && prefs.jobAlertsSMS);
 
-      if (channels.includes("EMAIL") && wantEmail && user.email) {
+      if (ch.includes("EMAIL") && wantEmail && user.email) {
         await sendMail({
           to: user.email,
           subject: title,
@@ -59,7 +102,7 @@ export function startNotificationsWorker() {
         });
       }
 
-      if (channels.includes("SMS") && wantSMS && user.phone && env.MSG91_TXN_TEMPLATE_ID) {
+      if (ch.includes("SMS") && wantSMS && user.phone && env.MSG91_TXN_TEMPLATE_ID) {
         await sendSMS({
           to: user.phone,
           templateId: env.MSG91_TXN_TEMPLATE_ID,
@@ -72,7 +115,7 @@ export function startNotificationsWorker() {
       // intent). Uses the same approved template as the digest with two
       // body params (title + body); ops can swap to a notification-class
       // template via env if they want a richer layout.
-      if (channels.includes("WHATSAPP") && wantSMS && user.phone) {
+      if (ch.includes("WHATSAPP") && wantSMS && user.phone) {
         await sendWhatsAppTemplate({
           to: user.phone,
           templateName: env.WHATSAPP_DIGEST_TEMPLATE,

@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { objectKey, presignUpload, presignDownload, buckets, s3, publicUrl } from "@/lib/storage";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { resumeParseQueue, embeddingsQueue, resumeDraftQueue } from "@/lib/queues";
+import { resumeParseQueue, embeddingsQueue, resumeDraftQueue, notificationsQueue } from "@/lib/queues";
 import { parseResume } from "@/lib/ai/resume-parser";
 import { logger } from "@/lib/logger";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
@@ -334,6 +334,13 @@ export async function applyResumeDraft() {
 // ─── Onboarding step 4: preferences ────────────────────────
 
 const preferencesSchema = z.object({
+  // Onboarding now captures country + city explicitly so we can render
+  // a flag icon and scope job matches by country. The legacy `location`
+  // free-text field is auto-derived from "City, Country" if both new
+  // fields are present (see savePreferences below) — keeps existing
+  // search filters / compatibility working.
+  country: z.string().length(2).optional().or(z.literal("")),
+  city: z.string().max(120).optional(),
   location: z.string().optional(),
   preferredCities: z.string().optional(),
   relocationPref: z.nativeEnum(RelocationPref),
@@ -352,11 +359,25 @@ export async function savePreferences(formData: FormData) {
     logger.warn({ errors: parsed.error.flatten() }, "[preferences] validation failed");
     return;
   }
-  const { preferredCities, ...rest } = parsed.data;
+  const { preferredCities, country, city, location: rawLocation, ...rest } = parsed.data;
+  // Derive a `location` display string from city + country if the
+  // candidate provided both, but don't clobber a non-empty manual
+  // value they typed in. This keeps the existing free-text location
+  // search working while letting new signups skip typing it twice.
+  const normalizedCountry = (country ?? "").toUpperCase() || null;
+  const normalizedCity = city?.trim() || null;
+  const derivedLocation =
+    normalizedCity && normalizedCountry
+      ? `${normalizedCity}, ${normalizedCountry}`
+      : null;
+  const finalLocation = (rawLocation && rawLocation.trim()) || derivedLocation;
   await db.candidateProfile.update({
     where: { id: profile.id },
     data: {
       ...rest,
+      country: normalizedCountry,
+      city: normalizedCity,
+      location: finalLocation,
       preferredCities: preferredCities
         ? preferredCities.split(",").map((s) => s.trim()).filter(Boolean)
         : [],
@@ -376,6 +397,10 @@ const headerSchema = z.object({
   headline: z.string().max(160).optional().nullable(),
   summary: z.string().max(2000).optional().nullable(),
   location: z.string().max(120).optional().nullable(),
+  // ISO alpha-2; empty string allowed because the editor's "— Select —"
+  // option submits "". We normalise to null below.
+  country: z.string().length(2).optional().or(z.literal("")),
+  city: z.string().max(120).optional().nullable(),
   phone: z.string().max(30).optional().nullable(),
   linkedinUrl: z.string().url().optional().nullable().or(z.literal("")),
   githubUrl: z.string().url().optional().nullable().or(z.literal("")),
@@ -386,9 +411,14 @@ export async function saveHeader(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = headerSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return;
+  const { country, city, ...rest } = parsed.data;
   await db.candidateProfile.update({
     where: { id: profile.id },
-    data: parsed.data,
+    data: {
+      ...rest,
+      country: country ? country.toUpperCase() : null,
+      city: city?.trim() || null,
+    },
   });
   await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
   await enqueueResumeDraft(profile.id);
@@ -819,6 +849,29 @@ export async function writeRecommendation(formData: FormData) {
       status: "PENDING",
     },
   });
+
+  // Notify the recipient. Without this they have to discover the
+  // pending rec by visiting /me/profile manually — most won't, and
+  // the rec sits unapproved forever. Best-effort send: a queue
+  // outage shouldn't roll back the rec itself.
+  const fromCandidate = await db.candidateProfile.findUnique({
+    where: { userId: session.user.id },
+    select: { firstName: true, lastName: true, slug: true },
+  });
+  const fromName = fromCandidate
+    ? `${fromCandidate.firstName} ${fromCandidate.lastName ?? ""}`.trim()
+    : "Someone you know";
+  await notificationsQueue
+    .add("recommendation-received", {
+      userId: toProfile.userId,
+      type: "recommendation.received",
+      title: `${fromName} wrote you a recommendation`,
+      body: `"${body.trim().slice(0, 140)}${body.trim().length > 140 ? "…" : ""}" — approve it from your profile to make it visible.`,
+      link: "/me/profile#recommendations",
+      channels: ["IN_APP", "EMAIL"],
+    })
+    .catch(() => undefined);
+
   revalidatePath(`/${toProfile.slug}`);
   redirect(
     `/${toProfile.slug}?notice=` +
@@ -1152,6 +1205,9 @@ export async function toggleSkillEndorsement(formData: FormData) {
           },
         },
       });
+      // Removing an endorsement is intentionally silent — pinging
+      // someone "X removed their endorsement" is awkward UX. The
+      // count just decrements on the profile.
     } else {
       // Confirm the candidate actually lists this skill before we
       // accept the endorsement — silently no-op otherwise so a stale
@@ -1164,6 +1220,36 @@ export async function toggleSkillEndorsement(formData: FormData) {
       await db.skillEndorsement.create({
         data: { candidateId: target.id, skillId, fromUserId },
       });
+
+      // Notify on add (not on remove). Resolve the skill name + giver
+      // name so the body reads "Alice endorsed you for Battery Pack
+      // Design" rather than just "Someone endorsed a skill". Best-
+      // effort: queue or DB hiccups don't roll back the endorsement.
+      try {
+        const [skill, giver] = await Promise.all([
+          db.skill.findUnique({ where: { id: skillId }, select: { name: true } }),
+          db.candidateProfile.findUnique({
+            where: { userId: fromUserId },
+            select: { firstName: true, lastName: true, slug: true },
+          }),
+        ]);
+        const giverName = giver
+          ? `${giver.firstName} ${giver.lastName ?? ""}`.trim()
+          : "Someone you know";
+        const skillName = skill?.name ?? "a skill";
+        await notificationsQueue
+          .add("skill-endorsed", {
+            userId: target.userId,
+            type: "skill.endorsed",
+            title: `${giverName} endorsed you for ${skillName}`,
+            body: `View your profile to see the updated endorsement count.`,
+            link: `/${target.slug}`,
+            channels: ["IN_APP", "EMAIL"],
+          })
+          .catch(() => undefined);
+      } catch (err) {
+        logger.warn({ err, slug: target.slug, skillId }, "endorsement notification fanout failed");
+      }
     }
   } catch (err) {
     logger.warn({ err, slug: target.slug, skillId }, "skill endorsement failed (table missing?)");

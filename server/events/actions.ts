@@ -9,6 +9,7 @@ import { audit } from "@/lib/audit";
 import { withUniqueSlug } from "@/lib/slug";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { notificationsQueue } from "@/lib/queues";
+import { objectKey, presignUpload, publicUrl } from "@/lib/storage";
 import { EventType, EventStatus } from "@prisma/client";
 import type { FormState } from "@/lib/form-state";
 
@@ -366,4 +367,71 @@ export async function registerForEvent(formData: FormData): Promise<void> {
 
 export async function cancelEventRegistration(formData: FormData): Promise<void> {
   await cancelEventRegistrationInner(formData);
+}
+
+// ─── Cover-image upload (presigned, MinIO/S3) ────────────────
+//
+// Replaces the old "paste a public URL" UX in EventEditor with a real
+// upload. Mirrors `presignPostAttachmentUpload` from rich-post-actions
+// but scoped to event covers — JPG/PNG/WEBP only, 5MB cap (covers are
+// shown at h-48 / h-64; no point allowing 10MB).
+//
+// The client PUTs the file directly to the returned signed URL; the
+// `publicUrl` is what we save into Event.coverImageUrl on submit.
+
+const COVER_MAX_BYTES = 5 * 1024 * 1024;
+const COVER_MIME_WHITELIST = ["image/jpeg", "image/png", "image/webp"] as const;
+const COVER_EXT_BY_MIME: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+const CoverPresignSchema = z.object({
+  mime: z.enum(COVER_MIME_WHITELIST),
+  byteSize: z.number().int().positive().max(COVER_MAX_BYTES),
+  fileName: z.string().min(1).max(200),
+});
+
+export async function presignEventCoverUpload(input: {
+  mime: string;
+  byteSize: number;
+  fileName: string;
+}): Promise<
+  | { ok: true; uploadUrl: string; publicUrl: string; storageKey: string }
+  | { ok: false; message: string }
+> {
+  // Reuses the strict employer auth gate. Admins pass through too —
+  // they may be uploading a cover on behalf of a company.
+  const session = await auth();
+  if (!session?.user) {
+    return { ok: false, message: "Not signed in." };
+  }
+  if (session.user.role !== "EMPLOYER" && session.user.role !== "ADMIN") {
+    return { ok: false, message: "Only employers can upload event covers." };
+  }
+  await rateLimitOrThrow(`event-cover:${session.user.id}`, "resumeUpload").catch(() => undefined);
+
+  const parsed = CoverPresignSchema.safeParse(input);
+  if (!parsed.success) {
+    return {
+      ok: false,
+      message:
+        parsed.error.issues[0]?.message ??
+        "Cover must be JPG/PNG/WEBP up to 5MB.",
+    };
+  }
+
+  const ext = COVER_EXT_BY_MIME[parsed.data.mime] ?? "jpg";
+  // Namespaced under `events/{userId}/` so admins can audit who
+  // uploaded what; the public URL doesn't expose anything sensitive.
+  const key = objectKey(`events/${session.user.id}`, ext);
+  const { url } = await presignUpload("docs", key, parsed.data.mime);
+
+  return {
+    ok: true,
+    uploadUrl: url,
+    publicUrl: publicUrl("docs", key),
+    storageKey: key,
+  };
 }

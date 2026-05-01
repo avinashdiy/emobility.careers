@@ -12,7 +12,7 @@ import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Image as ImageIcon, Video, FileText, BarChart3, Newspaper, Link2, X, Plus, HelpCircle } from "lucide-react";
 import { createRichPost, presignPostAttachmentUpload } from "@/server/social/rich-post-actions";
-import { detectEmbed } from "@/lib/social/embeds";
+import { detectEmbed, iframeFor } from "@/lib/social/embeds";
 
 /**
  * LinkedIn-style rich post composer. Modes:
@@ -333,21 +333,59 @@ export function RichPostComposer({ user, companies }: Props) {
 
       {mode === "EMBED" && (
         <div className="mt-2">
-          <Label htmlFor="embed">Video URL</Label>
+          <Label htmlFor="embed">Paste a link</Label>
           <Input
             id="embed"
             value={embedUrl}
             onChange={(e) => setEmbedUrl(e.target.value)}
-            placeholder="https://www.youtube.com/watch?v=… or instagram.com/reel/… or linkedin.com/posts/…"
+            placeholder="YouTube / Vimeo / LinkedIn post / Instagram / X URL"
           />
-          {embedUrl && detectEmbed(embedUrl) && (
-            <p className="mt-1 text-xs text-emce-mid-muted">
-              ✓ Detected: {detectEmbed(embedUrl)?.provider.toLowerCase()}
-            </p>
-          )}
-          {embedUrl && !detectEmbed(embedUrl) && (
-            <p className="mt-1 text-xs text-emce-red">Unsupported URL — we support YouTube, Vimeo, Instagram, LinkedIn, X.</p>
-          )}
+          <p className="mt-1 text-[11px] text-emce-text-sec">
+            YouTube, Vimeo &amp; LinkedIn posts render inline in the feed.
+            Instagram &amp; X show as a link card (their embed APIs require auth).
+          </p>
+          {(() => {
+            const det = embedUrl ? detectEmbed(embedUrl) : null;
+            if (!embedUrl) return null;
+            if (!det) {
+              return (
+                <p className="mt-1 text-xs text-emce-red">
+                  Unsupported URL — we support YouTube, Vimeo, LinkedIn, Instagram, X.
+                </p>
+              );
+            }
+            const iframeSrc = iframeFor(det);
+            const providerLabel = det.provider.toLowerCase();
+            return (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-emce-mid-muted">
+                  ✓ Detected: {providerLabel}
+                  {det.iframe ? " — will render inline" : " — will show as link card"}
+                </p>
+                {iframeSrc && det.provider === "LINKEDIN" && (
+                  <div className="overflow-hidden rounded-md border border-emce-border bg-white">
+                    <iframe
+                      src={iframeSrc}
+                      title="LinkedIn post preview"
+                      allow="encrypted-media"
+                      className="h-[28rem] w-full"
+                    />
+                  </div>
+                )}
+                {iframeSrc && (det.provider === "YOUTUBE" || det.provider === "VIMEO") && (
+                  <div className="aspect-video overflow-hidden rounded-md border border-emce-border bg-black">
+                    <iframe
+                      src={iframeSrc}
+                      title={`${providerLabel} preview`}
+                      allow="autoplay; encrypted-media; picture-in-picture"
+                      allowFullScreen
+                      className="h-full w-full"
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 

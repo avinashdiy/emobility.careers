@@ -57,11 +57,11 @@ export default async function AuditLogPage({
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-emce-light-soft text-left text-xs font-bold uppercase text-emce-text-sec">
               <tr>
-                <th className="p-3">When</th>
-                <th className="p-3">Actor</th>
-                <th className="p-3">Action</th>
-                <th className="p-3">Entity</th>
-                <th className="p-3">Meta</th>
+                <th scope="col" className="p-3">When</th>
+                <th scope="col" className="p-3">Actor</th>
+                <th scope="col" className="p-3">Action</th>
+                <th scope="col" className="p-3">Entity</th>
+                <th scope="col" className="p-3">Meta</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-emce-border">

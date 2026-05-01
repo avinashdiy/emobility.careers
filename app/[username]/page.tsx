@@ -13,6 +13,9 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { saveCandidate } from "@/server/employer/actions";
 import { toggleSkillEndorsement } from "@/server/candidates/actions";
 import { ShareButton } from "@/components/profile/ShareButton";
+import { CountryFlag } from "@/components/profile/CountryFlag";
+import { VerifiedBadge } from "@/components/profile/VerifiedBadge";
+import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { ExpandableText } from "@/components/profile/ExpandableText";
 import { EditPencil } from "@/components/profile/EditPencil";
 import {
@@ -24,7 +27,7 @@ import { WhatsAppButton } from "@/components/whatsapp/WhatsAppButton";
 import { FollowUserButton } from "@/components/social/FollowButton";
 import { PostCard, type FeedPostShape } from "@/components/social/PostCard";
 import { getConnectionStatus, isFollowingUser } from "@/server/social/queries";
-import { breadcrumbJsonLd } from "@/lib/seo/schemas";
+import { breadcrumbJsonLd, personJsonLd as buildPersonJsonLd } from "@/lib/seo/schemas";
 import { getViewerContext, canSeeContact, canSeeResume } from "@/lib/profile-visibility";
 import { env } from "@/lib/env";
 import { formatMonthYear } from "@/lib/utils";
@@ -66,7 +69,13 @@ export async function generateMetadata({
   }
   const profile = await db.candidateProfile.findUnique({
     where: { slug: username },
-    select: { firstName: true, lastName: true, headline: true, cvVisibility: true },
+    select: {
+      firstName: true,
+      lastName: true,
+      headline: true,
+      cvVisibility: true,
+      profilePhotoUrl: true,
+    },
   });
   if (!profile) {
     return { title: "Profile not found", robots: { index: false, follow: false } };
@@ -75,10 +84,27 @@ export async function generateMetadata({
     return { title: "Profile not available", robots: { index: false, follow: false } };
   }
   const name = [profile.firstName, profile.lastName].filter(Boolean).join(" ");
+  const url = `${env.NEXT_PUBLIC_APP_URL}/${username}`;
+  const description = profile.headline ?? `${name} on eMobility Careers`;
+  const heroImage = profile.profilePhotoUrl ?? null;
   return {
     title: name,
-    description: profile.headline ?? `${name} on eMobility Careers`,
-    alternates: { canonical: `${env.NEXT_PUBLIC_APP_URL}/${username}` },
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      type: "profile",
+      url,
+      title: name,
+      description,
+      siteName: "eMobility Careers",
+      images: heroImage ? [{ url: heroImage }] : undefined,
+    },
+    twitter: {
+      card: heroImage ? "summary_large_image" : "summary",
+      title: name,
+      description,
+      images: heroImage ? [heroImage] : undefined,
+    },
   };
 }
 
@@ -395,20 +421,31 @@ export default async function PublicCandidateProfile({
     endorsementsEnabled = false;
   }
 
-  // Person JSON-LD for richer snippets when public.
+  // Person JSON-LD for richer snippets when public. Includes skills
+  // + the user's current employer so AI engines can answer "who is X
+  // / where do they work" with grounded data instead of hallucinating.
+  const currentExperience = profile.experiences?.find((e) => e.current) ?? null;
+  const skillNames = (profile.skills ?? [])
+    .map((s) => s.skill?.name)
+    .filter((n): n is string => Boolean(n));
   const personJsonLd =
     profile.cvVisibility === "EVERYONE"
-      ? {
-          "@context": "https://schema.org",
-          "@type": "Person",
+      ? buildPersonJsonLd({
+          slug: profile.slug,
           name: fullName,
-          description: profile.headline ?? undefined,
-          image: profile.profilePhotoUrl ?? undefined,
-          url: `${env.NEXT_PUBLIC_APP_URL}/${profile.slug}`,
-          jobTitle: profile.headline ?? undefined,
-          address: profile.location ? { "@type": "PostalAddress", addressLocality: profile.location } : undefined,
-          sameAs: [profile.linkedinUrl, profile.githubUrl, profile.portfolioUrl].filter(Boolean),
-        }
+          headline: profile.headline,
+          summary: profile.summary,
+          profilePhotoUrl: profile.profilePhotoUrl,
+          location: profile.location,
+          websiteUrl: profile.portfolioUrl,
+          linkedinUrl: profile.linkedinUrl,
+          githubUrl: profile.githubUrl,
+          twitterUrl: profile.twitterUrl ?? null,
+          skills: skillNames,
+          currentEmployer: currentExperience
+            ? { name: currentExperience.company, title: currentExperience.title }
+            : null,
+        })
       : null;
 
   const ctaStatus =
@@ -506,6 +543,16 @@ export default async function PublicCandidateProfile({
                 <h1 className="text-[22px] font-bold leading-tight tracking-tight text-emce-text sm:text-2xl">
                   {fullName}
                 </h1>
+                {/* Twitter-style platform-issued blue checkmark — only
+                    rendered after admin approval. The DIYguru gold
+                    badge below is a separate, course-completion
+                    signal; both can co-exist. */}
+                {profile.idVerificationStatus === "VERIFIED" && (
+                  <VerifiedBadge size={18} />
+                )}
+                {profile.country && (
+                  <CountryFlag code={profile.country} size="md" />
+                )}
                 {profile.pronouns && (
                   <span className="text-sm text-emce-text-muted">({profile.pronouns})</span>
                 )}
@@ -620,7 +667,12 @@ export default async function PublicCandidateProfile({
                   )}
                 </>
               )}
-              <ShareButton url={`${env.NEXT_PUBLIC_APP_URL}/${profile.slug}`} />
+              <ShareDropdown
+                url={`${env.NEXT_PUBLIC_APP_URL}/${profile.slug}`}
+                title={`${fullName} on eMobility Careers`}
+                description={profile.headline ?? `${fullName}'s profile on eMobility Careers`}
+                label="Share profile"
+              />
               {showResume && (
                 <Button asChild variant="outline" size="sm">
                   <a href={resumeDownloadHref} target="_blank" rel="noopener noreferrer">

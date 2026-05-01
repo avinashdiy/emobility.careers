@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
 import { savePreferences } from "@/server/candidates/actions";
+import { COUNTRIES } from "@/lib/countries";
 
 export const metadata = { title: "Preferences" };
 
@@ -29,12 +30,32 @@ export default async function PreferencesStep() {
       </p>
 
       <form action={savePreferences} className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <Label htmlFor="location">Current location</Label>
-          <Input id="location" name="location" defaultValue={profile.location ?? ""} placeholder="e.g. Bengaluru, KA" />
+        {/* Country + city — captured separately so the profile header
+            can render a flag icon and matching can scope by country.
+            India defaulted because that's our primary market; users
+            outside India just pick from the dropdown. */}
+        <div>
+          <Label htmlFor="country">Country</Label>
+          <NativeSelect id="country" name="country" defaultValue={profile.country ?? "IN"} required>
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.flag} {c.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+        <div>
+          <Label htmlFor="city">City</Label>
+          <Input
+            id="city"
+            name="city"
+            defaultValue={profile.city ?? ""}
+            placeholder="e.g. Bengaluru"
+            required
+          />
         </div>
         <div className="sm:col-span-2">
-          <Label htmlFor="preferredCities">Preferred cities (comma-separated)</Label>
+          <Label htmlFor="preferredCities">Preferred cities to work in (comma-separated)</Label>
           <Input
             id="preferredCities"
             name="preferredCities"

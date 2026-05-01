@@ -80,15 +80,237 @@ export async function setCompanyVerification(formData: FormData) {
   const session = await requireAdmin();
   const companyId = z.string().parse(formData.get("companyId"));
   const status = z.nativeEnum(CompanyVerification).parse(formData.get("status"));
-  await db.company.update({ where: { id: companyId }, data: { verificationStatus: status } });
+  const reasonInput = (formData.get("reason") as string | null)?.trim() ?? "";
+
+  // For REJECTED status, require a reason — without one the email to
+  // the owner would just say "no reason given" which is the exact
+  // capricious behaviour we're trying to avoid. For other statuses,
+  // any incoming reason is ignored and any prior reason is cleared.
+  if (status === CompanyVerification.REJECTED && reasonInput.length < 10) {
+    redirect(
+      "/admin/employers?error=" +
+        encodeURIComponent(
+          "Provide a reason (at least 10 chars) when rejecting — it's emailed to the company owner so they know what to fix.",
+        ),
+    );
+  }
+
+  const company = await db.company.findUnique({
+    where: { id: companyId },
+    select: {
+      name: true,
+      slug: true,
+      owner: { select: { email: true, name: true } },
+    },
+  });
+  if (!company) {
+    redirect("/admin/employers?error=" + encodeURIComponent("Company not found."));
+  }
+
+  await db.company.update({
+    where: { id: companyId },
+    data: {
+      verificationStatus: status,
+      // Persist or clear the reason in lockstep with the status flip
+      // so a company that was rejected then re-approved doesn't
+      // carry around a stale rejection note.
+      rejectionReason: status === CompanyVerification.REJECTED ? reasonInput : null,
+      rejectionAt: status === CompanyVerification.REJECTED ? new Date() : null,
+    },
+  });
+
   await audit({
     actorId: session.user.id,
     action: "company.verification",
     entity: "Company",
     entityId: companyId,
-    meta: { status },
+    meta: {
+      status,
+      ...(status === CompanyVerification.REJECTED && { reason: reasonInput }),
+    },
   });
+
+  // Email the owner on REJECTED specifically. We don't email on
+  // VERIFIED (a quiet success is fine — the page just goes live)
+  // unless we want to add that later. Wrapped so a transient mail
+  // outage doesn't roll back the verification flip.
+  if (status === CompanyVerification.REJECTED && company!.owner?.email) {
+    try {
+      const { companyRejectedEmail } = await import("@/lib/emails/templates");
+      const { sendMail } = await import("@/lib/mail");
+      const tpl = companyRejectedEmail({
+        ownerName: company!.owner.name ?? null,
+        companyName: company!.name,
+        reason: reasonInput,
+      });
+      await sendMail({ to: company!.owner.email, ...tpl });
+    } catch (err) {
+      const { logger } = await import("@/lib/logger");
+      logger.warn({ err, companyId }, "[company.verification] reject email failed");
+    }
+  }
+
   revalidatePath("/admin/employers");
+  revalidatePath("/companies");
+  // Slug isn't known here; revalidate the dynamic prefix so any
+  // recently-cached /company/[slug] pages drop their cache and
+  // re-render with the new visibility gate.
+  revalidatePath("/company", "layout");
+}
+
+/**
+ * Permanently delete a Company and everything cascading off it
+ * (jobs, employer profiles, team invites, events, cohorts,
+ * verification requests, competitions, follows). Used by platform
+ * admins to clean up duplicate / spam company pages — the equivalent
+ * of LinkedIn's "merge or delete" affordance.
+ *
+ * What survives the delete (relations are SetNull, not Cascade):
+ *   • Candidate Experience entries that linked to the company —
+ *     they remain as plain-text rows with the FK nulled.
+ *   • Posts authored "as the company" — they revert to personal
+ *     posts authored by the same User.
+ *   • Salary submissions — kept for analytics but unlinked.
+ *
+ * Refused if the company has any APPLICATIONS attached to its jobs.
+ * Job postings cascade-delete fine, but losing application history
+ * (interviews, stage moves, candidate notes) is unrecoverable, so we
+ * force the admin to first manually deal with applications.
+ */
+export async function deleteCompany(formData: FormData) {
+  const session = await requireAdmin();
+  const companyId = z.string().parse(formData.get("companyId"));
+
+  const company = await db.company.findUnique({
+    where: { id: companyId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      _count: { select: { jobs: true, team: true, events: true } },
+    },
+  });
+  if (!company) {
+    redirect("/admin/employers?error=" + encodeURIComponent("Company not found."));
+  }
+
+  // Hard guard — refuse if any job has live applications. Application
+  // rows have onDelete: Cascade against JobPosting, so if we don't
+  // refuse here a single click would erase candidate application
+  // history irreversibly.
+  const appsCount = await db.application.count({
+    where: { job: { companyId } },
+  });
+  if (appsCount > 0) {
+    redirect(
+      "/admin/employers?error=" +
+        encodeURIComponent(
+          `Can't delete "${company!.name}" — ${appsCount} application(s) attached to its jobs would be lost. Reject the company instead (hides it publicly) or move applications elsewhere first.`,
+        ),
+    );
+  }
+
+  // Cascade-delete via Prisma. Schema-level onDelete: Cascade fires
+  // for jobs, employer profiles, team invites, events, cohorts,
+  // verification requests, competitions, follows.
+  await db.company.delete({ where: { id: companyId } });
+
+  await audit({
+    actorId: session.user.id,
+    action: "company.deleted",
+    entity: "Company",
+    entityId: companyId,
+    meta: {
+      name: company!.name,
+      slug: company!.slug,
+      cascadedJobs: company!._count.jobs,
+      cascadedTeam: company!._count.team,
+      cascadedEvents: company!._count.events,
+    },
+  });
+
+  revalidatePath("/admin/employers");
+  revalidatePath("/companies");
+  revalidatePath("/company", "layout");
+  redirect(
+    "/admin/employers?notice=" +
+      encodeURIComponent(`Deleted "${company!.name}".`),
+  );
+}
+
+/**
+ * Bulk-delete every REJECTED company that has no live applications.
+ * The admin UI hides REJECTED rows past the pagination cutoff, so
+ * this is the cleanup hatch for clearing them all at once.
+ *
+ * Companies with applications attached to their jobs are skipped (we
+ * never silently destroy candidate application history). The admin
+ * sees a count of deleted vs skipped in the success notice.
+ */
+export async function bulkDeleteRejectedCompanies() {
+  const session = await requireAdmin();
+
+  const candidates = await db.company.findMany({
+    where: { verificationStatus: "REJECTED" },
+    select: { id: true, name: true, slug: true },
+  });
+
+  // Build a parallel query to find which of those still have
+  // applications. Doing this in one go is cheaper than per-company.
+  const withApps = candidates.length === 0
+    ? []
+    : await db.application.groupBy({
+        by: ["jobId"],
+        where: { job: { companyId: { in: candidates.map((c) => c.id) } } },
+        _count: { _all: true },
+      });
+  const blockedJobIds = new Set(withApps.map((w) => w.jobId));
+  const blockedCompanyIds = new Set<string>();
+  if (blockedJobIds.size > 0) {
+    const blockedJobs = await db.jobPosting.findMany({
+      where: { id: { in: [...blockedJobIds] } },
+      select: { companyId: true },
+    });
+    for (const j of blockedJobs) blockedCompanyIds.add(j.companyId);
+  }
+
+  const toDelete = candidates.filter((c) => !blockedCompanyIds.has(c.id));
+  let deleted = 0;
+  for (const c of toDelete) {
+    try {
+      await db.company.delete({ where: { id: c.id } });
+      deleted += 1;
+    } catch {
+      // Cascade-failure on a single row shouldn't abort the whole
+      // bulk run. Skip and continue.
+    }
+  }
+
+  await audit({
+    actorId: session.user.id,
+    action: "company.bulk_deleted",
+    entity: "Company",
+    entityId: "bulk",
+    meta: {
+      attempted: candidates.length,
+      deleted,
+      skippedDueToApplications: candidates.length - toDelete.length,
+    },
+  });
+
+  revalidatePath("/admin/employers");
+  revalidatePath("/companies");
+  revalidatePath("/company", "layout");
+
+  const skipped = candidates.length - deleted;
+  redirect(
+    "/admin/employers?notice=" +
+      encodeURIComponent(
+        skipped === 0
+          ? `Deleted ${deleted} rejected compan${deleted === 1 ? "y" : "ies"}.`
+          : `Deleted ${deleted}, skipped ${skipped} (had application history attached). Move applications elsewhere first to delete those.`,
+      ),
+  );
 }
 
 // ─── DIYguru roster import ───────────────────────────────────
@@ -237,6 +459,25 @@ export async function deleteSkill(formData: FormData) {
   await requireAdmin();
   const id = z.string().parse(formData.get("id"));
   await db.skill.delete({ where: { id } });
+  revalidatePath("/admin/skills");
+}
+
+/**
+ * Inline-edit a single skill row. Allows renaming + re-categorising
+ * an existing canonical skill. We preserve the slug — renaming would
+ * require a slug change too, which would invalidate any URL or cached
+ * reference. Admins who really need to rename should add a new skill
+ * and delete the old one (deletion cascades cleanly via Prisma).
+ */
+export async function updateSkill(formData: FormData) {
+  await requireAdmin();
+  const id = z.string().parse(formData.get("id"));
+  const name = z.string().min(1).max(80).parse(formData.get("name"));
+  const evDomainId = String(formData.get("evDomainId") ?? "") || null;
+  await db.skill.update({
+    where: { id },
+    data: { name, evDomainId },
+  });
   revalidatePath("/admin/skills");
 }
 

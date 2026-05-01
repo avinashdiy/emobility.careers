@@ -12,6 +12,7 @@ import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { deletePost, deleteComment } from "@/server/social/actions";
+import { hideComment, restoreComment } from "@/server/admin/comment-moderation";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "Content moderation" };
@@ -194,14 +195,36 @@ export default async function ContentModerationPage({
                             </div>
                             <p className="mt-1 line-clamp-3 text-sm text-emce-text">{c.body}</p>
                           </div>
-                          <form action={deleteComment}>
-                            <input type="hidden" name="id" value={c.id} />
-                            <ConfirmSubmit
-                              variant="destructive"
-                              size="sm"
-                              confirm="Delete this comment?"
-                            >Delete</ConfirmSubmit>
-                          </form>
+                          <div className="flex flex-col gap-1">
+                            {c.hiddenAt ? (
+                              <form action={restoreComment}>
+                                <input type="hidden" name="id" value={c.id} />
+                                <ConfirmSubmit
+                                  variant="outline"
+                                  size="sm"
+                                  confirm="Restore this comment? It'll be visible to the public again."
+                                >Restore</ConfirmSubmit>
+                              </form>
+                            ) : (
+                              <form action={hideComment}>
+                                <input type="hidden" name="id" value={c.id} />
+                                <input type="hidden" name="reason" value="moderator action" />
+                                <ConfirmSubmit
+                                  variant="ghost"
+                                  size="sm"
+                                  confirm="Hide this comment? Public viewers see '[hidden by a moderator]'; the author still sees their original."
+                                >Hide</ConfirmSubmit>
+                              </form>
+                            )}
+                            <form action={deleteComment}>
+                              <input type="hidden" name="id" value={c.id} />
+                              <ConfirmSubmit
+                                variant="destructive"
+                                size="sm"
+                                confirm="Delete this comment? Hard delete — can't be restored."
+                              >Delete</ConfirmSubmit>
+                            </form>
+                          </div>
                         </div>
                       </Card>
                     </li>

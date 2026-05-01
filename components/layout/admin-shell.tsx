@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
@@ -23,6 +24,8 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
     pendingCompanies,
     pendingJobs,
     openReports,
+    openPostReports,
+    pendingIDVerifications,
     pendingMentors,
     pendingCompetitions,
     pendingDIYguru,
@@ -31,13 +34,37 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
         db.company.count({ where: { verificationStatus: "PENDING" } }),
         db.jobPosting.count({ where: { status: "PENDING_REVIEW" } }),
         db.jobReport.count({ where: { status: "OPEN" } }),
+        // Post reports live in AuditLog (no dedicated schema yet — see
+        // server/moderation/actions.ts → reportPost). Open ones have
+        // meta.status == "OPEN"; the JSON-path filter below mirrors
+        // /admin/post-reports.
+        db.auditLog
+          .count({
+            where: {
+              entity: "Post",
+              action: "post.flagged",
+              meta: { path: ["status"], equals: "OPEN" } as Prisma.JsonFilter,
+            },
+          })
+          .catch(() => 0),
+        // Twitter-style platform-issued ID verifications awaiting review.
+        // Tracked here so admins see a red-bubble count next to the
+        // sidebar entry the moment a candidate submits their Aadhar.
+        db.candidateProfile.count({ where: { idVerificationStatus: "PENDING" } }),
         db.mentorProfile.count({ where: { kycStatus: "PENDING" } }),
         db.competition.count({ where: { status: "PENDING_REVIEW" } }),
         db.dIYguruRoster.count({ where: { claimedByUserId: null } }).catch(() => 0),
       ])
-    : [0, 0, 0, 0, 0, 0];
+    : [0, 0, 0, 0, 0, 0, 0, 0];
 
-  const totalPending = pendingCompanies + pendingJobs + openReports + pendingMentors + pendingCompetitions;
+  const totalPending =
+    pendingCompanies +
+    pendingJobs +
+    openReports +
+    openPostReports +
+    pendingIDVerifications +
+    pendingMentors +
+    pendingCompetitions;
 
   return (
     <div className="min-h-screen bg-emce-light-bg">
@@ -76,6 +103,8 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
             companies: pendingCompanies,
             jobs: pendingJobs,
             reports: openReports,
+            postReports: openPostReports,
+            idVerifications: pendingIDVerifications,
             mentors: pendingMentors,
             competitions: pendingCompetitions,
             diyguru: pendingDIYguru,

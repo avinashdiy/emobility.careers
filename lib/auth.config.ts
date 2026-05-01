@@ -28,8 +28,13 @@ export const authConfig: NextAuthConfig = {
   },
   callbacks: {
     async jwt({ token, user, trigger, session }) {
+      // Bracket access on `token` for our custom fields — Auth.js v5
+      // doesn't ship the @auth/core/jwt subpath that would let us
+      // declare a typed `JWT` augmentation. Runtime behaviour is fine;
+      // we just lose autocomplete on these particular fields.
+      const t = token as Record<string, unknown>;
       if (user) {
-        token.role = (user as { role?: Role }).role;
+        t.role = (user as { role?: Role }).role;
         token.sub = user.id;
       }
       // The persona-opt-in flow (CANDIDATE → EMPLOYER promotion in
@@ -37,16 +42,36 @@ export const authConfig: NextAuthConfig = {
       // with a fresh role. Without this branch the JWT keeps the
       // sign-in-time role and the user 403s on /employer/* until
       // they sign out and back in.
+      //
+      // Admin impersonation reuses the same hook: when an admin starts
+      // impersonating a candidate, we call unstable_update with the
+      // target user's id/role plus an `impersonatedBy` field carrying
+      // the admin's id. The JWT subject silently becomes the target,
+      // every server action sees the candidate as the actor (so we get
+      // a true reproduction of their bug), and ImpersonationBanner
+      // reads `impersonatedBy` to render the "Back to admin" pill.
+      // stopImpersonation() runs the same flow in reverse.
       if (trigger === "update" && session && typeof session === "object" && "user" in session) {
-        const next = (session as { user?: { role?: Role } }).user;
-        if (next?.role) token.role = next.role;
+        const next = (session as {
+          user?: { id?: string; role?: Role; impersonatedBy?: string | null };
+        }).user;
+        if (next?.role) t.role = next.role;
+        if (next?.id) token.sub = next.id;
+        if (Object.prototype.hasOwnProperty.call(next ?? {}, "impersonatedBy")) {
+          t.impersonatedBy = next?.impersonatedBy ?? null;
+        }
       }
       return token;
     },
     async session({ session, token }) {
+      const t = token as Record<string, unknown>;
       if (session.user && token.sub) {
         session.user.id = token.sub;
-        session.user.role = token.role as Role;
+        session.user.role = t.role as Role;
+        // Surface impersonation to server components so they can
+        // render the banner + audit-log "actor" headers correctly.
+        session.user.impersonatedBy =
+          (t.impersonatedBy as string | null | undefined) ?? null;
       }
       return session;
     },

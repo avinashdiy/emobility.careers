@@ -138,8 +138,10 @@ export function HeaderUserMenu({ user }: { user: UserMenuViewerData }) {
           <Group title="Profile">
             <Item href="/me" icon={<UserIcon className="h-4 w-4" />} label="Dashboard" />
             <Item href="/me/profile" label="Edit profile" />
+            <Item href="/me/verify" label="Verify profile (blue checkmark)" />
             <Item href="/me/applications" icon={<Briefcase className="h-4 w-4" />} label="My applications" />
             <Item href="/me/saved" label="Saved jobs" />
+            <Item href="/me/account" label="Account & data rights" />
           </Group>
 
           <Group title="Mentorship">

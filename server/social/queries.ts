@@ -30,6 +30,10 @@ const POST_INCLUDE = {
           headline: true,
           profilePhotoUrl: true,
           isDIYguruVerified: true,
+          // Twitter-style blue-checkmark surface — drives the verified
+          // badge in PostCard's header. Plus country for the flag icon.
+          idVerificationStatus: true,
+          country: true,
           personType: true,
         },
       },

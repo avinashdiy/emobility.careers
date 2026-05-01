@@ -10,6 +10,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { JobCard } from "@/components/jobs/JobCard";
 import { FollowCompanyButton } from "@/components/social/FollowButton";
+import { ShareDropdown } from "@/components/social/ShareDropdown";
+import { env } from "@/lib/env";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { breadcrumbJsonLd, organizationJsonLd } from "@/lib/seo/schemas";
@@ -27,10 +29,49 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const company = await db.company.findUnique({ where: { slug } });
-  return company
-    ? { title: company.name, description: company.description ?? `${company.name} on eMobility Careers` }
-    : { title: "Company not found" };
+  const company = await db.company.findUnique({
+    where: { slug },
+    select: {
+      name: true,
+      description: true,
+      verificationStatus: true,
+      logoUrl: true,
+      bannerUrl: true,
+    },
+  });
+  if (!company) return { title: "Company not found" };
+  // De-index REJECTED companies — public 404s for non-admins anyway,
+  // but search engines shouldn't keep their snippet alive.
+  if (company.verificationStatus === "REJECTED") {
+    return {
+      title: "Company not available",
+      robots: { index: false, follow: false },
+    };
+  }
+  const url = `${process.env.NEXT_PUBLIC_APP_URL ?? ""}/company/${slug}`;
+  const description = company.description ?? `${company.name} on eMobility Careers`;
+  // Banner is the wide hero — preferred for summary_large_image.
+  // Logo is square — usable as a fallback (Twitter "summary" / LinkedIn).
+  const heroImage = company.bannerUrl ?? company.logoUrl ?? null;
+  return {
+    title: company.name,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      type: "website",
+      url,
+      title: company.name,
+      description,
+      siteName: "eMobility Careers",
+      images: heroImage ? [{ url: heroImage }] : undefined,
+    },
+    twitter: {
+      card: company.bannerUrl ? "summary_large_image" : "summary",
+      title: company.name,
+      description,
+      images: heroImage ? [heroImage] : undefined,
+    },
+  };
 }
 
 export default async function PublicCompanyPage({
@@ -61,6 +102,18 @@ export default async function PublicCompanyPage({
     },
   });
   if (!company) notFound();
+
+  // REJECTED companies are admin-banned (duplicates, spam, off-topic).
+  // The `/companies` listing already filters them out, but anyone
+  // hitting the URL directly would still see the page. Treat REJECTED
+  // as 404 for everyone except platform admins (who can review and
+  // permanently delete via /admin/employers).
+  if (
+    company.verificationStatus === "REJECTED" &&
+    session?.user?.role !== "ADMIN"
+  ) {
+    notFound();
+  }
 
   // Recruiter response-time stats — median time from APPLIED to first
   // forward stage move, scoped to last 90 days. Returns null when there
@@ -237,6 +290,13 @@ export default async function PublicCompanyPage({
               <Button asChild variant="ghost" size="sm">
                 <Link href={`/company/${company.slug}?tab=jobs`}>{company._count.jobs} open jobs</Link>
               </Button>
+              <ShareDropdown
+                url={`${env.NEXT_PUBLIC_APP_URL}/company/${company.slug}`}
+                title={`${company.name} on eMobility Careers`}
+                description={company.description ?? `${company.name} is hiring on eMobility Careers`}
+                label="Share"
+                variant="icon"
+              />
             </div>
           </div>
 

@@ -7,7 +7,12 @@ import { AnswersSection } from "@/components/social/AnswersSection";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { getPost, getViewerPollVotes } from "@/server/social/queries";
-import { qaPageJsonLd } from "@/lib/seo/schemas";
+import {
+  qaPageJsonLd,
+  articleJsonLd,
+  discussionForumPostingJsonLd,
+  breadcrumbJsonLd,
+} from "@/lib/seo/schemas";
 import type { Metadata } from "next";
 import { env } from "@/lib/env";
 
@@ -22,10 +27,23 @@ export async function generateMetadata({
     select: {
       body: true,
       visibility: true,
+      kind: true,
+      articleTitle: true,
+      articleCoverUrl: true,
+      embedThumbnailUrl: true,
       author: {
         select: {
           candidateProfile: { select: { firstName: true, lastName: true } },
         },
+      },
+      // First image attachment in carousel order — used as the OG hero
+      // when this is an IMAGE post. Limit to 1 because LinkedIn / Twitter
+      // only render a single image in the share card.
+      attachments: {
+        where: { type: "IMAGE" },
+        orderBy: { order: "asc" },
+        take: 1,
+        select: { url: true },
       },
     },
   });
@@ -34,10 +52,40 @@ export async function generateMetadata({
   }
   const c = post.author.candidateProfile;
   const author = c ? `${c.firstName} ${c.lastName ?? ""}`.trim() : "Someone";
+  const url = `${env.NEXT_PUBLIC_APP_URL}/posts/${id}`;
+  // Pick the best per-post hero image so LinkedIn / X / WhatsApp render a
+  // proper card when someone shares the URL. Priority: article cover →
+  // first image attachment → embed thumbnail (YouTube). When none of
+  // these exist we fall through to the site-wide /opengraph-image
+  // inherited from app/layout.tsx, so there's always *some* image.
+  const heroImage =
+    (post.kind === "ARTICLE" && post.articleCoverUrl) ||
+    post.attachments[0]?.url ||
+    (post.kind === "EMBED" && post.embedThumbnailUrl) ||
+    null;
+  const title =
+    post.kind === "ARTICLE" && post.articleTitle
+      ? post.articleTitle
+      : `${author}'s post`;
+  const description = post.body.replace(/\s+/g, " ").slice(0, 200);
   return {
-    title: `${author}'s post`,
-    description: post.body.slice(0, 200),
-    alternates: { canonical: `${env.NEXT_PUBLIC_APP_URL}/posts/${id}` },
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      type: "article",
+      url,
+      title,
+      description,
+      siteName: "eMobility Careers",
+      images: heroImage ? [{ url: heroImage }] : undefined,
+    },
+    twitter: {
+      card: heroImage ? "summary_large_image" : "summary",
+      title,
+      description,
+      images: heroImage ? [heroImage] : undefined,
+    },
   };
 }
 
@@ -147,12 +195,119 @@ export default async function PostDetail({
         })
       : null;
 
+  // Article schema — only fire on ARTICLE-kind public posts. Eligible
+  // for "Top stories" and gives AI engines a clean datePublished /
+  // articleBody to cite.
+  const authorSlug = askedByCp?.slug ?? null;
+  const articleLd =
+    post.kind === "ARTICLE" && post.visibility === "PUBLIC"
+      ? articleJsonLd({
+          postId: id,
+          headline: post.articleTitle ?? post.body.split("\n")[0].slice(0, 110),
+          body: post.body,
+          coverImageUrl: post.articleCoverUrl ?? null,
+          publishedAt: post.createdAt,
+          updatedAt: post.updatedAt,
+          author: { name: askedByName, slug: authorSlug },
+        })
+      : null;
+
+  // DiscussionForumPosting — for plain TEXT/feed posts. This is the
+  // schema Reddit uses; eligible for Google's "Discussions and forums"
+  // SERP block. Skipping POLL/EMBED/IMAGE because they carry less
+  // textual substance for AI extraction.
+  let discussionComments: {
+    id: string;
+    text: string;
+    createdAt: Date;
+    authorName: string;
+  }[] = [];
+  if (post.kind === "TEXT" && post.visibility === "PUBLIC") {
+    // Pull comments separately for the schema payload — mirrors
+    // exactly what CommentSection renders so AI engines reading the
+    // JSON-LD see the same context readers see.
+    const rows = await db.postComment.findMany({
+      where: { postId: id, hiddenAt: null, parentId: null },
+      orderBy: { createdAt: "asc" },
+      take: 50,
+      select: {
+        id: true,
+        body: true,
+        createdAt: true,
+        author: {
+          select: {
+            name: true,
+            candidateProfile: { select: { firstName: true, lastName: true } },
+          },
+        },
+      },
+    });
+    discussionComments = rows.map((c) => ({
+      id: c.id,
+      text: c.body,
+      createdAt: c.createdAt,
+      authorName: c.author.candidateProfile
+        ? `${c.author.candidateProfile.firstName} ${c.author.candidateProfile.lastName ?? ""}`.trim()
+        : c.author.name ?? "A community member",
+    }));
+  }
+  const discussionLd =
+    post.kind === "TEXT" && post.visibility === "PUBLIC"
+      ? discussionForumPostingJsonLd({
+          postId: id,
+          headline: post.body.split("\n")[0].slice(0, 200),
+          text: post.body,
+          createdAt: post.createdAt,
+          author: { name: askedByName, slug: authorSlug },
+          upvoteCount: post.reactionsCount,
+          commentCount: post.commentsCount,
+          comments: discussionComments,
+        })
+      : null;
+
+  // Breadcrumbs help crawlers understand the URL hierarchy and feed
+  // Google's breadcrumb rich result. Same payload regardless of post
+  // kind — points at /feed as the parent.
+  const breadcrumbLd =
+    post.visibility === "PUBLIC"
+      ? breadcrumbJsonLd([
+          { name: "Home", href: "/" },
+          { name: "Feed", href: "/feed" },
+          {
+            name: post.kind === "QUESTION"
+              ? "Question"
+              : post.kind === "ARTICLE"
+                ? "Article"
+                : "Post",
+            href: `/posts/${id}`,
+          },
+        ])
+      : null;
+
   return (
     <>
       {qaJsonLd && (
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(qaJsonLd) }}
+        />
+      )}
+      {articleLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(articleLd) }}
+        />
+      )}
+      {discussionLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(discussionLd) }}
+        />
+      )}
+      {breadcrumbLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
         />
       )}
       <SiteHeader />

@@ -16,6 +16,9 @@ import {
 } from "@/lib/payments/razorpay";
 import type { FormState } from "@/lib/form-state";
 import { zodErrorsToFieldErrors } from "@/lib/form-state";
+import { getBooleanSetting } from "@/lib/settings";
+import { sendBookingConfirmationEmail } from "@/lib/calendar/booking-email";
+import { logger } from "@/lib/logger";
 
 async function requireUser() {
   const session = await auth();
@@ -264,12 +267,31 @@ export async function createMentorshipBooking(_prev: BookingResult, formData: Fo
   // Pricing: free-only mentor → free; paid-only → priced; both → mentee chooses
   // a free request only if mentor's accepting it (formData.get("payFree") === "1")
   const requestedFree = formData.get("requestFree") === "1";
-  const isFree =
+  let isFree =
     requestedFree && mentor.acceptingFree
       ? true
       : !mentor.acceptingPaid
       ? mentor.acceptingFree
       : false;
+
+  // Platform-wide payments kill switch. When admins flip
+  // `feature.payments_enabled` off (Razorpay outage, regulatory
+  // pause), every booking is forced to free regardless of the
+  // mentor's pricing — provided the mentor accepts free sessions.
+  // If they don't, we refuse the booking with a friendly message
+  // rather than putting them in an unbillable limbo.
+  const paymentsEnabled = await getBooleanSetting("feature.payments_enabled");
+  if (!paymentsEnabled && !isFree) {
+    if (!mentor.acceptingFree) {
+      return {
+        ok: false,
+        message:
+          "Paid bookings are temporarily disabled platform-wide. Please try again later or pick a mentor offering free sessions.",
+      };
+    }
+    isFree = true;
+  }
+
   const priceMinor = isFree ? 0 : mentor.pricePerSessionMinor;
   if (!isFree && priceMinor <= 0) return { ok: false, message: "Mentor pricing misconfigured — try again later." };
 
@@ -308,6 +330,11 @@ export async function createMentorshipBooking(_prev: BookingResult, formData: Fo
       entity: "MentorshipSession",
       entityId: created.id,
     });
+    // Fire the calendar invite + booking-confirmation email out-of-band
+    // so the booking response time isn't gated on email send latency.
+    void sendCalendarInviteForSession(created.id).catch((err) =>
+      logger.warn({ err, sessionId: created.id }, "[booking] calendar email failed"),
+    );
     return { ok: true, sessionId: created.id, isFree: true };
   }
 
@@ -409,8 +436,66 @@ export async function confirmMentorshipPayment(_prev: FormState, formData: FormD
     entity: "MentorshipSession",
     entityId: sessionRow.id,
   });
+  // Fire the calendar invite once payment lands. Out-of-band so the
+  // payment-confirmation response time is unaffected by email send.
+  void sendCalendarInviteForSession(sessionRow.id).catch((err) =>
+    logger.warn({ err, sessionId: sessionRow.id }, "[booking] calendar email failed"),
+  );
   revalidatePath("/me/sessions");
   return { ok: true, message: "Booking confirmed." };
+}
+
+/**
+ * Fetch the session with mentor + mentee email/name, build the ICS,
+ * upload it to MinIO, send the confirmation email to both sides, and
+ * stamp `calendarInviteSentAt` so the reminder worker doesn't fire
+ * a duplicate. Idempotent — short-circuits if already sent (used by
+ * both the booking flow and the T-24h reminder worker).
+ */
+export async function sendCalendarInviteForSession(sessionId: string, opts?: { sequence?: number; force?: boolean }): Promise<void> {
+  const row = await db.mentorshipSession.findUnique({
+    where: { id: sessionId },
+    select: {
+      id: true,
+      icsUid: true,
+      scheduledAt: true,
+      durationMins: true,
+      topic: true,
+      meetingUrl: true,
+      status: true,
+      calendarInviteSentAt: true,
+      mentor: {
+        select: {
+          userId: true,
+          user: { select: { name: true, email: true } },
+        },
+      },
+      mentee: { select: { name: true, email: true } },
+    },
+  });
+  if (!row || !row.icsUid) return;
+  if (!opts?.force && row.calendarInviteSentAt) return;
+  if (row.status === "CANCELLED") return;
+  const mentorName = row.mentor.user.name ?? "Your mentor";
+  const menteeName = row.mentee.name ?? "Your mentee";
+  if (!row.mentor.user.email || !row.mentee.email) return;
+  const result = await sendBookingConfirmationEmail({
+    sessionId: row.id,
+    icsUid: row.icsUid,
+    scheduledAt: row.scheduledAt,
+    durationMins: row.durationMins,
+    topic: row.topic,
+    meetingUrl: row.meetingUrl,
+    sequence: opts?.sequence ?? 0,
+    mentor: { name: mentorName, email: row.mentor.user.email },
+    mentee: { name: menteeName, email: row.mentee.email },
+  });
+  if (result.ok) {
+    await db.mentorshipSession.update({
+      where: { id: row.id },
+      data: { calendarInviteSentAt: new Date() },
+    });
+  }
 }
 
 // ─── Session lifecycle (mentor side) ─────────────────────────

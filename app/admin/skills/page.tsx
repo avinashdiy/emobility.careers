@@ -2,14 +2,13 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
 import { AdminShell } from "@/components/layout/admin-shell";
-import { createSkill, deleteSkill } from "@/server/admin/actions";
+import { createSkill } from "@/server/admin/actions";
+import { SkillTaxonomyTable } from "@/components/admin/SkillTaxonomyTable";
 
 export const metadata = { title: "Skill taxonomy" };
 
@@ -26,6 +25,16 @@ export default async function AdminSkillsPage() {
     db.eVDomain.findMany({ orderBy: { order: "asc" } }),
     db.skill.count(),
   ]);
+
+  // Strip the rows down to the shape the client component needs —
+  // smaller payload + no accidental leak of internal columns.
+  const tableSkills = skills.map((s) => ({
+    id: s.id,
+    name: s.name,
+    slug: s.slug,
+    evDomain: s.evDomain ? { id: s.evDomain.id, name: s.evDomain.name } : null,
+  }));
+  const tableDomains = evDomains.map((d) => ({ id: d.id, name: d.name }));
 
   return (
     <AdminShell>
@@ -57,41 +66,7 @@ export default async function AdminSkillsPage() {
           </form>
         </Card>
 
-        <Card className="mt-6 overflow-x-auto p-0">
-          <table className="w-full min-w-[640px] text-sm">
-            <thead className="bg-emce-light-soft text-left text-xs font-bold uppercase text-emce-text-sec">
-              <tr>
-                <th className="p-3">Skill</th>
-                <th className="p-3">Domain</th>
-                <th className="p-3">Slug</th>
-                <th className="p-3"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-emce-border">
-              {skills.map((s) => (
-                <tr key={s.id}>
-                  <td className="p-3 font-bold text-emce-text">{s.name}</td>
-                  <td className="p-3">
-                    {s.evDomain ? <Badge variant="success">{s.evDomain.name}</Badge> : "—"}
-                  </td>
-                  <td className="p-3 text-hint text-emce-text-muted">{s.slug}</td>
-                  <td className="p-3 text-right">
-                    <form action={deleteSkill}>
-                      <input type="hidden" name="id" value={s.id} />
-                      <ConfirmSubmit
-                        confirm={`Delete skill "${s.name}"? Candidates with this skill will lose the link.`}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        Delete
-                      </ConfirmSubmit>
-                    </form>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
+        <SkillTaxonomyTable skills={tableSkills} evDomains={tableDomains} />
       </div>
     </AdminShell>
   );

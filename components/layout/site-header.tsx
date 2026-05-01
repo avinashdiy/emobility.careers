@@ -7,6 +7,9 @@ import { DiscoverMenu } from "@/components/layout/DiscoverMenu";
 import { HeaderUserMenu } from "@/components/layout/HeaderUserMenu";
 import { Logo } from "@/components/brand/Logo";
 import { CompleteProfileBanner } from "@/components/profile/CompleteProfileBanner";
+import { RoleStaleBanner } from "@/components/auth/RoleStaleBanner";
+import { LiveNotificationBadge } from "@/components/layout/LiveNotificationBadge";
+import { env } from "@/lib/env";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { t } from "@/lib/i18n";
@@ -176,7 +179,16 @@ export async function SiteHeader() {
                 href="/me/notifications"
                 label={t("nav.notifications", locale)}
                 icon="bell"
-                badge={unreadNotifs}
+                badge={0}
+                liveBadge={
+                  <LiveNotificationBadge
+                    initialCount={unreadNotifs}
+                    userId={user.id}
+                    pusherKey={env.NEXT_PUBLIC_SOKETI_KEY}
+                    pusherHost={env.NEXT_PUBLIC_SOKETI_HOST}
+                    pusherPort={env.NEXT_PUBLIC_SOKETI_PORT}
+                  />
+                }
               />
             </nav>
           )}
@@ -219,6 +231,11 @@ export async function SiteHeader() {
           </div>
         </div>
       </div>
+      {/* Role-stale strip — fires when an admin promoted / demoted this
+          user from /admin/employers/[id]/team but the JWT cookie still
+          reflects the old role. Component returns null in the common
+          case (DB role === session role). */}
+      <RoleStaleBanner />
       {/* Profile-completeness reminder strip — short-circuits server-side
           when the user is signed-out / on auth routes / already ≥ 90%. */}
       <CompleteProfileBanner />
@@ -231,11 +248,16 @@ function SocialNavLink({
   label,
   icon,
   badge = 0,
+  liveBadge,
 }: {
   href: string;
   label: string;
   icon: "feed" | "jobs" | "network" | "bell";
   badge?: number;
+  /** Optional client-component slot rendered in place of the static
+      badge. Used by the bell icon to subscribe to realtime
+      notification events. When supplied, `badge` is ignored. */
+  liveBadge?: React.ReactNode;
 }) {
   return (
     <Link
@@ -248,11 +270,11 @@ function SocialNavLink({
     >
       <SocialIcon name={icon} />
       <span className="mt-0.5 hidden text-[11px] font-semibold leading-none md:block">{label}</span>
-      {badge > 0 && (
+      {liveBadge ?? (badge > 0 && (
         <span className="absolute right-0.5 top-0 grid h-4 min-w-4 place-items-center rounded-full bg-emce-red px-1 text-[9px] font-bold text-white md:right-1 md:top-0.5">
           {badge > 99 ? "99+" : badge}
         </span>
-      )}
+      ))}
     </Link>
   );
 }

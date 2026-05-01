@@ -30,6 +30,10 @@ export async function searchJobs(filter: JobsFilter) {
 
   const where: Prisma.JobPostingWhereInput = {
     status: JobStatus.OPEN,
+    // Suppress jobs from REJECTED companies — they're admin-banned
+    // (duplicates / spam / off-topic). The company page itself 404s
+    // for REJECTED, so its jobs shouldn't be discoverable here either.
+    company: { verificationStatus: { not: "REJECTED" } },
     ...audienceClause,
   };
 

@@ -1,4 +1,5 @@
 import { openai, aiModels } from "@/lib/ai/openai";
+import { trackAICall } from "@/lib/ai/track-cost";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 
@@ -125,18 +126,22 @@ export async function parseResumeText(text: string): Promise<ParsedResume> {
     return ParsedResumeSchema.parse({});
   }
 
-  const completion = await openai.chat.completions.create({
-    model: aiModels.parser,
-    temperature: 0.1,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `Resume text:\n\n"""\n${trimmed}\n"""\n\nReturn JSON with keys: firstName, lastName, email, phone, headline, summary, location, linkedinUrl, githubUrl, portfolioUrl, totalExperienceMonths, skills (string[]), experiences ({title, company, location, startDate, endDate, current, description}[]), education ({institution, degree, field, startYear, endYear, grade}[]), certifications ({name, issuer, issueDate, credentialId, isDIYguru}[]), projects ({title, description, url, techStack[]}[]), languages (string[]), evDomains (string[] from the taxonomy), detectedDIYguru (boolean).`,
-      },
-    ],
-  });
+  const completion = await trackAICall(
+    { feature: "resume-parse", model: aiModels.parser },
+    () =>
+      openai.chat.completions.create({
+        model: aiModels.parser,
+        temperature: 0.1,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          {
+            role: "user",
+            content: `Resume text:\n\n"""\n${trimmed}\n"""\n\nReturn JSON with keys: firstName, lastName, email, phone, headline, summary, location, linkedinUrl, githubUrl, portfolioUrl, totalExperienceMonths, skills (string[]), experiences ({title, company, location, startDate, endDate, current, description}[]), education ({institution, degree, field, startYear, endYear, grade}[]), certifications ({name, issuer, issueDate, credentialId, isDIYguru}[]), projects ({title, description, url, techStack[]}[]), languages (string[]), evDomains (string[] from the taxonomy), detectedDIYguru (boolean).`,
+          },
+        ],
+      }),
+  );
 
   const content = completion.choices[0]?.message?.content ?? "{}";
   let raw: unknown;

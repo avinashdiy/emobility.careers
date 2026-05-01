@@ -3,8 +3,10 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { NativeSelect } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { saveHeader } from "@/server/candidates/actions";
+import { COUNTRIES } from "@/lib/countries";
 
 export function HeaderEditor({ profile }: { profile: CandidateProfile }) {
   return (
@@ -44,8 +46,32 @@ export function HeaderEditor({ profile }: { profile: CandidateProfile }) {
           />
         </div>
         <div>
-          <Label htmlFor="location">Location</Label>
-          <Input id="location" name="location" defaultValue={profile.location ?? ""} />
+          <Label htmlFor="country">Country</Label>
+          <NativeSelect id="country" name="country" defaultValue={profile.country ?? ""}>
+            <option value="">— Select —</option>
+            {COUNTRIES.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.flag} {c.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+        <div>
+          <Label htmlFor="city">City</Label>
+          <Input id="city" name="city" defaultValue={profile.city ?? ""} placeholder="e.g. Bengaluru" />
+        </div>
+        {/* Free-text "location" remains as a third field for legacy
+            compatibility — search filters still index it. Most users
+            will leave this blank and let it auto-derive from
+            country+city on save. */}
+        <div className="sm:col-span-2">
+          <Label htmlFor="location">Display location (optional override)</Label>
+          <Input
+            id="location"
+            name="location"
+            defaultValue={profile.location ?? ""}
+            placeholder="Auto-derived from city + country if left blank"
+          />
         </div>
         <div>
           <Label htmlFor="phone">Phone</Label>

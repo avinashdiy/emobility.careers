@@ -7,9 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
+import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/select";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { setUserRole, setUserStatus } from "@/server/admin/actions";
+import { startImpersonation } from "@/server/admin/impersonation";
+import { setShadowBan } from "@/server/admin/comment-moderation";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "User detail" };
@@ -137,6 +140,89 @@ export default async function AdminUserDetail({ params }: { params: Promise<{ id
                 >Save</ConfirmSubmit>
               </form>
             </Card>
+
+            {/* Impersonate — admin signs in as this user for support
+                debugging. Renders a sticky red banner across every
+                page until "Back to admin" is clicked. Disabled for
+                other admins (we don't allow privilege chains). */}
+            {user.role !== "ADMIN" && user.status === "ACTIVE" && (
+              <Card>
+                <h2 className="text-section text-emce-text">Sign in as user</h2>
+                <p className="mt-1 text-hint text-emce-text-sec">
+                  Reproduce a bug exactly as {fullName} sees it. Every action
+                  is audit-logged against your admin id. Click the red
+                  "Back to admin" banner to end.
+                </p>
+                <form action={startImpersonation} className="mt-3">
+                  <input type="hidden" name="targetId" value={user.id} />
+                  <ConfirmSubmit
+                    size="sm"
+                    variant="outline"
+                    confirm={`Sign in as ${fullName}? You'll see what they see. The action is audit-logged.`}
+                  >
+                    Impersonate {fullName}
+                  </ConfirmSubmit>
+                </form>
+              </Card>
+            )}
+
+            {/* Shadow ban: silent visibility-PRIVATE on every post +
+                hiddenAt on every comment they create. The user keeps
+                seeing their own content (so they don't notice). Use
+                instead of full SUSPEND when you want plausible
+                deniability — spammers rage-create new accounts when
+                hard-banned, but go quiet when shadow-banned. */}
+            {user.role !== "ADMIN" && (
+              <Card>
+                <h2 className="text-section text-emce-text">Shadow ban</h2>
+                {user.shadowBannedAt ? (
+                  <>
+                    <Badge variant="danger">Shadow-banned since {user.shadowBannedAt.toLocaleDateString()}</Badge>
+                    {user.shadowBanReason && (
+                      <p className="mt-2 rounded-md bg-emce-light-soft p-2 text-hint text-emce-text-sec">
+                        {user.shadowBanReason}
+                      </p>
+                    )}
+                    <form action={setShadowBan} className="mt-3">
+                      <input type="hidden" name="userId" value={user.id} />
+                      <input type="hidden" name="enable" value="false" />
+                      <ConfirmSubmit
+                        size="sm"
+                        variant="outline"
+                        confirm={`Lift shadow-ban on ${fullName}? Future posts and comments will be visible again.`}
+                      >
+                        Lift shadow-ban
+                      </ConfirmSubmit>
+                    </form>
+                  </>
+                ) : (
+                  <>
+                    <p className="mt-1 text-hint text-emce-text-sec">
+                      Posts hidden from public feeds, comments auto-hidden, the
+                      user never knows. Use for spam patterns where a hard
+                      suspend would just lead to a re-signup.
+                    </p>
+                    <form action={setShadowBan} className="mt-3 space-y-2">
+                      <input type="hidden" name="userId" value={user.id} />
+                      <input type="hidden" name="enable" value="true" />
+                      <Textarea
+                        name="reason"
+                        rows={2}
+                        placeholder="Reason (admin-only)"
+                        aria-label="Shadow-ban reason"
+                      />
+                      <ConfirmSubmit
+                        size="sm"
+                        variant="destructive"
+                        confirm={`Shadow-ban ${fullName}? They won't be able to tell — investigate any appeal request before lifting.`}
+                      >
+                        Shadow-ban
+                      </ConfirmSubmit>
+                    </form>
+                  </>
+                )}
+              </Card>
+            )}
 
             {user.employerProfile && (
               <Card>

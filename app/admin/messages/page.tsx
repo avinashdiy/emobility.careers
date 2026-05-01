@@ -143,11 +143,11 @@ export default async function AdminMessagesPage({
             <table className="w-full text-sm">
               <thead className="bg-emce-light-soft text-left text-xs font-bold uppercase text-emce-text-sec">
                 <tr>
-                  <th className="p-3">Thread</th>
-                  <th className="p-3">Participants</th>
-                  <th className="p-3">Messages</th>
-                  <th className="p-3">Last activity</th>
-                  <th className="p-3"></th>
+                  <th scope="col" className="p-3">Thread</th>
+                  <th scope="col" className="p-3">Participants</th>
+                  <th scope="col" className="p-3">Messages</th>
+                  <th scope="col" className="p-3">Last activity</th>
+                  <th scope="col" className="p-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-emce-border">

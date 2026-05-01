@@ -433,6 +433,14 @@ export async function createJob(formData: FormData) {
     void pingGoogleIndexing(url, "URL_UPDATED");
     revalidatePath("/jobs.xml");
     revalidatePath("/sitemap-jobs.xml");
+
+    // Fan out to candidates whose JobAlerts match this listing. Best-
+    // effort: the matcher swallows individual queue failures so a
+    // notification hiccup doesn't abort the job-creation redirect.
+    const { matchAndNotifyJobAlerts } = await import("@/server/jobs/match-alerts");
+    void matchAndNotifyJobAlerts(job.id).catch((err) =>
+      logger.warn({ err, jobId: job.id }, "[createJob] alert fanout failed"),
+    );
   }
 
   revalidatePath("/employer/jobs");

@@ -5,6 +5,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { applyToJob, saveJob } from "@/server/jobs/actions";
@@ -85,6 +86,10 @@ export default async function PublicJobDetail({
     },
   });
   if (!job) notFound();
+  // 404 if the parent company has been admin-banned (REJECTED).
+  // Mirrors the gate on /company/[slug] so deep-links from old shares
+  // / search-engine cache stop resolving to the company's content.
+  if (job.company.verificationStatus === "REJECTED") notFound();
   // DIYGURU_ONLY listings are reserved for verified students. We 404
   // for anyone else — that's strictly more private than redirecting
   // since the URL itself doesn't leak (and admins / employers viewing
@@ -413,6 +418,20 @@ export default async function PublicJobDetail({
               </Button>
             </form>
           )}
+
+          {/* Share — full row of platform icons (LinkedIn / X /
+              Facebook / WhatsApp / Email / Copy / Native). Renders
+              for everyone (anon visitors too) since job pages are
+              shareable signal regardless of session. */}
+          <div className="border-t border-emce-border pt-3">
+            <ShareDropdown
+              url={`${env.NEXT_PUBLIC_APP_URL}/job/${job.slug}`}
+              title={`${job.title} at ${job.company.name}`}
+              description={`${job.company.name} is hiring a ${job.title}${job.locations[0] ? ` in ${job.locations[0]}` : ""} — apply on eMobility Careers.`}
+              label="Share this job"
+              className="w-full"
+            />
+          </div>
 
           <div className="pt-2 text-center">
             <ReportJobButton jobId={job.id} />

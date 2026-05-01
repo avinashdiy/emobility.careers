@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { deletePost } from "@/server/social/actions";
 import { MoreHorizontal } from "lucide-react";
+import { ReportPostMenuItem } from "./ReportPostMenuItem";
 
 export function PostActions({
   postId,
@@ -25,12 +26,12 @@ export function PostActions({
         className="grid h-8 w-8 place-items-center rounded-full text-emce-text-sec hover:bg-emce-light-soft"
         onClick={() => setOpen((v) => !v)}
       >
-        <MoreHorizontal className="h-4 w-4" />
+        <MoreHorizontal className="h-4 w-4" aria-hidden />
       </button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-9 z-20 w-48 overflow-hidden rounded-md border border-emce-border bg-white shadow-emce-modal">
+          <div className="absolute right-0 top-9 z-20 w-72 overflow-hidden rounded-md border border-emce-border bg-white shadow-emce-modal">
             {isOwner ? (
               <form action={deletePost}>
                 <input type="hidden" name="id" value={postId} />
@@ -43,21 +44,16 @@ export function PostActions({
                   Delete post
                 </ConfirmSubmit>
               </form>
-            ) : (
-              <button
-                type="button"
-                onClick={() => {
-                  setOpen(false);
-                  alert("Reporting will be available soon.");
-                }}
-                className="block w-full px-3 py-2 text-left text-sm hover:bg-emce-light-soft"
-              >
-                Report post
-              </button>
-            )}
+            ) : viewerId ? (
+              // Only signed-in users can report — keeps the audit log
+              // attributable. Logged-out folks see the menu but no
+              // report option (anon abuse-reporting via IP-keyed rate
+              // limit can come later if needed).
+              <ReportPostMenuItem postId={postId} onClose={() => setOpen(false)} />
+            ) : null}
             <a
               href={`/posts/${postId}`}
-              className="block px-3 py-2 text-sm hover:bg-emce-light-soft"
+              className="block border-t border-emce-border px-3 py-2 text-sm hover:bg-emce-light-soft"
             >
               Open post
             </a>

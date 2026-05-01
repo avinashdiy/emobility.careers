@@ -37,6 +37,14 @@ model User {
   image           String?
   role            Role          @default(CANDIDATE)
   status          AccountStatus @default(ACTIVE)
+  /// Shadow-ban: posts and comments created while this is set are
+  /// auto-hidden from public surfaces (visibility=PRIVATE on creation,
+  /// hiddenAt stamped on comments). The user themselves still sees
+  /// their content so they don't realise — that's the whole point of
+  /// shadow-banning, vs an outright SUSPENDED status.
+  shadowBannedAt  DateTime?
+  shadowBannedById String?
+  shadowBanReason String?       @db.Text
   locale          String        @default("en")
   phone           String?
   phoneVerifiedAt DateTime?
@@ -71,7 +79,20 @@ model User {
   employerProfile     EmployerProfile?
   ownedCompanies      Company[]               @relation("CompanyOwner")
   postedJobs          JobPosting[]            @relation("JobPoster")
-  notifications       Notification[]
+  notifications       Notification[]          @relation("NotificationRecipient")
+  notificationsActedOn Notification[]         @relation("NotificationActor")
+  // Inverse of CandidateProfile.idVerificationReviewedBy — admin actions
+  // recorded on the candidate's verification request. Audit-trailable
+  // without a separate join table because the reviewer is always a User.
+  idVerificationReviews CandidateProfile[]    @relation("IDVerificationReviewer")
+  // Inverse of PostComment.hiddenById — comments this admin has hidden.
+  hiddenComments        PostComment[]         @relation("CommentHider")
+  // Subscriptions / billing scaffolding (v1: schema only, no UI flow).
+  subscriptions         Subscription[]        @relation("SubscriptionUser")
+  // Hashtag policies + announcements + experiments authored by this admin.
+  hashtagPolicies       HashtagPolicy[]       @relation("HashtagPolicyAuthor")
+  announcements         Announcement[]        @relation("AnnouncementAuthor")
+  experiments           Experiment[]          @relation("ExperimentAuthor")
   notificationPrefs   NotificationPreference?
   sentMessages        Message[]               @relation("MessageSender")
   applicationNotes    ApplicationNote[]
@@ -291,6 +312,16 @@ model CandidateProfile {
   phone                 String?
   email                 String?
   location              String?
+  // ISO 3166-1 alpha-2 country code (e.g. "IN", "US", "AE"). Captured
+  // during onboarding so the profile header can render a flag icon and
+  // job filters / matching can scope by country. Optional because legacy
+  // profiles created before this column exists won't have it; UI prompts
+  // the user to fill it in via a banner on /me when null.
+  country               String?            @db.VarChar(2)
+  // City name as the candidate typed it (free text — no canonical city
+  // table for v1). Combined with `country` to render the
+  // "City, Country" display string in the profile header.
+  city                  String?
   preferredCities       String[]           @default([])
   relocationPref        RelocationPref     @default(ANYWHERE)
   profileMode           ProfileMode        @default(FRESHER)
@@ -346,6 +377,32 @@ model CandidateProfile {
   diyguruVerifiedAt DateTime?
   labExposureTags   String[]  @default([])
   capstoneProject   Json?
+
+  // ─── Twitter-style ID verification ────────────────────────
+  // Distinct from email/phone/employer/diyguru verification. This is
+  // the platform-issued "verified person" badge: the candidate uploads
+  // an Aadhar (or other government ID) image, an admin reviews it, and
+  // on approval the public profile + post cards render a blue
+  // checkmark next to the name. Status flow:
+  //
+  //   NONE          — never submitted
+  //   PENDING       — Aadhar uploaded, awaiting admin review
+  //   VERIFIED      — admin approved (with or without ID document — admin
+  //                   can bypass the upload for trusted users)
+  //   REJECTED      — admin rejected; candidate can re-submit
+  //
+  // We deliberately don't store the raw Aadhar number — only the
+  // uploaded image URL (MinIO). Admin reviews the image, then either
+  // approves or rejects without recording the number anywhere. After
+  // approval we surface the verification but never the underlying
+  // document.
+  idVerificationStatus  IDVerificationStatus @default(NONE)
+  idVerificationDocUrl  String?
+  idVerificationSubmittedAt DateTime?
+  idVerificationReviewedAt  DateTime?
+  idVerificationReviewedById String?
+  idVerificationReviewedBy   User?         @relation("IDVerificationReviewer", fields: [idVerificationReviewedById], references: [id])
+  idVerificationNotes   String?           @db.Text
 
   // Optional Cohort link. A "primary cohort" — the course/batch this
   // candidate graduated from. Set when an admin or TPO claims a roster
@@ -582,6 +639,51 @@ enum CompanyVerification {
   REJECTED
 }
 
+// Twitter-style "verified person" status on a CandidateProfile. Flow
+// is documented next to the field in CandidateProfile. NONE is the
+// default; PENDING means an admin has work to do; VERIFIED renders
+// the blue checkmark; REJECTED puts the candidate back to "unverified"
+// with an optional reason exposed to them so they can fix and re-submit.
+enum IDVerificationStatus {
+  NONE
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+/// Per-call OpenAI usage record. Written by `lib/ai/track-cost.ts` after
+/// every chat-completion / embedding call so /admin/ai-ops can report
+/// cost-per-feature, daily spend, and surface error rates by model. We
+/// use micro-USD (USD × 10^6) so we don't lose precision summing many
+/// sub-cent calls; the dashboard divides back out for display.
+model AICostLog {
+  id               String   @id @default(cuid())
+  /// Logical bucket — "resume-parse", "embedding-candidate",
+  /// "embedding-job", "jd-assist", "rerank", "roast", "resume-draft".
+  /// Free string so adding a new feature doesn't need a migration.
+  feature          String
+  /// OpenAI model name as called (e.g. "gpt-4o-mini",
+  /// "text-embedding-3-large"). Lets us spot a cost spike when we
+  /// upgrade a model without changing call patterns.
+  model            String
+  promptTokens     Int      @default(0)
+  completionTokens Int      @default(0)
+  totalTokens      Int      @default(0)
+  /// Cost in micro-USD (10^-6 dollars). 1234567 = $1.234567.
+  costUsdMicros    Int      @default(0)
+  /// Optional context for drill-down: which candidate's resume,
+  /// which job's JD, etc.
+  entityType       String?
+  entityId         String?
+  durationMs       Int?
+  success          Boolean  @default(true)
+  errorMessage     String?
+  createdAt        DateTime @default(now())
+
+  @@index([feature, createdAt])
+  @@index([createdAt])
+}
+
 enum CompanyTeamRole {
   ADMIN
   RECRUITER
@@ -619,6 +721,12 @@ model Company {
   // ather.co etc. interchangeably.
   emailDomains       String[]            @default([])
   verificationStatus CompanyVerification @default(UNVERIFIED)
+  // Free-text reason captured when an admin flips status to REJECTED.
+  // Surfaced in the email sent to the owner and on the admin's view of
+  // the company so the moderation history is auditable. Cleared when
+  // the status flips back to UNVERIFIED / VERIFIED.
+  rejectionReason    String?             @db.Text
+  rejectionAt        DateTime?
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
@@ -631,6 +739,11 @@ model Company {
   apiKeys        ApiKey[]
   campusDrives   CampusDrive[]
   salarySubmissions SalarySubmission[] @relation("SalaryCompany")
+  // Inverse of WebhookEvent.companyId + Subscription.companyId —
+  // outbound webhook log + (future) billing subscriptions for this
+  // company.
+  webhookEvents     WebhookEvent[]
+  companySubscriptions Subscription[]    @relation("SubscriptionCompany")
   // Social: people who represent this company (founders / PMs)
   reps           CandidateProfile[]    @relation("CompanyRep")
   // One-way follows on the company page
@@ -1086,7 +1199,13 @@ enum NotificationChannel {
 model Notification {
   id        String              @id @default(cuid())
   userId    String
-  user      User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user      User                @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  // The User whose action triggered this notification (commenter,
+  // reactor, follower, recruiter who moved a stage). Nullable for
+  // system-driven events (job alerts, kyc results) that don't have a
+  // single human actor. Powers avatar rendering in the inbox + bell.
+  actorId   String?
+  actor     User?               @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
   type      String
   title     String
   body      String              @db.Text
@@ -1095,10 +1214,23 @@ model Notification {
   link      String?
   readAt    DateTime?
   sentAt    DateTime?
+  // Used to collapse repeats — e.g., 5 reactions on the same post
+  // reuse the same `groupKey: "social.reaction:<postId>"` so a
+  // future grouping pass can render "5 people reacted to your post".
+  // Today the worker still writes one row per event; this column is
+  // populated for forward compatibility.
+  groupKey  String?
+  // Auto-pruning marker. The cleanup worker deletes rows whose
+  // `expiresAt < now()`. Defaults to 90 days from createdAt — set
+  // by the worker when the row is written (see workers/processors/
+  // notifications.ts), not at the schema layer.
+  expiresAt DateTime?
   createdAt DateTime            @default(now())
 
   @@index([userId, readAt])
   @@index([userId, createdAt])
+  @@index([userId, groupKey])
+  @@index([expiresAt])
 }
 
 model NotificationPreference {
@@ -1949,9 +2081,22 @@ model PostComment {
   replies   PostComment[] @relation("CommentReply")
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
+  /// Soft-hide for moderation. When `hiddenAt` is non-null the comment
+  /// disappears from the public thread and is surfaced as
+  /// "[hidden by a moderator]" to non-author viewers. The author still
+  /// sees their original body so they can edit + appeal. Different from
+  /// hard-delete (which removes the row) because we want the audit
+  /// trail + the option to restore. `hiddenById` records which admin
+  /// took the action; `hiddenReason` carries an optional note shown to
+  /// the author when they next view their comment.
+  hiddenAt     DateTime?
+  hiddenById   String?
+  hiddenBy     User?    @relation("CommentHider", fields: [hiddenById], references: [id], onDelete: SetNull)
+  hiddenReason String?  @db.Text
 
   @@index([postId, createdAt])
   @@index([parentId, createdAt])
+  @@index([hiddenAt])
 }
 
 // ─── Answers (Quora-style, attached to a QUESTION-kind Post) ──
@@ -2311,6 +2456,10 @@ model MentorshipSession {
   // Reminder fanout markers (mirrors Interview model conventions)
   reminderDayBeforeSentAt  DateTime?
   reminderHourBeforeSentAt DateTime?
+  // Stamped after the booking confirmation email + ICS calendar
+  // attachment is sent. Without this marker the reminder worker
+  // could re-send the same calendar invite on every tick.
+  calendarInviteSentAt     DateTime?
   // Post-session
   mentorNotes              String?                 @db.Text
   completedAt              DateTime?
@@ -2767,4 +2916,365 @@ model Recommendation {
   /// One rec per (giver, receiver) pair — re-writes update in place.
   @@unique([fromUserId, toUserId])
   @@index([toUserId, status])
+}
+
+
+// ─── Email / SMS delivery telemetry ─────────────────────────
+//
+// Provider webhooks (SES SNS, Resend, MSG91 DLR) post here so the
+// admin dashboard can show bounce rates, complaints, and per-domain
+// delivery health. Each row is one provider event; we don't try to
+// stitch a one-to-one with sent messages because providers retry on
+// their own and not every send produces a downstream event.
+
+enum DeliveryChannel {
+  EMAIL
+  SMS
+  WHATSAPP
+}
+
+enum DeliveryEventKind {
+  // Provider acknowledged receipt of the message.
+  ACCEPTED
+  // Successfully delivered to the recipient mailbox / handset.
+  DELIVERED
+  // Hard bounce (invalid address) — sender reputation hit.
+  BOUNCED
+  // Recipient marked as spam / complaint loop.
+  COMPLAINED
+  // Provider error, retryable.
+  DEFERRED
+  // Permanent failure (DLR-level), non-retryable.
+  FAILED
+  // Recipient opened (email pixel) — best-effort metric.
+  OPENED
+  // Recipient clicked a tracked link.
+  CLICKED
+}
+
+model EmailDeliveryEvent {
+  id          String            @id @default(cuid())
+  channel     DeliveryChannel
+  kind        DeliveryEventKind
+  /// The recipient address as the provider reported it. We hash on
+  /// presentation in the admin dashboard so PII isn't loose in
+  /// rendering, but store raw so support tickets can correlate.
+  recipient   String
+  /// Provider name: "ses", "resend", "msg91", etc.
+  provider    String
+  /// Provider-specific message id (X-SES-Message-ID, Resend's id, etc.)
+  /// — useful to correlate with provider dashboards during outages.
+  providerMessageId String?
+  /// Optional reason / diagnostic from the provider (bounce reason
+  /// code, complaint feedback type, etc.) so the dashboard can show
+  /// "why did 12% of yesterday's emails bounce".
+  reason      String?           @db.Text
+  /// Free-form provider event payload for forensics.
+  rawPayload  Json?
+  occurredAt  DateTime
+  createdAt   DateTime          @default(now())
+
+  @@index([channel, kind, occurredAt])
+  @@index([occurredAt])
+  @@index([recipient])
+}
+
+// ─── Webhook delivery log (outbound + inbound) ──────────────
+//
+// Captures every webhook the platform receives from third parties
+// (Razorpay payment events, SES bounce notifications) AND every
+// webhook we send to employer-configured endpoints (job-published,
+// applicant-stage-changed). Single table because the read patterns
+// are identical and the volumes are similar.
+
+enum WebhookDirection {
+  INBOUND
+  OUTBOUND
+}
+
+enum WebhookStatus {
+  PENDING
+  DELIVERED
+  FAILED
+  /// Response received but signature / payload didn't validate.
+  INVALID
+}
+
+model WebhookEvent {
+  id           String           @id @default(cuid())
+  direction    WebhookDirection
+  /// "razorpay", "ses", "resend", "msg91" for inbound; webhook URL
+  /// hostname for outbound.
+  source       String
+  /// Event topic — "payment.captured", "ses.bounce", "job.published",
+  /// "application.stage_changed".
+  topic        String
+  /// Outbound: our chosen request id. Inbound: provider's id.
+  externalId   String?
+  url          String?          @db.Text
+  status       WebhookStatus    @default(PENDING)
+  httpStatus   Int?
+  /// Response body or error message — stored for failure forensics,
+  /// never shown to non-admins.
+  responseBody String?          @db.Text
+  attempts     Int              @default(1)
+  payload      Json?
+  receivedAt   DateTime         @default(now())
+  deliveredAt  DateTime?
+  /// Optional employer / company context — outbound webhooks are
+  /// configured per-company; inbound payment events are per-company too.
+  companyId    String?
+  company      Company?         @relation(fields: [companyId], references: [id], onDelete: SetNull)
+
+  @@index([direction, status, receivedAt])
+  @@index([source, topic, receivedAt])
+  @@index([companyId, receivedAt])
+}
+
+// ─── A/B experiments ────────────────────────────────────────
+//
+// Lightweight experimentation primitives. An Experiment has variants
+// (control + N treatments). Allocations are sticky-by-userId so a
+// given user always sees the same variant; events log exposures and
+// success metrics so the analytics page can compute lift. Designed
+// for behavioural copy / UX tweaks, not infrastructure tests — the
+// allocation model assumes opt-in, not multi-armed bandits.
+
+enum ExperimentStatus {
+  DRAFT       /// Not yet running — admins can edit.
+  RUNNING     /// Allocating traffic; collecting events.
+  PAUSED      /// Allocation frozen; existing users keep their variant.
+  COMPLETED   /// Winner selected; experiment archived.
+}
+
+model Experiment {
+  id          String            @id @default(cuid())
+  /// Stable key referenced from code — e.g. "feed-cta-copy" or
+  /// "match-rerank-prompt". Snake / kebab case preferred so it reads
+  /// well in logs.
+  key         String            @unique
+  name        String
+  hypothesis  String?           @db.Text
+  status      ExperimentStatus  @default(DRAFT)
+  /// Variants stored as JSON: `[{ key: "control", weight: 50 }, { key: "v2", weight: 50 }]`.
+  /// Weights sum to 100; admin UI enforces.
+  variants    Json
+  /// Optional winner key once status=COMPLETED. The allocator can
+  /// short-circuit and serve only this variant when set, useful as a
+  /// stepping-stone before the code change ships.
+  winnerKey   String?
+  startedAt   DateTime?
+  endedAt     DateTime?
+  createdById String
+  createdBy   User              @relation("ExperimentAuthor", fields: [createdById], references: [id])
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  allocations ExperimentAllocation[]
+  events      ExperimentEvent[]
+
+  @@index([status])
+}
+
+model ExperimentAllocation {
+  id           String     @id @default(cuid())
+  experimentId String
+  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  /// Either userId for signed-in users, or anonymousId for cookie-based
+  /// stickiness. The allocator picks one at exposure time.
+  userId       String?
+  anonymousId  String?
+  variantKey   String
+  allocatedAt  DateTime   @default(now())
+
+  @@unique([experimentId, userId])
+  @@unique([experimentId, anonymousId])
+  @@index([experimentId, variantKey])
+}
+
+model ExperimentEvent {
+  id           String     @id @default(cuid())
+  experimentId String
+  experiment   Experiment @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  variantKey   String
+  /// "exposed" — variant served. "converted:<goal>" — primary metric
+  /// fired (job_apply, sign_up, post_create).
+  kind         String
+  userId       String?
+  anonymousId  String?
+  /// Optional metric value (revenue, time-to-action, etc.) — most
+  /// experiments leave it null.
+  value        Float?
+  meta         Json?
+  occurredAt   DateTime   @default(now())
+
+  @@index([experimentId, kind, occurredAt])
+  @@index([experimentId, variantKey, kind])
+}
+
+// ─── Hashtag policy ─────────────────────────────────────────
+//
+// Per-tag moderation state. A row exists only for tags an admin has
+// explicitly acted on; tags without a row behave normally.
+
+enum HashtagState {
+  /// Trending / featured — promoted on /tag pages and the explore
+  /// surface. Optional `displayName` overrides the lowercase slug.
+  FEATURED
+  /// Hidden from the trending list + search; existing posts still
+  /// resolve at /tag/<slug> but with a "this hashtag has been
+  /// flagged" banner.
+  BLOCKED
+  /// Merged into another canonical tag — server-side normalisation
+  /// rewrites every reference at extract time. Useful for "ev" → "ev-jobs".
+  MERGED_INTO
+}
+
+model HashtagPolicy {
+  id          String       @id @default(cuid())
+  /// Lowercase, no leading "#". Matches Post.hashtags string entries.
+  tag         String       @unique
+  state       HashtagState
+  /// Display label for FEATURED tags. Null for BLOCKED / MERGED_INTO.
+  displayName String?
+  /// Free-text reason shown to admins; never to public users.
+  reason      String?      @db.Text
+  /// For MERGED_INTO: the canonical tag that this one rewrites to.
+  mergedInto  String?
+  createdById String
+  createdBy   User         @relation("HashtagPolicyAuthor", fields: [createdById], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@index([state])
+}
+
+// ─── Announcements (richer site-wide banners) ───────────────
+//
+// The existing `system.welcome_banner` setting is fine for one
+// permanent string; this model handles dated, audience-targeted,
+// dismissible announcements like "We're at the EV Expo Jan 12-14"
+// or "Maintenance window Saturday 2 AM IST".
+
+enum AnnouncementAudience {
+  EVERYONE
+  CANDIDATES
+  EMPLOYERS
+  ADMINS
+}
+
+enum AnnouncementSeverity {
+  INFO
+  SUCCESS
+  WARNING
+  CRITICAL
+}
+
+model Announcement {
+  id          String                @id @default(cuid())
+  title       String
+  body        String                @db.Text
+  ctaLabel    String?
+  ctaUrl      String?
+  audience    AnnouncementAudience  @default(EVERYONE)
+  severity    AnnouncementSeverity  @default(INFO)
+  /// Active window — outside this range the banner doesn't render.
+  /// startsAt null = effective immediately on save; endsAt null =
+  /// runs forever until manually disabled.
+  startsAt    DateTime?
+  endsAt      DateTime?
+  isActive    Boolean               @default(true)
+  /// When true, users can click to dismiss for the rest of their
+  /// session via a localStorage key. Critical announcements set this
+  /// false so it can't be hidden.
+  dismissible Boolean               @default(true)
+  createdById String
+  createdBy   User                  @relation("AnnouncementAuthor", fields: [createdById], references: [id])
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+
+  @@index([isActive, startsAt, endsAt])
+}
+
+// ─── Billing scaffolding (v1: schema only) ──────────────────
+//
+// Per the project plan monetisation is out of scope for v1, but
+// designing the schema now means we can ship plans without a
+// blocking migration later. UI is a placeholder admin page that
+// shows the model contents; the public flow stays disabled by
+// the `feature.payments_enabled` flag in lib/settings.ts.
+
+enum PlanInterval {
+  MONTHLY
+  YEARLY
+  ONE_TIME
+}
+
+enum PlanScope {
+  /// Plans for individual candidates (résumé downloads, premium AI
+  /// features later).
+  CANDIDATE
+  /// Plans for employer companies (job posts, ATS seats, AI matching
+  /// limits).
+  EMPLOYER
+}
+
+model Plan {
+  id            String        @id @default(cuid())
+  /// Public stable key: "candidate-pro", "employer-startup-monthly".
+  key           String        @unique
+  name          String
+  scope         PlanScope
+  /// Pricing in lowest currency unit (paise for INR, cents for USD).
+  /// Zero is allowed for free / placeholder plans.
+  amountMinor   Int           @default(0)
+  currency      String        @default("INR")
+  interval      PlanInterval
+  /// Admin-friendly description shown on the (future) checkout page.
+  description   String?       @db.Text
+  /// Feature limits encoded as JSON: `{ jobsPerMonth: 50,
+  /// aiMatchesPerWeek: 200 }`. Server-side feature gates can read
+  /// the active subscription's plan.features.
+  features      Json?
+  isActive      Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  subscriptions Subscription[]
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+  EXPIRED
+}
+
+model Subscription {
+  id          String              @id @default(cuid())
+  planId      String
+  plan        Plan                @relation(fields: [planId], references: [id])
+  /// Either a user (CANDIDATE plan) or a company (EMPLOYER plan).
+  userId      String?
+  user        User?               @relation("SubscriptionUser", fields: [userId], references: [id], onDelete: SetNull)
+  companyId   String?
+  company     Company?            @relation("SubscriptionCompany", fields: [companyId], references: [id], onDelete: SetNull)
+  status      SubscriptionStatus  @default(TRIALING)
+  /// Current period bounds. For ONE_TIME plans both are set to the
+  /// purchase moment + plan duration; for recurring, billing extends
+  /// these on each successful renewal.
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  cancelAt           DateTime?
+  cancelledAt        DateTime?
+  /// Razorpay subscription id (or other provider id) so we can
+  /// reconcile webhooks with our row.
+  providerId         String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+
+  @@index([userId, status])
+  @@index([companyId, status])
+  @@index([planId, status])
 }

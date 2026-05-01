@@ -82,41 +82,48 @@ export function evaluateProfile(
 ): CompletenessResult {
   const hasResume = !!(profile.resumeUrl || (profile.useAiResume && profile.aiResumeUrl));
   const sections: SectionResult[] = [
+    // Hrefs are anchor-based (#card-id) rather than query params so the
+    // browser auto-scrolls to the editor card on click. Each anchor
+    // matches a `<div id="…">` wrapper in /me/profile/page.tsx
+    // (header / experience / education / skills / etc.). The anchor
+    // also gets `scroll-mt-20` so the section sits below the sticky
+    // SiteHeader rather than under it.
     {
       id: "photo",
       label: "Add a profile photo",
       weight: 8,
       filled: !!profile.profilePhotoUrl,
-      href: "/me/profile?focus=photo",
+      href: "/me/profile#header",
     },
     {
       id: "headline",
       label: "Write a headline",
       weight: 6,
       filled: !!profile.headline && profile.headline.trim().length >= 10,
-      href: "/me/profile?focus=headline",
+      href: "/me/profile#header",
     },
     {
       id: "summary",
       label: "Add an about / summary section",
       weight: 8,
       filled: !!profile.summary && profile.summary.trim().length >= 50,
-      href: "/me/profile?focus=summary",
+      href: "/me/profile#header",
     },
     {
       id: "location",
       label: "Set your location",
       weight: 4,
       filled: !!profile.location,
-      href: "/me/profile?focus=location",
+      href: "/me/profile#header",
     },
-    {
-      id: "phone",
-      label: "Verify your phone number",
-      weight: 6,
-      filled: flags.phoneVerified,
-      href: "/me/profile?focus=phone",
-    },
+    // Phone-verify step is intentionally dropped from the completeness
+    // checklist for now — the OTP flow isn't wired into the editor yet
+    // (lib/sms.ts has sendOTP, server/auth/phone-actions.ts and
+    // components/profile/PhoneVerifier.tsx are scaffolded but not
+    // surfaced). Re-add when phone verification ships:
+    //
+    //   { id: "phone", label: "Verify your phone number", weight: 6,
+    //     filled: flags.phoneVerified, href: "/me/profile#header" },
     {
       id: "email",
       label: "Verify your email address",
@@ -129,70 +136,70 @@ export function evaluateProfile(
       label: "Add at least one work experience",
       weight: 12,
       filled: profile.experiences.length >= 1,
-      href: "/me/profile?focus=experience",
+      href: "/me/profile#experience",
     },
     {
       id: "education",
       label: "Add your education",
       weight: 8,
       filled: profile.education.length >= 1,
-      href: "/me/profile?focus=education",
+      href: "/me/profile#education",
     },
     {
       id: "skills",
       label: "Add at least 3 skills",
       weight: 10,
       filled: profile.skills.length >= 3,
-      href: "/me/profile?focus=skills",
+      href: "/me/profile#skills",
     },
     {
       id: "evDomains",
       label: "Pick the EV domains you work in",
       weight: 6,
       filled: profile.evDomains.length >= 1,
-      href: "/me/profile?focus=evDomains",
+      href: "/me/profile#skills",
     },
     {
       id: "certifications",
       label: "Add a certification (DIYguru course / training)",
       weight: 5,
       filled: profile.certifications.length >= 1,
-      href: "/me/profile?focus=certifications",
+      href: "/me/profile#certifications",
     },
     {
       id: "projects",
       label: "Showcase a project",
       weight: 6,
       filled: profile.projects.length >= 1,
-      href: "/me/profile?focus=projects",
+      href: "/me/profile#projects",
     },
     {
       id: "ctc",
       label: "Set expected salary range",
       weight: 4,
       filled: !!profile.expectedCtcMin,
-      href: "/me/profile?focus=preferences",
+      href: "/me/profile#availability",
     },
     {
       id: "notice",
       label: "Set your notice period",
       weight: 3,
       filled: profile.noticePeriodDays !== null,
-      href: "/me/profile?focus=preferences",
+      href: "/me/profile#availability",
     },
     {
       id: "languages",
       label: "Add languages you speak",
       weight: 3,
       filled: profile.languagesSpoken.length >= 1,
-      href: "/me/profile?focus=languages",
+      href: "/me/profile#languages",
     },
     {
       id: "preferredCities",
       label: "Pick preferred cities",
       weight: 2,
       filled: profile.preferredCities.length >= 1,
-      href: "/me/profile?focus=preferences",
+      href: "/me/profile#header",
     },
     {
       id: "resume",
@@ -222,6 +229,46 @@ export function nextSteps(result: CompletenessResult, limit = 5): SectionResult[
     .filter((s) => !s.filled)
     .sort((a, b) => b.weight - a.weight)
     .slice(0, limit);
+}
+
+/**
+ * Minimum-count subset of unfilled sections whose combined weight
+ * crosses the requested threshold. Used by the gauge UI when the
+ * candidate is in a gating band (e.g. 80–89% needing 90% to apply,
+ * or <50% needing 50% to explore) to surface the SHORTEST list of
+ * actions that unlocks the gate, rather than the highest-impact list.
+ *
+ * Greedy descending-weight pick is optimal here for cardinality
+ * minimisation when items are non-negative — picking the heaviest
+ * each iteration is always at least as good as any alternative for
+ * "fewest items to reach X". n=16 anyway, so even brute-force would
+ * be fine.
+ *
+ * Returns null when the candidate is already past the threshold
+ * (caller should fall back to nextSteps).
+ */
+export function cheapestPathToThreshold(
+  result: CompletenessResult,
+  thresholdPct: number,
+): { path: SectionResult[]; gap: number } | null {
+  const gap = thresholdPct - result.pct;
+  if (gap <= 0) return null;
+
+  const remaining = result.sections
+    .filter((s) => !s.filled)
+    .sort((a, b) => b.weight - a.weight);
+
+  const path: SectionResult[] = [];
+  let total = 0;
+  for (const step of remaining) {
+    path.push(step);
+    total += step.weight;
+    if (total >= gap) break;
+  }
+  // If even all unfilled sections together don't close the gap, we
+  // still return the full set — the candidate has nothing else to do
+  // anyway. Caller can detect this with `total < gap` if needed.
+  return { path, gap };
 }
 
 /**

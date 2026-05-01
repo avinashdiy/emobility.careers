@@ -71,6 +71,15 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   { key: "feature.mentorship_enabled", category: "feature", type: "BOOLEAN", label: "Mentorship", default: "true", description: "Hides /mentors and disables booking + payouts when off." },
   { key: "feature.competitions_enabled", category: "feature", type: "BOOLEAN", label: "Competitions", default: "true", description: "Hides /competitions and disables registration when off." },
   { key: "feature.payments_enabled", category: "feature", type: "BOOLEAN", label: "Razorpay payments", default: "true", description: "Forces all paid mentorship sessions to free when off." },
+  // ─── Percentage rollouts ────────────────────────────────────
+  // Each flag is a 0–100 integer. `featureRolloutPercent("X")`
+  // returns the number; `isInRollout("X", userId)` deterministically
+  // decides whether a given user is in the bucket using a stable
+  // hash of (key, userId). Add new flags here as the product needs
+  // them — the helper handles unknown keys as "0%".
+  { key: "rollout.match_v2_rerank", category: "feature", type: "NUMBER", label: "% rollout: matching v2 rerank", default: "0", description: "0–100. Percentage of candidates that hit the new match-rerank prompt vs the legacy heuristic." },
+  { key: "rollout.feed_recommendations_v2", category: "feature", type: "NUMBER", label: "% rollout: feed recs v2", default: "0", description: "0–100. Share of users seeing the experimental feed-ranking model." },
+  { key: "rollout.ai_jd_assistant", category: "feature", type: "NUMBER", label: "% rollout: AI JD assistant", default: "100", description: "0–100. Throttle the JD assistant if OpenAI cost spikes." },
 
   // ─── Payments ───────────────────────────────────────────────
   { key: "payments.platform_fee_bps", category: "payments", type: "NUMBER", label: "Platform fee (basis points)", default: "0", description: "0–10000. We charge 0 by default; flip when monetisation is on." },
@@ -79,6 +88,7 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   // ─── Social moderation ──────────────────────────────────────
   { key: "social.posts_per_user_per_day", category: "social", type: "NUMBER", label: "Max posts per user per day", default: "20" },
   { key: "social.min_post_length", category: "social", type: "NUMBER", label: "Minimum post length", default: "10" },
+  { key: "social.banned_words", category: "social", type: "TEXT", label: "Banned words / phrases", default: "", description: "Comma-separated. New posts and comments containing any of these (case-insensitive substring match) are auto-flagged for review and hidden from public feeds until an admin actions or dismisses." },
 
   // ─── System ─────────────────────────────────────────────────
   { key: "system.maintenance_mode", category: "system", type: "BOOLEAN", label: "Maintenance mode", default: "false", description: "Shows the maintenance page to non-admin visitors and blocks new sign-ups." },
@@ -203,4 +213,37 @@ export async function setSettings(
 export async function getSettings<K extends string>(...keys: K[]): Promise<Record<K, string>> {
   const map = await loadAll();
   return Object.fromEntries(keys.map((k) => [k, map.get(k) ?? ""])) as Record<K, string>;
+}
+
+/**
+ * Percentage-rollout helper. `key` resolves to an integer 0-100; we
+ * map (key, userId) onto a stable bucket via a cheap deterministic
+ * hash so the same user always lands on the same side until the
+ * percentage is changed. Anonymous calls (no userId) randomise — this
+ * is intentional: anonymous traffic isn't worth the cost of cookie
+ * stickiness for what is, in effect, a kill switch.
+ */
+export async function featureRolloutPercent(key: string): Promise<number> {
+  const v = await getSetting(key, "0");
+  const n = parseInt(v, 10);
+  if (Number.isNaN(n)) return 0;
+  return Math.max(0, Math.min(100, n));
+}
+
+export async function isInRollout(
+  key: string,
+  userId: string | null | undefined,
+): Promise<boolean> {
+  const pct = await featureRolloutPercent(key);
+  if (pct >= 100) return true;
+  if (pct <= 0) return false;
+  if (!userId) return Math.random() * 100 < pct;
+  // Stable bucket — same user, same key, same outcome until pct
+  // changes. Tiny string hash; collisions are fine because the
+  // outcome is binary.
+  let hash = 0;
+  const seed = `${key}:${userId}`;
+  for (let i = 0; i < seed.length; i++) hash = (hash * 31 + seed.charCodeAt(i)) | 0;
+  const bucket = ((hash % 100) + 100) % 100;
+  return bucket < pct;
 }

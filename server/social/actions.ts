@@ -10,6 +10,7 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { audit } from "@/lib/audit";
 import { requireEmailVerified } from "@/lib/anti-spam";
 import { extractHashtags, extractMentions } from "@/lib/social/extract";
+import { findBannedWord, autoFlagContent } from "@/lib/social/banned-words";
 import {
   ConnectionStatus,
   PostVisibility,
@@ -75,12 +76,29 @@ export async function createPost(formData: FormData): Promise<void> {
     inheritedTags = orig.hashtags;
   }
 
+  // Shadow-ban check: if the author is shadow-banned, force visibility
+  // to PRIVATE silently. The author keeps seeing their own posts
+  // (because feed queries OR-include `authorId === viewerId`), but
+  // they don't reach the public surface — that's the entire point.
+  const author = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { shadowBannedAt: true },
+  });
+  const shadowBanned = !!author?.shadowBannedAt;
+
+  // Auto-moderation — check the body against the admin-maintained
+  // banned-word list BEFORE insert. If matched, we still create the
+  // row (don't burn the user's draft) but force visibility=PRIVATE
+  // so it's hidden from public feeds until a moderator approves.
+  const bannedWord = await findBannedWord(body);
+  const effectiveVisibility = (bannedWord || shadowBanned) ? "PRIVATE" : visibility;
+
   const post = await db.$transaction(async (tx) => {
     const created = await tx.post.create({
       data: {
         authorId: session.user.id,
         body,
-        visibility,
+        visibility: effectiveVisibility,
         asCompanyId: asCompanyId ?? null,
         attachedJobId: attachedJobId ?? null,
         repostOfId: repostOfId ?? null,
@@ -101,6 +119,19 @@ export async function createPost(formData: FormData): Promise<void> {
     }
     return created;
   });
+
+  // If we auto-flagged, push the report into the same /admin/post-reports
+  // queue user-reports flow into. Done after the transaction so a stuck
+  // audit-write doesn't block the post creation.
+  if (bannedWord) {
+    await autoFlagContent({
+      entity: "Post",
+      entityId: post.id,
+      authorId: session.user.id,
+      matchedWord: bannedWord,
+      body,
+    });
+  }
 
   // Notify the original author of a repost
   if (repostOfId) {
@@ -225,9 +256,34 @@ export async function addComment(formData: FormData): Promise<void> {
   });
   if (!post) return;
 
+  // Shadow-ban + auto-moderation — for comments we have a hiddenAt
+  // column instead of a visibility flag, so we stamp it directly on
+  // create. The author still sees their comment (the feed queries
+  // hide it for non-author viewers); from their POV nothing's wrong.
+  const author = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { shadowBannedAt: true },
+  });
+  const shadowBanned = !!author?.shadowBannedAt;
+  const bannedWord = await findBannedWord(body);
+  const shouldHide = shadowBanned || bannedWord;
+
   const comment = await db.$transaction(async (tx) => {
     const c = await tx.postComment.create({
-      data: { postId, authorId: session.user.id, body, parentId: parentId ?? null },
+      data: {
+        postId,
+        authorId: session.user.id,
+        body,
+        parentId: parentId ?? null,
+        ...(shouldHide
+          ? {
+              hiddenAt: new Date(),
+              hiddenReason: shadowBanned
+                ? "auto: shadow-banned author"
+                : `auto: matched banned word`,
+            }
+          : {}),
+      },
     });
     await tx.post.update({
       where: { id: postId },
@@ -235,6 +291,16 @@ export async function addComment(formData: FormData): Promise<void> {
     });
     return c;
   });
+
+  if (bannedWord) {
+    await autoFlagContent({
+      entity: "Comment",
+      entityId: comment.id,
+      authorId: session.user.id,
+      matchedWord: bannedWord,
+      body,
+    });
+  }
 
   // Notify post author (and parent comment author if it's a reply)
   if (post.authorId !== session.user.id) {

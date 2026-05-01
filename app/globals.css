@@ -6,17 +6,17 @@
   :root {
     /* shadcn/ui semantic tokens, mapped to the eMC brand palette
        (HSL components without hsl() wrapper, per shadcn convention). */
-    --background: 132 50% 97%;        /* #f4fdf6 emce-light-bg */
-    --foreground: 0 0% 10%;           /* #191919 — neutral near-black for crisp body text (was green-tinted #1e2d2a) */
+    --background: 110 8% 96%;         /* #f5f6f3 — low-chroma neutral; was 132 50% 97% which read as fatiguing green */
+    --foreground: 0 0% 10%;           /* #191919 — neutral near-black for crisp body text */
     --card: 0 0% 100%;
     --card-foreground: 0 0% 10%;
     --popover: 0 0% 100%;
     --popover-foreground: 0 0% 10%;
     --primary: 168 13% 25%;           /* #374a47 emce-dark */
     --primary-foreground: 110 100% 85%;  /* #c1ffb4 emce-light */
-    --secondary: 130 50% 89%;         /* emce-light-soft tone */
+    --secondary: 110 10% 93%;         /* #eef2eb — soft surface, low chroma; was 130 50% 89% */
     --secondary-foreground: 168 13% 25%;
-    --muted: 130 35% 92%;
+    --muted: 110 12% 94%;
     --muted-foreground: 168 8% 40%;
     --accent: 132 49% 69%;            /* #8fd299 emce-mid */
     --accent-foreground: 162 17% 14%;

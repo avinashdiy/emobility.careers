@@ -35,10 +35,17 @@ export async function CommentSection({ postId }: { postId: string }) {
       })
     : null;
 
+  // Pull a generous slice on first render so crawlers and AI engines
+  // see the full discussion, not just the top of the stack. Reddit
+  // serves the entire thread in initial HTML for the same reason —
+  // half-crawled threads look thin and rank poorly. 200 top-level +
+  // 25 replies each comfortably covers 99% of our threads, and
+  // server-rendering scales fine because the post detail page is
+  // already cached at the route level.
   const comments = (await db.postComment.findMany({
-    where: { postId, parentId: null },
+    where: { postId, parentId: null, hiddenAt: null },
     orderBy: { createdAt: "asc" },
-    take: 50,
+    take: 200,
     include: {
       author: {
         select: {
@@ -55,8 +62,9 @@ export async function CommentSection({ postId }: { postId: string }) {
         },
       },
       replies: {
+        where: { hiddenAt: null },
         orderBy: { createdAt: "asc" },
-        take: 10,
+        take: 25,
         include: {
           author: {
             select: {

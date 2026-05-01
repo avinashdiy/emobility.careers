@@ -27,8 +27,15 @@ const config: Config = {
           mid: "#8fd299",
           "mid-muted": "#6db87a",
           light: "#c1ffb4",
-          "light-soft": "#e8fff3",
-          "light-bg": "#f4fdf6",
+          // Surface tones — chroma deliberately kept low. The previous
+          // values (#e8fff3 / #f4fdf6) sat at ~73–89% saturation which
+          // forced the eye to keep white-balancing the bg over long
+          // reading sessions. These are <15% sat — barely-tinted warm
+          // neutrals that still nod to the EV brand without fatiguing.
+          // CTAs / badges / hero gradient still use the saturated
+          // greens above; the bg just stops competing with them.
+          "light-soft": "#eef2eb",   // soft surfaces (banners, hover pills)
+          "light-bg": "#f5f6f3",     // page background — LinkedIn-paper neutral
           // Body text colours used to be green-tinted (#1e2d2a etc.) which
           // made paragraphs read "dim" against the greenish background.
           // LinkedIn uses near-neutral darks (rgba(0,0,0,0.9 / 0.6)) so type

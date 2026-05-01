@@ -11,15 +11,61 @@ import { TurnstileWidget } from "@/components/auth/TurnstileWidget";
 import { signupAction, googleSignInWithNext, linkedinSignInWithNext } from "@/server/auth/actions";
 import { emptyFormState } from "@/lib/form-state";
 
+interface SignUpLabels {
+  whatBringsYou: string;
+  iAmCandidate: string;
+  iAmHiring: string;
+  dualHint: string;
+  fullName: string;
+  email: string;
+  password: string;
+  passwordHint: string;
+  tosPreamble: string;
+  tosTerms: string;
+  tosAnd: string;
+  tosPrivacy: string;
+  button: string;
+  pending: string;
+  continueWith: string;
+  alreadyHave: string;
+  signInLink: string;
+}
+
 export function SignUpForm({
   defaultRole,
   next,
   turnstileSiteKey,
+  labels,
 }: {
   defaultRole: "CANDIDATE" | "EMPLOYER";
   next?: string;
   turnstileSiteKey: string | null;
+  // Labels are pre-resolved server-side from the dict so this client
+  // component never needs to know about cookies / Locale itself. When
+  // omitted, English defaults render — keeps existing call sites
+  // working without a sweep.
+  labels?: SignUpLabels;
 }) {
+  const L: SignUpLabels = labels ?? {
+    whatBringsYou: "What brings you here?",
+    iAmCandidate: "Looking for a job",
+    iAmHiring: "Hiring at my company",
+    dualHint:
+      "Either way you get a personal profile. \"Hiring\" just adds an Employer dashboard on top — you can switch between the two from your account menu later.",
+    fullName: "Full name",
+    email: "Work email",
+    password: "Password",
+    passwordHint: "Minimum 8 characters.",
+    tosPreamble: "I agree to the",
+    tosTerms: "Terms of Service",
+    tosAnd: "and",
+    tosPrivacy: "Privacy Policy",
+    button: "Create account",
+    pending: "Creating account…",
+    continueWith: "or continue with",
+    alreadyHave: "Already have an account?",
+    signInLink: "Sign in",
+  };
   const [state, formAction] = useActionState(signupAction, emptyFormState);
   // `startedAt` captures the moment the form is rendered. The server
   // rejects submissions where (Date.now() - startedAt) < 1.2s — a humane
@@ -46,36 +92,43 @@ export function SignUpForm({
         </div>
         <input type="hidden" name="startedAt" value={startedAt} />
 
-        <div className="grid grid-cols-2 gap-2 rounded-md bg-emce-light-soft p-1">
-          <label className="cursor-pointer">
-            <input
-              type="radio"
-              name="role"
-              value="CANDIDATE"
-              defaultChecked={defaultRole === "CANDIDATE"}
-              className="peer sr-only"
-            />
-            <div className="rounded p-2 text-center text-sm font-bold text-emce-text-sec peer-checked:bg-emce-dark peer-checked:text-emce-light">
-              I&apos;m a candidate
-            </div>
-          </label>
-          <label className="cursor-pointer">
-            <input
-              type="radio"
-              name="role"
-              value="EMPLOYER"
-              defaultChecked={defaultRole === "EMPLOYER"}
-              className="peer sr-only"
-            />
-            <div className="rounded p-2 text-center text-sm font-bold text-emce-text-sec peer-checked:bg-emce-dark peer-checked:text-emce-light">
-              I&apos;m hiring
-            </div>
-          </label>
+        <div>
+          <p className="mb-1 text-xs font-bold text-emce-text">{L.whatBringsYou}</p>
+          <div className="grid grid-cols-2 gap-2 rounded-md bg-emce-light-soft p-1">
+            <label className="cursor-pointer">
+              <input
+                type="radio"
+                name="role"
+                value="CANDIDATE"
+                defaultChecked={defaultRole === "CANDIDATE"}
+                className="peer sr-only"
+              />
+              <div className="rounded p-2 text-center text-sm font-bold text-emce-text-sec peer-checked:bg-emce-dark peer-checked:text-emce-light">
+                {L.iAmCandidate}
+              </div>
+            </label>
+            <label className="cursor-pointer">
+              <input
+                type="radio"
+                name="role"
+                value="EMPLOYER"
+                defaultChecked={defaultRole === "EMPLOYER"}
+                className="peer sr-only"
+              />
+              <div className="rounded p-2 text-center text-sm font-bold text-emce-text-sec peer-checked:bg-emce-dark peer-checked:text-emce-light">
+                {L.iAmHiring}
+              </div>
+            </label>
+          </div>
+          {/* Both options create a personal candidate profile under the
+              hood — "Hiring" just adds an Employer dashboard on top.
+              Without this hint users assume the toggle is exclusive. */}
+          <p className="mt-1 text-[11px] text-emce-text-sec">{L.dualHint}</p>
         </div>
         <FieldError error={state.fieldErrors?.role} />
 
         <div>
-          <Label htmlFor="name">Full name</Label>
+          <Label htmlFor="name">{L.fullName}</Label>
           <Input
             id="name"
             name="name"
@@ -89,7 +142,7 @@ export function SignUpForm({
           <FieldError id="name-err" error={state.fieldErrors?.name} />
         </div>
         <div>
-          <Label htmlFor="email">Work email</Label>
+          <Label htmlFor="email">{L.email}</Label>
           <Input
             id="email"
             name="email"
@@ -102,7 +155,7 @@ export function SignUpForm({
           <FieldError id="email-err" error={state.fieldErrors?.email} />
         </div>
         <div>
-          <Label htmlFor="password">Password</Label>
+          <Label htmlFor="password">{L.password}</Label>
           <Input
             id="password"
             name="password"
@@ -116,7 +169,7 @@ export function SignUpForm({
           {state.fieldErrors?.password ? (
             <FieldError id="password-err" error={state.fieldErrors.password} />
           ) : (
-            <p id="password-hint" className="mt-1 text-hint text-emce-text-muted">Minimum 8 characters.</p>
+            <p id="password-hint" className="mt-1 text-hint text-emce-text-muted">{L.passwordHint}</p>
           )}
         </div>
 
@@ -132,13 +185,13 @@ export function SignUpForm({
               className="mt-0.5 h-4 w-4 accent-emce-dark"
             />
             <span className="text-emce-text-sec">
-              I agree to the{" "}
+              {L.tosPreamble}{" "}
               <Link href="/terms" target="_blank" className="font-bold text-emce-dark hover:underline">
-                Terms of Service
+                {L.tosTerms}
               </Link>{" "}
-              and{" "}
+              {L.tosAnd}{" "}
               <Link href="/privacy" target="_blank" className="font-bold text-emce-dark hover:underline">
-                Privacy Policy
+                {L.tosPrivacy}
               </Link>.
             </span>
           </label>
@@ -147,14 +200,14 @@ export function SignUpForm({
 
         {turnstileSiteKey && <TurnstileWidget siteKey={turnstileSiteKey} />}
 
-        <SubmitButton className="w-full" size="lg" pendingLabel="Creating account…">
-          Create account
+        <SubmitButton className="w-full" size="lg" pendingLabel={L.pending}>
+          {L.button}
         </SubmitButton>
       </form>
 
       <div className="my-5 flex items-center gap-3">
         <span className="h-px flex-1 bg-emce-border" />
-        <span className="text-xs text-emce-text-muted">or continue with</span>
+        <span className="text-xs text-emce-text-muted">{L.continueWith}</span>
         <span className="h-px flex-1 bg-emce-border" />
       </div>
 
@@ -170,9 +223,9 @@ export function SignUpForm({
       </div>
 
       <p className="mt-6 text-center text-sm text-emce-text-sec">
-        Already have an account?{" "}
+        {L.alreadyHave}{" "}
         <Link href="/signin" className="font-bold text-emce-dark hover:underline">
-          Sign in
+          {L.signInLink}
         </Link>
       </p>
     </>

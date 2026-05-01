@@ -241,3 +241,181 @@ export function qaPageJsonLd(input: {
     },
   };
 }
+
+/**
+ * Person schema for /[username]. Lets Google + AI crawlers index a
+ * candidate's profile as a structured entity (jobTitle, affiliation,
+ * skills) rather than a thin "anonymous bio" page. Affiliation maps
+ * to the candidate's current Experience row when available.
+ */
+export function personJsonLd(input: {
+  slug: string;
+  name: string;
+  headline: string | null;
+  summary: string | null;
+  profilePhotoUrl: string | null;
+  location: string | null;
+  websiteUrl: string | null;
+  linkedinUrl: string | null;
+  githubUrl: string | null;
+  twitterUrl: string | null;
+  skills: string[];
+  currentEmployer: { name: string; title: string | null } | null;
+}) {
+  const url = `${BASE()}/${input.slug}`;
+  const sameAs = [input.linkedinUrl, input.githubUrl, input.twitterUrl, input.websiteUrl]
+    .filter((u): u is string => Boolean(u));
+  return {
+    "@context": "https://schema.org",
+    "@type": "Person",
+    "@id": `${url}#person`,
+    name: input.name,
+    url,
+    ...(input.headline && { jobTitle: input.headline }),
+    ...(input.summary && { description: input.summary.slice(0, 500) }),
+    ...(input.profilePhotoUrl && { image: input.profilePhotoUrl }),
+    ...(input.location && {
+      address: { "@type": "PostalAddress", addressLocality: input.location },
+    }),
+    ...(sameAs.length > 0 && { sameAs }),
+    ...(input.skills.length > 0 && { knowsAbout: input.skills.slice(0, 30) }),
+    ...(input.currentEmployer && {
+      worksFor: {
+        "@type": "Organization",
+        name: input.currentEmployer.name,
+        ...(input.currentEmployer.title && { roleName: input.currentEmployer.title }),
+      },
+    }),
+  };
+}
+
+/**
+ * Article schema for ARTICLE-kind posts. Eligible for Google's
+ * "Top stories" rich result and improves AI-overview citations
+ * when the post answers an evergreen question.
+ */
+export function articleJsonLd(input: {
+  postId: string;
+  headline: string;
+  body: string;
+  coverImageUrl: string | null;
+  publishedAt: Date;
+  updatedAt: Date;
+  author: { name: string; slug: string | null };
+}) {
+  const url = `${BASE()}/posts/${input.postId}`;
+  const authorObj: Record<string, unknown> = {
+    "@type": "Person",
+    name: input.author.name,
+  };
+  if (input.author.slug) authorObj.url = `${BASE()}/${input.author.slug}`;
+  return {
+    "@context": "https://schema.org",
+    "@type": "Article",
+    "@id": `${url}#article`,
+    headline: input.headline.slice(0, 110),
+    articleBody: input.body.slice(0, 4000),
+    datePublished: input.publishedAt.toISOString(),
+    dateModified: input.updatedAt.toISOString(),
+    author: authorObj,
+    publisher: {
+      "@type": "Organization",
+      name: "eMobility Careers",
+      logo: { "@type": "ImageObject", url: `${BASE()}/icon.png` },
+    },
+    mainEntityOfPage: { "@type": "WebPage", "@id": url },
+    ...(input.coverImageUrl && { image: input.coverImageUrl }),
+  };
+}
+
+/**
+ * DiscussionForumPosting schema — what Reddit / Stack Overflow
+ * regular posts use. Eligible for Google's "Discussions and forums"
+ * SERP block. Comments serialise as `comment` array.
+ */
+export function discussionForumPostingJsonLd(input: {
+  postId: string;
+  headline: string;
+  text: string;
+  createdAt: Date;
+  author: { name: string; slug: string | null };
+  upvoteCount: number;
+  commentCount: number;
+  comments: {
+    id: string;
+    text: string;
+    createdAt: Date;
+    authorName: string;
+  }[];
+}) {
+  const url = `${BASE()}/posts/${input.postId}`;
+  const authorObj: Record<string, unknown> = {
+    "@type": "Person",
+    name: input.author.name,
+  };
+  if (input.author.slug) authorObj.url = `${BASE()}/${input.author.slug}`;
+  return {
+    "@context": "https://schema.org",
+    "@type": "DiscussionForumPosting",
+    "@id": `${url}#discussion`,
+    mainEntityOfPage: { "@type": "WebPage", "@id": url },
+    headline: input.headline.slice(0, 200),
+    text: input.text.slice(0, 4000),
+    datePublished: input.createdAt.toISOString(),
+    author: authorObj,
+    interactionStatistic: [
+      {
+        "@type": "InteractionCounter",
+        interactionType: "https://schema.org/LikeAction",
+        userInteractionCount: input.upvoteCount,
+      },
+      {
+        "@type": "InteractionCounter",
+        interactionType: "https://schema.org/CommentAction",
+        userInteractionCount: input.commentCount,
+      },
+    ],
+    ...(input.comments.length > 0 && {
+      comment: input.comments.slice(0, 50).map((c) => ({
+        "@type": "Comment",
+        "@id": `${url}#comment-${c.id}`,
+        text: c.text.slice(0, 1500),
+        dateCreated: c.createdAt.toISOString(),
+        author: { "@type": "Person", name: c.authorName },
+      })),
+    }),
+  };
+}
+
+/**
+ * CollectionPage schema for /tag/[slug] community pages. Tells
+ * crawlers "this URL is a curated collection of posts about X" so
+ * the page slots into Google's "Topics" / Reddit-style discoverability.
+ */
+export function tagCollectionPageJsonLd(input: {
+  tag: string;
+  postCount: number;
+  posts: { postId: string; headline: string; createdAt: Date }[];
+}) {
+  const url = `${BASE()}/tag/${encodeURIComponent(input.tag)}`;
+  return {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    "@id": `${url}#collection`,
+    name: `#${input.tag} on eMobility Careers`,
+    description: `Posts and discussions tagged #${input.tag} — ${input.postCount.toLocaleString()} item${input.postCount === 1 ? "" : "s"}.`,
+    url,
+    isPartOf: { "@type": "WebSite", "@id": `${BASE()}#site` },
+    mainEntity: {
+      "@type": "ItemList",
+      numberOfItems: input.postCount,
+      itemListElement: input.posts.slice(0, 20).map((p, i) => ({
+        "@type": "ListItem",
+        position: i + 1,
+        url: `${BASE()}/posts/${p.postId}`,
+        name: p.headline.slice(0, 200),
+        datePublished: p.createdAt.toISOString(),
+      })),
+    },
+  };
+}

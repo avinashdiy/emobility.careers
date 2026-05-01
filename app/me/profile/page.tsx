@@ -25,6 +25,10 @@ import { VolunteerExperienceEditor } from "@/components/profile/sections/Volunte
 import { FeaturedPostsEditor } from "@/components/profile/sections/FeaturedPostsEditor";
 import { RecommendationsInbox } from "@/components/profile/sections/RecommendationsInbox";
 import { ProfileCompletenessCard } from "@/components/profile/ProfileCompletenessCard";
+import { ImportProfileCard } from "@/components/profile/ImportProfileCard";
+import { DIYguruClaimCard } from "@/components/profile/DIYguruClaimCard";
+import { CountryFlag } from "@/components/profile/CountryFlag";
+import { VerifiedBadge } from "@/components/profile/VerifiedBadge";
 import { evaluateProfile, COMPLETENESS_THRESHOLDS } from "@/lib/profile-completeness";
 import { env } from "@/lib/env";
 
@@ -56,7 +60,7 @@ export default async function MyProfilePage({
       awards: { orderBy: { date: "desc" } },
       evDomains: { include: { evDomain: true } },
       volunteerExperiences: { orderBy: { startDate: "desc" } },
-      user: { select: { phoneVerifiedAt: true, emailVerifiedAt: true } },
+      user: { select: { email: true, phoneVerifiedAt: true, emailVerifiedAt: true } },
     },
   });
   if (!profile) redirect("/onboarding");
@@ -69,7 +73,7 @@ export default async function MyProfilePage({
 
   // Side queries for the new sections — fetched in parallel so we
   // don't add a serial round-trip on top of the main profile load.
-  const [ownPosts, receivedRecs] = await Promise.all([
+  const [ownPosts, receivedRecs, hasLinkedinAccount] = await Promise.all([
     db.post.findMany({
       where: { authorId: session.user.id },
       orderBy: [{ featured: "desc" }, { featuredAt: "desc" }, { createdAt: "desc" }],
@@ -97,6 +101,15 @@ export default async function MyProfilePage({
         },
       },
     }),
+    // Has the user signed in via LinkedIn at least once? Drives the
+    // "connected" state on the LinkedIn import tile so we can render
+    // ✓ instead of pushing them to re-auth pointlessly.
+    db.account
+      .findFirst({
+        where: { userId: session.user.id, provider: "linkedin" },
+        select: { id: true },
+      })
+      .then((row) => Boolean(row)),
   ]);
 
   return (
@@ -140,6 +153,21 @@ export default async function MyProfilePage({
           <ProfileCompletenessCard result={completeness} />
         </div>
 
+        {/* Quick-start autofill — LinkedIn OAuth + résumé upload +
+            LinkedIn URL paste. Hides itself when all three are done. */}
+        <ImportProfileCard
+          hasLinkedinAccount={hasLinkedinAccount}
+          hasParsedResume={Boolean(profile.resumeUrl) || Boolean(profile.resumeParsedAt)}
+          linkedinUrl={profile.linkedinUrl ?? null}
+        />
+
+        {/* DIYguru self-claim — visible only when the candidate is not
+            already verified. Lets them probe the roster against their
+            own verified email; if matched, badge flips on instantly. */}
+        {!profile.isDIYguruVerified && profile.user.emailVerifiedAt && (
+          <DIYguruClaimCard verifiedEmail={profile.user.email} />
+        )}
+
         {/* Profile summary card — LinkedIn-style header with cover
             photo on top + avatar overlapping the bottom edge. The
             BannerUploader pins to the top-right of the cover; the
@@ -179,6 +207,16 @@ export default async function MyProfilePage({
 
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
               <h1 className="text-2xl font-extrabold leading-tight text-emce-text">{fullName}</h1>
+              {/* Twitter-style platform-issued blue checkmark — only
+                  rendered after admin approval of the candidate's
+                  Aadhar (or admin bypass). Distinct from the DIYguru
+                  badge below. */}
+              {profile.idVerificationStatus === "VERIFIED" && (
+                <VerifiedBadge size={18} />
+              )}
+              {profile.country && (
+                <CountryFlag code={profile.country} size="md" />
+              )}
               {profile.isDIYguruVerified && <Badge variant="verified">⭐ DIYguru Verified</Badge>}
             </div>
             {profile.headline && (

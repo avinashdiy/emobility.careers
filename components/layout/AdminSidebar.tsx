@@ -6,13 +6,16 @@ import { useState, useEffect } from "react";
 import {
   LayoutDashboard, Users, Briefcase, Building2, Flag, GraduationCap,
   Trophy, MessageSquare, Tag, Megaphone, ScrollText, BarChart3, Settings,
-  School, FileText, ChevronDown, Menu, X, Download,
+  School, FileText, ChevronDown, Menu, X, Download, BadgeCheck, Activity, Sparkles,
+  Mail, Terminal, Hash, FileWarning, FlaskConical, CreditCard, Webhook, ShieldX,
 } from "lucide-react";
 
 type Counts = {
   companies: number;
   jobs: number;
   reports: number;
+  postReports: number;
+  idVerifications: number;
   mentors: number;
   competitions: number;
   diyguru: number;
@@ -38,6 +41,8 @@ function buildGroups(counts: Counts): Group[] {
       items: [
         { href: "/admin", label: "Dashboard", icon: LayoutDashboard, badge: counts.total },
         { href: "/admin/analytics", label: "Analytics", icon: BarChart3 },
+        { href: "/admin/operations", label: "Background work", icon: Activity },
+        { href: "/admin/ai-ops", label: "AI ops & cost", icon: Sparkles },
       ],
     },
     {
@@ -46,6 +51,7 @@ function buildGroups(counts: Counts): Group[] {
         { href: "/admin/users", label: "All users", icon: Users },
         { href: "/admin/employers", label: "Employers", icon: Briefcase, badge: counts.companies },
         { href: "/admin/diyguru", label: "DIYguru roster", icon: School, badge: counts.diyguru },
+        { href: "/admin/identity-verifications", label: "ID verifications", icon: BadgeCheck, badge: counts.idVerifications },
         // The full TPO console (cohorts, funnel, unplaced students) lives
         // at /tpo. ADMINs always have access; trusted DIYguru staff can
         // also reach it via the User.isPlacementOfficer flag granted on
@@ -57,7 +63,9 @@ function buildGroups(counts: Counts): Group[] {
       title: "Recruitment",
       items: [
         { href: "/admin/jobs", label: "Jobs", icon: Briefcase, badge: counts.jobs },
-        { href: "/admin/reports", label: "Reports", icon: Flag, badge: counts.reports },
+        { href: "/admin/job-quality", label: "Job quality", icon: ShieldX },
+        { href: "/admin/reports", label: "Job reports", icon: Flag, badge: counts.reports },
+        { href: "/admin/post-reports", label: "Post reports", icon: Flag, badge: counts.postReports },
       ],
     },
     {
@@ -78,6 +86,7 @@ function buildGroups(counts: Counts): Group[] {
         { href: "/admin/content", label: "Posts & comments", icon: MessageSquare },
         { href: "/admin/messages", label: "Messages (moderation)", icon: MessageSquare },
         { href: "/admin/skills", label: "Skills & domains", icon: Tag },
+        { href: "/admin/hashtags", label: "Hashtags", icon: Hash },
         // Salary Compass moderation — anonymous submissions land
         // PENDING; admin approves/rejects to publish to /salaries.
         { href: "/admin/salaries", label: "Salary submissions", icon: Tag },
@@ -87,19 +96,31 @@ function buildGroups(counts: Counts): Group[] {
       title: "Operations",
       items: [
         { href: "/admin/broadcasts", label: "Broadcasts", icon: Megaphone },
+        { href: "/admin/announcements", label: "Announcements", icon: Megaphone },
         // Featured This Week curation — five candidate spotlights surfaced
         // on the home + Pulse pages every week.
         { href: "/admin/featured", label: "Featured this week", icon: Megaphone },
         // WhatsApp digest console — manage subscribers, send test
         // messages, and trigger an on-demand digest tick.
         { href: "/admin/whatsapp", label: "WhatsApp digest", icon: MessageSquare },
+        { href: "/admin/delivery", label: "Delivery health", icon: Mail },
+        { href: "/admin/webhooks", label: "Webhook log", icon: Webhook },
+        { href: "/admin/resume-failures", label: "Resume parse failures", icon: FileWarning },
         { href: "/admin/audit", label: "Audit log", icon: ScrollText },
+      ],
+    },
+    {
+      title: "Growth",
+      items: [
+        { href: "/admin/experiments", label: "A/B experiments", icon: FlaskConical },
+        { href: "/admin/billing", label: "Billing (plans)", icon: CreditCard },
       ],
     },
     {
       title: "System",
       items: [
         { href: "/admin/import", label: "WordPress import", icon: Download },
+        { href: "/admin/sql", label: "SQL console", icon: Terminal },
         { href: "/admin/settings", label: "Settings", icon: Settings },
       ],
     },

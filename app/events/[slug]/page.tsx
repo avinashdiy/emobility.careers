@@ -16,6 +16,7 @@ import {
   registerForEvent,
   cancelEventRegistration,
 } from "@/server/events/actions";
+import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { env } from "@/lib/env";
 
 export async function generateMetadata({
@@ -176,13 +177,21 @@ export default async function EventDetailPage({
           <h1 className="mt-2 text-2xl font-extrabold leading-tight text-emce-text md:text-3xl">
             {event.title}
           </h1>
-          <Link
-            href={`/company/${event.company.slug}`}
-            className="mt-3 inline-flex items-center gap-2 hover:underline"
-          >
-            <Avatar src={event.company.logoUrl} name={event.company.name} size="sm" />
-            <span className="font-semibold text-emce-text">{event.company.name}</span>
-          </Link>
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+            <Link
+              href={`/company/${event.company.slug}`}
+              className="inline-flex items-center gap-2 hover:underline"
+            >
+              <Avatar src={event.company.logoUrl} name={event.company.name} size="sm" />
+              <span className="font-semibold text-emce-text">{event.company.name}</span>
+            </Link>
+            <ShareDropdown
+              url={`${env.NEXT_PUBLIC_APP_URL}/events/${event.slug}`}
+              title={`${event.title} — ${event.company.name}`}
+              description={event.description.slice(0, 200)}
+              label="Share event"
+            />
+          </div>
         </header>
 
         <Card className="mt-5">

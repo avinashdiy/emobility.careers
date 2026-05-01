@@ -8,6 +8,7 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { getPostsByHashtag } from "@/server/social/queries";
 import type { Metadata } from "next";
 import { env } from "@/lib/env";
+import { tagCollectionPageJsonLd, breadcrumbJsonLd } from "@/lib/seo/schemas";
 
 export async function generateMetadata({
   params,
@@ -33,8 +34,34 @@ export default async function HashtagPage({
   const session = await auth();
   const posts = await getPostsByHashtag(tag, 30);
 
+  // Schema.org payloads — CollectionPage + breadcrumb let crawlers
+  // and AI engines understand this is a curated topic page (Reddit
+  // /r/<topic> equivalent), with the latest posts as ItemList.
+  const collectionLd = tagCollectionPageJsonLd({
+    tag,
+    postCount: posts.length,
+    posts: posts.slice(0, 20).map((p) => ({
+      postId: p.id,
+      headline: (p.body as string)?.split("\n")[0]?.slice(0, 200) ?? `Post about #${tag}`,
+      createdAt: p.createdAt as Date,
+    })),
+  });
+  const breadcrumbLd = breadcrumbJsonLd([
+    { name: "Home", href: "/" },
+    { name: "Feed", href: "/feed" },
+    { name: `#${tag}`, href: `/tag/${tag}` },
+  ]);
+
   return (
     <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(collectionLd) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbLd) }}
+      />
       <SiteHeader />
       <div className="container max-w-3xl py-6">
         <div className="mb-4">

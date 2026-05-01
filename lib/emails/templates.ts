@@ -71,3 +71,42 @@ export function welcomeEmail(name: string, role: "CANDIDATE" | "EMPLOYER"): Tpl 
     text: `Welcome to eMobility Careers. Get started: ${env.NEXT_PUBLIC_APP_URL}${where}`,
   };
 }
+
+/**
+ * Sent to the company owner when an admin rejects their company page
+ * verification. Includes the admin-supplied reason verbatim and a link
+ * back to /employer/company so they can fix what was flagged and
+ * request re-verification. Tone: candid, not punitive — the owner
+ * may have made a recoverable mistake (incomplete page, missing
+ * domain ownership proof) rather than acted in bad faith.
+ */
+export function companyRejectedEmail(input: {
+  ownerName: string | null;
+  companyName: string;
+  reason: string;
+}): Tpl {
+  const safeReason = input.reason
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+  const html = wrapper(
+    `<h2 style="margin:0 0 12px">Your company page was rejected</h2>
+     <p>Hi${input.ownerName ? ` ${input.ownerName}` : ""},</p>
+     <p>An admin has rejected the verification for <strong>${input.companyName}</strong> on eMobility Careers. While the page is in the rejected state it won't appear publicly and your jobs won't be discoverable.</p>
+     <p style="margin:16px 0 8px"><strong>Reason from the admin:</strong></p>
+     <blockquote style="margin:0;padding:12px 16px;border-left:3px solid #f59e0b;background:#fef3c7;color:#78350f;font-size:14px;line-height:1.5;white-space:pre-wrap">${safeReason}</blockquote>
+     <p>Update the company page to address this and we'll review again. Common fixes:</p>
+     <ul>
+       <li>Make sure the company name and details match your registered business.</li>
+       <li>Add a website that uses an email domain you can verify.</li>
+       <li>Fill in HQ location, team size, and a real description.</li>
+     </ul>
+     <p>${cta(env.NEXT_PUBLIC_APP_URL + "/employer/company", "Edit company page →")}</p>`,
+    "If you think this was rejected by mistake, reply to this email and we'll take another look.",
+  );
+  return {
+    subject: `Verification rejected for ${input.companyName}`,
+    html,
+    text: `Your company "${input.companyName}" was rejected on eMobility Careers.\n\nReason: ${input.reason}\n\nFix the page at ${env.NEXT_PUBLIC_APP_URL}/employer/company and we'll re-review.`,
+  };
+}

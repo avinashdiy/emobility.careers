@@ -3,11 +3,14 @@ import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { ReactionBar } from "@/components/social/ReactionBar";
+import { SharePostMenu } from "@/components/social/SharePostMenu";
 import { CommentSection } from "@/components/social/CommentSection";
 import { PostActions } from "@/components/social/PostActions";
 import { PollCard } from "@/components/social/PollCard";
 import { iframeFor } from "@/lib/social/embeds";
 import { relativeTime } from "@/lib/utils";
+import { CountryFlag } from "@/components/profile/CountryFlag";
+import { VerifiedBadge } from "@/components/profile/VerifiedBadge";
 import type { EmbedProvider, PostAttachmentType, PostKind, ReactionType } from "@prisma/client";
 import { Briefcase, ExternalLink, FileText, Globe, Users } from "lucide-react";
 
@@ -32,6 +35,12 @@ interface FeedAuthor {
     profilePhotoUrl: string | null;
     isDIYguruVerified: boolean;
     personType: string;
+    // Twitter-style platform-issued ID verification status. We pass
+    // it through so the post header can render a blue checkmark next
+    // to the author name without needing an extra query per post.
+    idVerificationStatus?: "NONE" | "PENDING" | "VERIFIED" | "REJECTED";
+    // ISO alpha-2 country code → flag emoji beside the name.
+    country?: string | null;
   } | null;
 }
 
@@ -134,6 +143,14 @@ export function PostCard({
             <Link href={headerSlug} className="font-bold text-emce-text hover:underline">
               {headerName}
             </Link>
+            {/* Verified blue checkmark — only when admin has approved
+                the candidate's ID verification (or bypassed it). */}
+            {!isCompanyPost && c?.idVerificationStatus === "VERIFIED" && (
+              <VerifiedBadge size={14} />
+            )}
+            {!isCompanyPost && c?.country && (
+              <CountryFlag code={c.country} size="sm" />
+            )}
             {!isCompanyPost && c?.isDIYguruVerified && <Badge variant="verified" className="text-[10px]">⭐</Badge>}
             {!isCompanyPost && c && (
               <span className="text-hint text-emce-text-muted">·</span>
@@ -383,6 +400,19 @@ export function PostCard({
         ) : null}
         <CommentToggleLink postId={post.id} count={post.commentsCount} />
         <RepostButton postId={post.id} />
+        {/* Send via DM (LinkedIn-style "Send" — connection picker
+            modal + secondary copy/WhatsApp/X share options). The
+            inner modal pulls connections via getMyConnectionsForShare
+            on open; nothing to load until the user clicks Send. */}
+        <SharePostMenu
+          postId={post.id}
+          authorName={
+            post.author.candidateProfile
+              ? `${post.author.candidateProfile.firstName} ${post.author.candidateProfile.lastName ?? ""}`.trim()
+              : post.author.name ?? "this"
+          }
+          url={`/posts/${post.id}`}
+        />
       </div>
 
       {showComments && (
@@ -546,6 +576,36 @@ function EmbedRenderer({
   thumbnailUrl: string | null;
 }) {
   const embed = iframeFor({ provider, url, iframe: true, videoId: extractVideoId(url, provider) });
+  // LinkedIn iframe needs a different shape than video providers.
+  // YouTube/Vimeo render at 16:9 — a fixed aspect-ratio container is
+  // perfect. LinkedIn's embed is a card-shaped post (variable height,
+  // text + reactions + thumbnail) that breaks at 16:9. We give it a
+  // fixed-min-height container with `h-[44rem]` (704px) which fits
+  // most posts; LinkedIn's iframe internally handles overflow scroll
+  // when the embedded post is taller than that. A small "View on
+  // LinkedIn" link below the iframe is the escape hatch.
+  if (embed && provider === "LINKEDIN") {
+    return (
+      <div className="mt-3">
+        <iframe
+          src={embed}
+          title={title ?? "LinkedIn post"}
+          // `allow="encrypted-media"` lets LinkedIn's video player
+          // attach if the embedded post happens to contain one.
+          allow="encrypted-media"
+          className="h-[40rem] w-full overflow-hidden rounded-md border border-emce-border bg-white sm:h-[44rem]"
+        />
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-1 inline-block text-[11px] font-bold text-emce-dark hover:underline"
+        >
+          View on LinkedIn →
+        </a>
+      </div>
+    );
+  }
   // YouTube + Vimeo: render the iframe inline.
   if (embed) {
     return (
@@ -600,6 +660,14 @@ function extractVideoId(url: string, provider: EmbedProvider): string | undefine
   }
   if (provider === "VIMEO") {
     const m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
+    return m?.[1];
+  }
+  if (provider === "LINKEDIN") {
+    // Mirror lib/social/embeds.ts: pull the activity / share / ugcPost
+    // numeric ID. Old rows persisted before LinkedIn embeds shipped
+    // also flow through here so previously-saved /posts/... links
+    // start rendering inline once the user re-renders the page.
+    const m = url.match(/(?:activity[:-]|share[:-]|ugcPost[:-])(\d{15,25})/i);
     return m?.[1];
   }
   return undefined;

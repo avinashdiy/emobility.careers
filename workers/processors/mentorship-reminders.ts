@@ -53,6 +53,18 @@ export async function dispatchMentorshipReminders() {
       link: "/me/mentor/sessions",
       channels: ["IN_APP", "EMAIL"],
     });
+    // Belt-and-braces: if the booking-flow calendar email failed at
+    // create time (provider outage, MinIO downtime, etc.) we fire it
+    // here on the T-24h tick so attendees still get the ICS in time
+    // to add the session to their calendar before it starts.
+    if (!s.calendarInviteSentAt) {
+      try {
+        const { sendCalendarInviteForSession } = await import("@/server/mentorship/actions");
+        await sendCalendarInviteForSession(s.id);
+      } catch (err) {
+        logger.warn({ err, sessionId: s.id }, "[mentorship-reminders] late ICS failed");
+      }
+    }
     await db.mentorshipSession.update({ where: { id: s.id }, data: { reminderDayBeforeSentAt: new Date() } });
   }
 

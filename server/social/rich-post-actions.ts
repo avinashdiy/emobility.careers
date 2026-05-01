@@ -10,6 +10,7 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { requireEmailVerified, EmailNotVerifiedError } from "@/lib/anti-spam";
 import { notificationsQueue } from "@/lib/queues";
 import { detectEmbed } from "@/lib/social/embeds";
+import { findBannedWord, autoFlagContent } from "@/lib/social/banned-words";
 import { extractHashtags, extractMentions } from "@/lib/social/extract";
 import { objectKey, presignUpload, publicUrl } from "@/lib/storage";
 import type { FormState } from "@/lib/form-state";
@@ -204,12 +205,21 @@ export async function createRichPost(
     embedFields = { embedUrl: detection.url, embedProvider: detection.provider };
   }
 
+  // Banned-word auto-moderation. Same flow as createPost in
+  // ./actions.ts — flagged posts get visibility=PRIVATE so they
+  // don't surface on the feed until an admin actions or dismisses.
+  // We check the article title too because it's the headline and
+  // arguably the most-visible field.
+  const haystack = [data.body, data.articleTitle ?? ""].filter(Boolean).join(" ");
+  const bannedWord = await findBannedWord(haystack);
+  const effectiveVisibility = bannedWord ? "PRIVATE" : data.visibility;
+
   const post = await db.$transaction(async (tx) => {
     const created = await tx.post.create({
       data: {
         authorId: session.user.id,
         body: data.body,
-        visibility: data.visibility,
+        visibility: effectiveVisibility,
         asCompanyId: data.asCompanyId ?? null,
         attachedJobId: data.attachedJobId ?? null,
         kind: data.kind,
@@ -266,11 +276,27 @@ export async function createRichPost(
     entityId: post.id,
   });
 
+  if (bannedWord) {
+    await autoFlagContent({
+      entity: "Post",
+      entityId: post.id,
+      authorId: session.user.id,
+      matchedWord: bannedWord,
+      body: haystack,
+    });
+  }
+
   revalidatePath("/feed");
   revalidatePath(`/posts/${post.id}`);
   for (const tag of extractHashtags(data.body)) revalidatePath(`/tag/${tag}`);
 
-  return { ok: true, postId: post.id };
+  return {
+    ok: true,
+    postId: post.id,
+    message: bannedWord
+      ? "Posted — held for review because it contains a flagged term."
+      : undefined,
+  };
 }
 
 // ─── Poll voting ────────────────────────────────────────────

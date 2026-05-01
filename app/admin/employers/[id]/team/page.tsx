@@ -278,6 +278,38 @@ export default async function AdminCompanyTeamPage({
                 Mark as company admin (can edit company page + invite teammates)
               </Label>
             </div>
+
+            {/* Verified-company bypass acknowledgement. The self-serve
+                `joinExistingCompany` refuses to attach to verified
+                companies (impersonation defence); admins can override
+                but the action server-checks this box and audit-logs
+                the bypass intent. Hidden when the company is still
+                UNVERIFIED — that's the routine path. */}
+            {(company.verificationStatus === "VERIFIED" ||
+              company.verificationStatus === "PENDING") && (
+              <div className="sm:col-span-2 rounded-md border border-emce-orange bg-emce-orange-light p-3">
+                <div className="flex items-start gap-2">
+                  <input
+                    id="ackVerifiedBypass"
+                    name="ackVerifiedBypass"
+                    type="checkbox"
+                    value="on"
+                    required
+                    className="mt-0.5 h-4 w-4"
+                  />
+                  <Label htmlFor="ackVerifiedBypass" className="!mt-0 text-emce-text">
+                    <strong className="text-emce-orange">Verified company —</strong>{" "}
+                    {company.name} is{" "}
+                    <strong>{company.verificationStatus.toLowerCase()}</strong>. The
+                    self-serve join flow refuses this attach to prevent impersonation
+                    of established companies. Tick to acknowledge you&apos;re bypassing
+                    the gate intentionally; the audit log records this action with
+                    your user ID.
+                  </Label>
+                </div>
+              </div>
+            )}
+
             <div className="sm:col-span-2 flex justify-end pt-2">
               <Button type="submit">Add to team</Button>
             </div>

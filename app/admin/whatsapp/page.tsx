@@ -197,12 +197,12 @@ export default async function AdminWhatsAppPage({
               <table className="w-full min-w-[820px] text-sm">
                 <thead className="bg-emce-light-soft text-left text-xs font-bold uppercase text-emce-text-sec">
                   <tr>
-                    <th className="p-3">Phone / User</th>
-                    <th className="p-3">Filters</th>
-                    <th className="p-3">Last sent</th>
-                    <th className="p-3">Failures</th>
-                    <th className="p-3">Joined</th>
-                    <th className="p-3">Actions</th>
+                    <th scope="col" className="p-3">Phone / User</th>
+                    <th scope="col" className="p-3">Filters</th>
+                    <th scope="col" className="p-3">Last sent</th>
+                    <th scope="col" className="p-3">Failures</th>
+                    <th scope="col" className="p-3">Joined</th>
+                    <th scope="col" className="p-3">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-emce-border">

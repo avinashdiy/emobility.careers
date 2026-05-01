@@ -1,10 +1,13 @@
 import { redirect } from "next/navigation";
+import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { ApplicationStage } from "@prisma/client";
+import { Download } from "lucide-react";
 
 export const metadata = { title: "Analytics" };
 
@@ -12,36 +15,64 @@ const STAGES_FUNNEL: ApplicationStage[] = [
   "APPLIED", "SCREENED", "SHORTLISTED", "ASSESSMENT", "INTERVIEW", "OFFER", "HIRED",
 ];
 
-export default async function AnalyticsPage() {
+const PRESETS: { label: string; days: number }[] = [
+  { label: "7d", days: 7 },
+  { label: "30d", days: 30 },
+  { label: "90d", days: 90 },
+  { label: "1y", days: 365 },
+];
+
+function parseRange(sp: { range?: string; from?: string; to?: string }) {
+  // Custom range wins if both endpoints look like dates. Otherwise we
+  // fall back to a preset. Default 30d so the page works without any
+  // searchParams at all.
+  if (sp.from && sp.to) {
+    const from = new Date(sp.from);
+    const to = new Date(sp.to);
+    if (!Number.isNaN(from.getTime()) && !Number.isNaN(to.getTime()) && from < to) {
+      return { from, to, label: `${sp.from} → ${sp.to}` };
+    }
+  }
+  const preset = PRESETS.find((p) => p.label === sp.range) ?? PRESETS[1];
+  const to = new Date();
+  const from = new Date(to.getTime() - preset.days * 24 * 3600 * 1000);
+  return { from, to, label: `last ${preset.label}` };
+}
+
+export default async function AnalyticsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ range?: string; from?: string; to?: string }>;
+}) {
   const session = await auth();
   if (session?.user?.role !== "ADMIN") redirect("/403");
+  const sp = await searchParams;
+  const { from, to, label } = parseRange(sp);
 
-  const since30 = new Date(Date.now() - 30 * 24 * 3600 * 1000);
+  // 7-day window for the "this week" tier — independent of the
+  // user-selected range, so the dashboard always shows momentum even
+  // when zoomed out to 1y.
   const since7 = new Date(Date.now() - 7 * 24 * 3600 * 1000);
 
   const [
+    signupsRange,
     signups7,
-    signups30,
-    candidates7,
-    employers7,
-    jobsPublished7,
-    jobsPublished30,
-    applications7,
-    applications30,
-    hires30,
+    candidatesRange,
+    employersRange,
+    jobsPublishedRange,
+    applicationsRange,
+    hiresRange,
     diyguruVerified,
     diyguruNonVerified,
     funnel,
   ] = await Promise.all([
+    db.user.count({ where: { createdAt: { gte: from, lte: to } } }),
     db.user.count({ where: { createdAt: { gte: since7 } } }),
-    db.user.count({ where: { createdAt: { gte: since30 } } }),
-    db.user.count({ where: { role: "CANDIDATE", createdAt: { gte: since7 } } }),
-    db.user.count({ where: { role: "EMPLOYER", createdAt: { gte: since7 } } }),
-    db.jobPosting.count({ where: { publishedAt: { gte: since7 } } }),
-    db.jobPosting.count({ where: { publishedAt: { gte: since30 } } }),
-    db.application.count({ where: { appliedAt: { gte: since7 } } }),
-    db.application.count({ where: { appliedAt: { gte: since30 } } }),
-    db.application.count({ where: { stage: "HIRED", updatedAt: { gte: since30 } } }),
+    db.user.count({ where: { role: "CANDIDATE", createdAt: { gte: from, lte: to } } }),
+    db.user.count({ where: { role: "EMPLOYER", createdAt: { gte: from, lte: to } } }),
+    db.jobPosting.count({ where: { publishedAt: { gte: from, lte: to } } }),
+    db.application.count({ where: { appliedAt: { gte: from, lte: to } } }),
+    db.application.count({ where: { stage: "HIRED", updatedAt: { gte: from, lte: to } } }),
     db.candidateProfile.count({ where: { isDIYguruVerified: true } }),
     db.candidateProfile.count({ where: { isDIYguruVerified: false } }),
     Promise.all(
@@ -51,9 +82,10 @@ export default async function AnalyticsPage() {
     ),
   ]);
 
-  // Average time-in-stage from StageHistory
+  // Average time-in-stage from StageHistory — bound to selected range
+  // so the rolling window narrative tracks the rest of the page.
   const stageHistorySample = await db.stageHistory.findMany({
-    where: { at: { gte: since30 }, fromStage: { not: null } },
+    where: { at: { gte: from, lte: to }, fromStage: { not: null } },
     select: { applicationId: true, fromStage: true, toStage: true, at: true },
     orderBy: [{ applicationId: "asc" }, { at: "asc" }],
     take: 5000,
@@ -73,22 +105,95 @@ export default async function AnalyticsPage() {
     Object.entries(stageDurations).map(([k, arr]) => [k, arr.reduce((a, b) => a + b, 0) / arr.length]),
   );
 
+  const exportQuery = sp.from && sp.to ? `?from=${sp.from}&to=${sp.to}` : sp.range ? `?range=${sp.range}` : "";
+
   return (
     <AdminShell>
       <div className="container max-w-6xl py-10">
-        <h1 className="text-dashboard text-emce-text">Analytics</h1>
-        <p className="mt-1 text-sm text-emce-text-sec">Last 30 days unless noted.</p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h1 className="text-dashboard text-emce-text">Analytics</h1>
+            <p className="mt-1 text-sm text-emce-text-sec">Showing {label}.</p>
+          </div>
+          <Button asChild variant="outline" size="sm">
+            <a
+              href={`/api/admin/analytics/export${exportQuery}`}
+              download
+              aria-label="Download analytics CSV"
+            >
+              <Download className="mr-1 h-4 w-4" aria-hidden /> Export CSV
+            </a>
+          </Button>
+        </div>
+
+        {/* Range picker — preset chips + custom from/to form. */}
+        <Card className="mt-4 p-4">
+          <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Quick date range">
+            {PRESETS.map((p) => {
+              const active = (sp.range ?? "30d") === p.label && !sp.from;
+              return (
+                <Link
+                  key={p.label}
+                  href={`/admin/analytics?range=${p.label}`}
+                  aria-pressed={active}
+                  className={`rounded-full px-3 py-1 text-xs font-bold uppercase tracking-wide ${
+                    active
+                      ? "bg-emce-dark text-emce-light"
+                      : "bg-white text-emce-text-sec hover:bg-emce-light-soft"
+                  }`}
+                >
+                  {p.label}
+                </Link>
+              );
+            })}
+          </div>
+          <form
+            method="get"
+            action="/admin/analytics"
+            className="mt-3 flex flex-wrap items-end gap-2"
+          >
+            <div className="flex flex-col text-xs">
+              <label htmlFor="from" className="font-bold uppercase tracking-wide text-emce-text-muted">From</label>
+              <input
+                id="from"
+                name="from"
+                type="date"
+                defaultValue={sp.from ?? ""}
+                className="mt-0.5 rounded-md border border-emce-border px-2 py-1 text-sm"
+              />
+            </div>
+            <div className="flex flex-col text-xs">
+              <label htmlFor="to" className="font-bold uppercase tracking-wide text-emce-text-muted">To</label>
+              <input
+                id="to"
+                name="to"
+                type="date"
+                defaultValue={sp.to ?? ""}
+                className="mt-0.5 rounded-md border border-emce-border px-2 py-1 text-sm"
+              />
+            </div>
+            <Button type="submit" size="sm" variant="outline">Apply</Button>
+            {(sp.from || sp.range !== "30d") && (
+              <Link
+                href="/admin/analytics"
+                className="text-xs font-bold text-emce-dark hover:underline"
+              >
+                Reset
+              </Link>
+            )}
+          </form>
+        </Card>
 
         <div className="mt-6 grid gap-4 md:grid-cols-4">
-          <Stat value={signups7} label="Signups · 7d" sub={`${signups30} (30d)`} />
-          <Stat value={candidates7} label="Candidate signups · 7d" />
-          <Stat value={employers7} label="Employer signups · 7d" />
-          <Stat value={hires30} label="Hires · 30d" />
+          <Stat value={signupsRange} label={`Signups · ${label}`} sub={`${signups7} (7d)`} />
+          <Stat value={candidatesRange} label="Candidate signups" />
+          <Stat value={employersRange} label="Employer signups" />
+          <Stat value={hiresRange} label="Hires" />
         </div>
 
         <div className="mt-4 grid gap-4 md:grid-cols-3">
-          <Stat value={jobsPublished7} label="Jobs published · 7d" sub={`${jobsPublished30} (30d)`} />
-          <Stat value={applications7} label="Applications · 7d" sub={`${applications30} (30d)`} />
+          <Stat value={jobsPublishedRange} label="Jobs published" />
+          <Stat value={applicationsRange} label="Applications" />
           <Stat
             value={`${Math.round((diyguruVerified / Math.max(1, diyguruVerified + diyguruNonVerified)) * 100)}%`}
             label="DIYguru verified"
@@ -119,9 +224,9 @@ export default async function AnalyticsPage() {
         </Card>
 
         <Card className="mt-6 p-6">
-          <h2 className="text-section text-emce-text">Avg time in stage (last 30d)</h2>
+          <h2 className="text-section text-emce-text">Avg time in stage ({label})</h2>
           {Object.keys(avgDurations).length === 0 ? (
-            <p className="mt-2 text-hint text-emce-text-sec">No stage transitions yet.</p>
+            <p className="mt-2 text-hint text-emce-text-sec">No stage transitions in this window.</p>
           ) : (
             <ul className="mt-3 space-y-1">
               {Object.entries(avgDurations).map(([k, v]) => (

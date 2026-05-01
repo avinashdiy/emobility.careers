@@ -19,12 +19,24 @@ declare module "next-auth" {
     user: {
       id: string;
       role: Role;
+      /// Set when the current session is an admin "impersonating" a
+      /// candidate / employer for support debugging. Carries the
+      /// admin's user id so we can audit-trail every action they
+      /// take while wearing the other user's hat, plus power the
+      /// "Back to admin" banner. Null otherwise.
+      impersonatedBy?: string | null;
     } & DefaultSession["user"];
   }
   interface User {
     role: Role;
   }
 }
+
+// JWT shape augmentation lives implicitly through the `token` typed
+// callback in lib/auth.config.ts — declaring a separate "next-auth/jwt"
+// augmentation requires the @auth/core/jwt subpath which Auth.js v5
+// no longer ships. The JWT callback uses bracketed access for our
+// extra fields instead.
 
 const credentialsSchema = z.object({
   email: z.string().email(),
@@ -106,6 +118,27 @@ async function buildOAuthProviders(): Promise<NextAuthConfig["providers"]> {
         // attacker already controlling the victim's Google account —
         // a compromise that is out of scope for our threat model.
         allowDangerousEmailAccountLinking: true,
+        // Override the default profile mapping so we propagate
+        // Google's `email_verified` claim into our `emailVerified`
+        // column (which the bridge-adapter then writes as
+        // `emailVerifiedAt`). Without this override, OAuth users
+        // land with `emailVerifiedAt = null` and have to go through
+        // the `/verify-email` resend dance even though Google has
+        // already confirmed the address.
+        profile(profile) {
+          // The augmented `User` type (lib/auth.ts) declares `role: Role`
+          // as required, so we set it to CANDIDATE here. The schema also
+          // defaults to CANDIDATE, but TS doesn't know that from the
+          // adapter side — being explicit keeps the callback typed.
+          return {
+            id: profile.sub,
+            name: profile.name,
+            email: profile.email,
+            image: profile.picture,
+            emailVerified: profile.email_verified ? new Date() : null,
+            role: "CANDIDATE" as const,
+          };
+        },
       }),
     );
   }
@@ -121,6 +154,24 @@ async function buildOAuthProviders(): Promise<NextAuthConfig["providers"]> {
         // the same reasoning as Google above applies. See the
         // comment on the Google provider for the threat model.
         allowDangerousEmailAccountLinking: true,
+        // Same auto-verification flow as Google. LinkedIn's OIDC
+        // `email_verified` claim is true for any email LinkedIn
+        // itself has confirmed; we trust that and stamp our column
+        // so users skip the manual verify dance.
+        profile(profile) {
+          // The augmented `User` type (lib/auth.ts) declares `role: Role`
+          // as required, so we set it to CANDIDATE here. The schema also
+          // defaults to CANDIDATE, but TS doesn't know that from the
+          // adapter side — being explicit keeps the callback typed.
+          return {
+            id: profile.sub,
+            name: profile.name,
+            email: profile.email,
+            image: profile.picture,
+            emailVerified: profile.email_verified ? new Date() : null,
+            role: "CANDIDATE" as const,
+          };
+        },
       }),
     );
   }
@@ -253,13 +304,21 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth(asy
 
       const dbUser = await db.user.findUnique({
         where: { id: user.id },
-        select: { role: true, email: true, name: true },
+        select: { role: true, email: true, name: true, image: true },
       });
       if (!dbUser || dbUser.role !== "CANDIDATE") return;
 
       const fullName = (dbUser.name ?? user.name ?? "").trim();
       const [firstName, ...rest] = fullName.split(/\s+/).filter(Boolean);
       const slugSeed = fullName || dbUser.email?.split("@")[0] || "member";
+
+      // Propagate the OAuth-provided picture into CandidateProfile.
+      // For LinkedIn / Google sign-ins this is the user's avatar
+      // they've already approved for sharing — pre-filling means the
+      // profile card looks complete from the first session, no
+      // separate "upload an avatar" step required.
+      const profilePhotoUrl =
+        (dbUser.image ?? user.image)?.toString() || null;
 
       try {
         const { withUniqueSlug } = await import("@/lib/slug");
@@ -271,6 +330,7 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth(asy
               firstName: firstName || "Member",
               lastName: rest.join(" ") || null,
               email: dbUser.email,
+              profilePhotoUrl,
             },
           }),
         );

@@ -6,6 +6,8 @@ import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toaster";
 import { ToastFromSearchParams } from "@/components/ui/toast-from-params";
 import { MaintenanceGate } from "@/components/layout/MaintenanceGate";
+import { ImpersonationBanner } from "@/components/layout/ImpersonationBanner";
+import { AnnouncementBanner } from "@/components/layout/AnnouncementBanner";
 import { MessagingWidget } from "@/components/messaging/MessagingWidget";
 import { GoogleTranslateLoader } from "@/components/translate/GoogleTranslate";
 import { getSettings } from "@/lib/settings";
@@ -143,6 +145,19 @@ export default function RootLayout({
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_JSON_LD) }}
         />
+        {/* Sticky impersonation banner — only renders when the current
+            session is an admin "Sign in as <user>" — zero overhead for
+            normal users. Sits above the maintenance gate so admins can
+            still reach support tools while debugging. */}
+        <Suspense fallback={null}>
+          <ImpersonationBanner />
+        </Suspense>
+        {/* Site-wide announcement banner — picks the highest-severity
+            active announcement targeted at the current viewer. Returns
+            null when nothing's active. */}
+        <Suspense fallback={null}>
+          <AnnouncementBanner />
+        </Suspense>
         <MaintenanceGate>{children}</MaintenanceGate>
         {/* Google Translate widget loader — opt-in via the language
             switcher. Renders nothing visible; mounts a hidden host

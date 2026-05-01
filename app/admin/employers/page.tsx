@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { AdminShell } from "@/components/layout/admin-shell";
-import { setCompanyVerification } from "@/server/admin/actions";
+import { setCompanyVerification, deleteCompany, bulkDeleteRejectedCompanies } from "@/server/admin/actions";
+import type { CompanyVerification } from "@prisma/client";
 import { adminResetEmployerPassword } from "@/server/admin/recruiting-actions";
 
 export const metadata = { title: "Employer KYC queue" };
@@ -18,14 +19,27 @@ interface ProvisionedCreds {
   userId: string;
 }
 
+const STATUS_FILTERS = ["ALL", "UNVERIFIED", "PENDING", "VERIFIED", "REJECTED"] as const;
+type StatusFilter = (typeof STATUS_FILTERS)[number];
+
 export default async function AdminEmployersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ provisioned?: string; error?: string }>;
+  searchParams: Promise<{
+    provisioned?: string;
+    error?: string;
+    notice?: string;
+    status?: string;
+  }>;
 }) {
   const session = await auth();
   if (session?.user?.role !== "ADMIN") redirect("/403");
   const sp = await searchParams;
+  const activeStatus: StatusFilter = (STATUS_FILTERS as readonly string[]).includes(
+    (sp.status ?? "").toUpperCase(),
+  )
+    ? ((sp.status ?? "ALL").toUpperCase() as StatusFilter)
+    : "ALL";
 
   let creds: ProvisionedCreds | null = null;
   if (sp.provisioned) {
@@ -36,10 +50,19 @@ export default async function AdminEmployersPage({
     }
   }
 
-  const [companies, employers] = await Promise.all([
+  const [companies, employers, statusCounts] = await Promise.all([
     db.company.findMany({
-      orderBy: [{ verificationStatus: "asc" }, { createdAt: "desc" }],
-      take: 100,
+      where:
+        activeStatus === "ALL"
+          ? {}
+          : { verificationStatus: activeStatus as CompanyVerification },
+      // When viewing a single status, sort by name. For ALL keep
+      // status-grouped so admin attention items (UNVERIFIED) lead.
+      orderBy:
+        activeStatus === "ALL"
+          ? [{ verificationStatus: "asc" }, { createdAt: "desc" }]
+          : [{ name: "asc" }],
+      take: 200,
       include: {
         owner: { select: { email: true, name: true } },
         _count: { select: { jobs: true, team: true } },
@@ -56,7 +79,19 @@ export default async function AdminEmployersPage({
         company: { select: { name: true, slug: true } },
       },
     }),
+    // Per-status counts — drives the filter chip badges so the admin
+    // can see at a glance how many rejected / pending companies need
+    // attention, without paginating to find them.
+    db.company.groupBy({
+      by: ["verificationStatus"],
+      _count: { _all: true },
+    }),
   ]);
+
+  const countByStatus = Object.fromEntries(
+    statusCounts.map((s) => [s.verificationStatus, s._count._all]),
+  ) as Partial<Record<CompanyVerification, number>>;
+  const totalCount = statusCounts.reduce((acc, s) => acc + s._count._all, 0);
 
   return (
     <AdminShell>
@@ -71,6 +106,12 @@ export default async function AdminEmployersPage({
         {sp.error && (
           <div className="mt-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
             {sp.error}
+          </div>
+        )}
+
+        {sp.notice && (
+          <div className="mt-4 rounded-md border border-emce-mid bg-emce-light-soft p-3 text-sm text-emce-text">
+            ✓ {sp.notice}
           </div>
         )}
 
@@ -98,6 +139,61 @@ export default async function AdminEmployersPage({
 
         <h2 className="mt-8 text-section text-emce-text">Companies</h2>
 
+        {/* Status filter — paginates by status so REJECTED / PENDING
+            rows can't get clipped past the take limit. */}
+        <nav className="mt-3 flex flex-wrap gap-1 rounded-md border border-emce-border p-1">
+          {STATUS_FILTERS.map((s) => {
+            const count =
+              s === "ALL" ? totalCount : countByStatus[s as CompanyVerification] ?? 0;
+            const active = s === activeStatus;
+            return (
+              <Link
+                key={s}
+                href={s === "ALL" ? "/admin/employers" : `/admin/employers?status=${s}`}
+                className={`whitespace-nowrap rounded px-3 py-1.5 text-xs font-semibold ${
+                  active
+                    ? "bg-emce-light-soft text-emce-darkest"
+                    : "text-emce-text-sec hover:text-emce-text"
+                }`}
+              >
+                {s === "ALL" ? "All" : s.charAt(0) + s.slice(1).toLowerCase()}
+                <span className="ml-1.5 text-[10px] text-emce-text-muted">
+                  {count}
+                </span>
+              </Link>
+            );
+          })}
+        </nav>
+
+        {/* Bulk-delete CTA, only when filtered to REJECTED. Skips
+            companies whose jobs have applications attached so we never
+            silently destroy candidate history. */}
+        {activeStatus === "REJECTED" && companies.length > 0 && (
+          <Card className="mt-3 border-emce-orange p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="text-sm font-bold text-emce-orange">
+                  Bulk delete rejected
+                </h3>
+                <p className="mt-0.5 text-hint text-emce-text-sec">
+                  Permanently delete every REJECTED company that has no
+                  application history. Companies whose jobs received
+                  applications will be skipped — review those individually.
+                </p>
+              </div>
+              <form action={bulkDeleteRejectedCompanies}>
+                <ConfirmSubmit
+                  confirm={`Permanently delete every REJECTED company that has no applications attached? This cannot be undone.`}
+                  size="sm"
+                  variant="destructive"
+                >
+                  Delete all rejected
+                </ConfirmSubmit>
+              </form>
+            </div>
+          </Card>
+        )}
+
         <ul className="mt-6 space-y-3">
           {companies.map((c) => (
             <li key={c.id}>
@@ -120,6 +216,18 @@ export default async function AdminEmployersPage({
                     </p>
                     {c.description && <p className="mt-1 text-hint text-emce-text-sec">{c.description}</p>}
                     {c.website && <p className="text-hint text-emce-text-muted">{c.website}</p>}
+                    {/* Surface the rejection reason on REJECTED rows so
+                        moderators can see why this was flagged. The
+                        owner saw the same text via email when reject
+                        landed. */}
+                    {c.verificationStatus === "REJECTED" && c.rejectionReason && (
+                      <div className="mt-2 rounded border border-emce-orange bg-emce-orange-light p-2 text-hint">
+                        <p className="font-bold text-emce-orange">Rejection reason</p>
+                        <p className="mt-0.5 whitespace-pre-line text-emce-text">
+                          {c.rejectionReason}
+                        </p>
+                      </div>
+                    )}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <Button asChild size="sm" variant="outline">
@@ -130,16 +238,55 @@ export default async function AdminEmployersPage({
                       <input type="hidden" name="status" value="VERIFIED" />
                       <Button type="submit" size="sm" disabled={c.verificationStatus === "VERIFIED"}>Verify</Button>
                     </form>
-                    <form action={setCompanyVerification}>
+                    {/* Reject opens a small disclosure with a required
+                        reason. The reason is saved to Company.rejectionReason
+                        AND emailed to the company owner so they know
+                        what to fix instead of being left in the dark. */}
+                    {c.verificationStatus !== "REJECTED" && (
+                      <details className="relative">
+                        <summary className="inline-flex cursor-pointer list-none items-center justify-center rounded bg-emce-red px-3 py-1.5 text-xs font-bold text-white hover:bg-emce-red/90">
+                          Reject
+                        </summary>
+                        <form
+                          action={setCompanyVerification}
+                          className="absolute right-0 top-full z-10 mt-1 w-72 rounded-md border border-emce-border bg-white p-3 shadow-emce-lg"
+                        >
+                          <input type="hidden" name="companyId" value={c.id} />
+                          <input type="hidden" name="status" value="REJECTED" />
+                          <label className="text-xs font-bold text-emce-text" htmlFor={`reason-${c.id}`}>
+                            Reason (emailed to owner)
+                          </label>
+                          <textarea
+                            id={`reason-${c.id}`}
+                            name="reason"
+                            required
+                            minLength={10}
+                            maxLength={2000}
+                            rows={3}
+                            placeholder={`Why is "${c.name}" being rejected? e.g. Duplicate of "Ola Electric Pvt Ltd". Description copied verbatim from Wikipedia. Website domain doesn't match company name.`}
+                            className="mt-1 w-full rounded border border-emce-border bg-white p-2 text-xs text-emce-text outline-none focus:border-emce-mid"
+                          />
+                          <div className="mt-2 flex justify-end">
+                            <Button type="submit" size="sm" variant="destructive">
+                              Send rejection
+                            </Button>
+                          </div>
+                        </form>
+                      </details>
+                    )}
+                    {/* Permanent delete — for cleaning up duplicate /
+                        spam company pages. Cascades jobs, team, events,
+                        invites, follows. Refuses if any application
+                        rows exist (server-side guard). */}
+                    <form action={deleteCompany}>
                       <input type="hidden" name="companyId" value={c.id} />
-                      <input type="hidden" name="status" value="REJECTED" />
                       <ConfirmSubmit
-                        confirm={`Reject "${c.name}" verification? They won't be able to publish jobs.`}
+                        confirm={`Permanently delete "${c.name}"? This will cascade-delete ${c._count.jobs} job(s), ${c._count.team} team member(s), and any events / invites. Candidate experience entries that linked here will unlink (kept as plain text). This cannot be undone.`}
                         size="sm"
-                        variant="destructive"
-                        disabled={c.verificationStatus === "REJECTED"}
+                        variant="ghost"
+                        className="text-emce-orange"
                       >
-                        Reject
+                        Delete
                       </ConfirmSubmit>
                     </form>
                   </div>

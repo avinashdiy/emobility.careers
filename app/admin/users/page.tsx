@@ -40,7 +40,25 @@ export default async function AdminUsersPage({
   return (
     <AdminShell>
       <div className="container max-w-6xl py-10">
-        <h1 className="text-dashboard text-emce-text">Users</h1>
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <h1 className="text-dashboard text-emce-text">Users</h1>
+          {/* CSV export honours the active filters — querystring is
+              forwarded so admins download exactly what they see. Capped
+              at 10k rows server-side. */}
+          <Button asChild variant="outline" size="sm">
+            <a
+              href={`/api/admin/users/export?${new URLSearchParams({
+                ...(sp.q ? { q: sp.q } : {}),
+                ...(sp.role ? { role: sp.role } : {}),
+                ...(sp.status ? { status: sp.status } : {}),
+              }).toString()}`}
+              download
+              aria-label="Download users CSV"
+            >
+              Export CSV
+            </a>
+          </Button>
+        </div>
 
         <Card className="mt-4 p-4">
           <form className="grid gap-3 sm:grid-cols-12">
@@ -69,11 +87,11 @@ export default async function AdminUsersPage({
           <table className="w-full min-w-[720px] text-sm">
             <thead className="bg-emce-light-soft text-left text-xs font-bold uppercase text-emce-text-sec">
               <tr>
-                <th className="p-3">Email / Name</th>
-                <th className="p-3">Role</th>
-                <th className="p-3">Status</th>
-                <th className="p-3">Joined</th>
-                <th className="p-3">Actions</th>
+                <th scope="col" className="p-3">Email / Name</th>
+                <th scope="col" className="p-3">Role</th>
+                <th scope="col" className="p-3">Status</th>
+                <th scope="col" className="p-3">Joined</th>
+                <th scope="col" className="p-3">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-emce-border">

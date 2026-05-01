@@ -1,25 +1,38 @@
 import { openai, aiModels } from "@/lib/ai/openai";
+import { trackAICall } from "@/lib/ai/track-cost";
 import type { CandidateProfile, JobPosting } from "@prisma/client";
 
 /**
  * Generate a single embedding vector for a piece of text.
  * Returns the raw float array (3072 dims for text-embedding-3-large).
  */
-export async function embed(text: string): Promise<number[]> {
+export async function embed(
+  text: string,
+  ctx?: { entityType?: string; entityId?: string },
+): Promise<number[]> {
   const trimmed = text.trim().slice(0, 8000); // model context guard
-  const res = await openai.embeddings.create({
-    model: aiModels.embedding,
-    input: trimmed,
-  });
+  const res = await trackAICall(
+    {
+      feature: "embedding",
+      model: aiModels.embedding,
+      entityType: ctx?.entityType,
+      entityId: ctx?.entityId,
+    },
+    () => openai.embeddings.create({ model: aiModels.embedding, input: trimmed }),
+  );
   return res.data[0].embedding;
 }
 
 export async function embedBatch(texts: string[]): Promise<number[][]> {
   if (!texts.length) return [];
-  const res = await openai.embeddings.create({
-    model: aiModels.embedding,
-    input: texts.map((t) => t.trim().slice(0, 8000)),
-  });
+  const res = await trackAICall(
+    { feature: "embedding-batch", model: aiModels.embedding },
+    () =>
+      openai.embeddings.create({
+        model: aiModels.embedding,
+        input: texts.map((t) => t.trim().slice(0, 8000)),
+      }),
+  );
   return res.data.map((d) => d.embedding);
 }
 
