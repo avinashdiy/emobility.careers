@@ -2,35 +2,33 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
-import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ConfirmSubmit } from "@/components/ui/confirm-submit";
-import { Badge } from "@/components/ui/badge";
-import { withdrawApplication } from "@/server/jobs/actions";
-import { relativeTime } from "@/lib/utils";
 import { getCandidateApplicationStats } from "@/lib/applications-stats";
 import { ApplicationTracker } from "@/components/candidate/ApplicationTracker";
+import {
+  JobTrackerBoard,
+  type TrackerApplication,
+  type TrackerSavedJob,
+} from "@/components/candidate/JobTrackerBoard";
+import {
+  JobTrackerTimeline,
+  type TimelineEvent,
+} from "@/components/candidate/JobTrackerTimeline";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 
 export const metadata = { title: "My applications" };
 
-const STAGE_LABELS: Record<string, { label: string; variant: "default" | "success" | "warning" | "danger" | "outline" }> = {
-  APPLIED: { label: "Applied", variant: "default" },
-  SCREENED: { label: "Screened", variant: "default" },
-  SHORTLISTED: { label: "Shortlisted", variant: "success" },
-  ASSESSMENT: { label: "Assessment", variant: "warning" },
-  INTERVIEW: { label: "Interview", variant: "warning" },
-  OFFER: { label: "Offer", variant: "success" },
-  HIRED: { label: "Hired 🎉", variant: "success" },
-  REJECTED: { label: "Not selected", variant: "danger" },
-  WITHDRAWN: { label: "Withdrawn", variant: "outline" },
-};
+const VIEWS = [
+  { value: "board", label: "Kanban" },
+  { value: "timeline", label: "Timeline" },
+] as const;
+type View = (typeof VIEWS)[number]["value"];
 
 export default async function MyApplications({
   searchParams,
 }: {
-  searchParams: Promise<{ notice?: string }>;
+  searchParams: Promise<{ notice?: string; view?: View }>;
 }) {
   const session = await auth();
   if (!session?.user) redirect("/signin?next=/me/applications");
@@ -40,8 +38,14 @@ export default async function MyApplications({
   if (!profile) redirect("/onboarding");
 
   const sp = await searchParams;
+  const view: View = sp.view === "timeline" ? "timeline" : "board";
 
-  const [applications, stats] = await Promise.all([
+  // Pull everything in parallel — applications + saved jobs + stats +
+  // (for timeline) StageHistory rows. The kanban needs the candidate's
+  // own private notes as a single string per application; the
+  // timeline needs the StageHistory + the application's appliedAt as
+  // an "applied" event.
+  const [applications, saved, stats, history, privateNotes] = await Promise.all([
     db.application.findMany({
       where: { candidateId: profile.id },
       orderBy: { appliedAt: "desc" },
@@ -51,87 +55,189 @@ export default async function MyApplications({
         },
       },
     }),
+    db.savedJob.findMany({
+      where: { candidateId: profile.id },
+      orderBy: { createdAt: "desc" },
+      include: {
+        job: {
+          include: { company: { select: { name: true, slug: true, logoUrl: true } } },
+        },
+      },
+    }),
     getCandidateApplicationStats(profile.id),
+    view === "timeline"
+      ? db.stageHistory.findMany({
+          where: {
+            application: { candidateId: profile.id },
+          },
+          orderBy: { at: "desc" },
+          take: 100,
+          include: {
+            application: {
+              select: {
+                id: true,
+                job: {
+                  include: {
+                    company: { select: { name: true, logoUrl: true } },
+                  },
+                },
+              },
+            },
+          },
+        })
+      : Promise.resolve([]),
+    // Private notes — the candidate's own ApplicationNote rows. We
+    // join them in client-side here so each kanban card carries the
+    // string directly.
+    db.applicationNote.findMany({
+      where: {
+        authorId: session.user.id,
+        visibility: "PRIVATE",
+        application: { candidateId: profile.id },
+      },
+      select: { applicationId: true, body: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
+  // Pre-filter: hide saved jobs the candidate has already applied to,
+  // so they don't appear in BOTH the Saved column and the Applied
+  // column. (They're still saved in the DB; we just don't render
+  // duplicates.)
+  const appliedJobIds = new Set(applications.map((a) => a.job.id));
+  const savedNotApplied = saved.filter((s) => !appliedJobIds.has(s.job.id));
+
+  // Build the latest-private-note-per-application map. Most recent
+  // wins (already ordered desc above).
+  const noteByApp = new Map<string, string>();
+  for (const n of privateNotes) {
+    if (!noteByApp.has(n.applicationId)) noteByApp.set(n.applicationId, n.body);
+  }
+
+  const kanbanApps: TrackerApplication[] = applications.map((a) => ({
+    id: a.id,
+    stage: a.stage,
+    appliedAt: a.appliedAt.toISOString(),
+    matchScore: a.matchScore,
+    privateNote: noteByApp.get(a.id) ?? null,
+    job: {
+      id: a.job.id,
+      slug: a.job.slug,
+      title: a.job.title,
+      company: {
+        name: a.job.company.name,
+        slug: a.job.company.slug,
+        logoUrl: a.job.company.logoUrl,
+      },
+    },
+  }));
+  const kanbanSaved: TrackerSavedJob[] = savedNotApplied.map((s) => ({
+    jobId: s.jobId,
+    savedAt: s.createdAt.toISOString(),
+    job: {
+      id: s.job.id,
+      slug: s.job.slug,
+      title: s.job.title,
+      company: {
+        name: s.job.company.name,
+        slug: s.job.company.slug,
+        logoUrl: s.job.company.logoUrl,
+      },
+    },
+  }));
+
+  // Timeline events. Synthesise an "applied" event from each
+  // Application.appliedAt because the StageHistory rows usually
+  // don't include the initial APPLIED row (the AS-IS data has them
+  // for transitions only).
+  const timelineEvents: TimelineEvent[] = view === "timeline" ? [
+    ...applications.map((a) => ({
+      id: `app:${a.id}`,
+      at: a.appliedAt,
+      kind: "applied",
+      fromStage: null,
+      toStage: "APPLIED",
+      byCandidate: true,
+      job: {
+        id: a.job.id,
+        slug: a.job.slug,
+        title: a.job.title,
+        company: { name: a.job.company.name, logoUrl: a.job.company.logoUrl },
+      },
+    })),
+    ...history.map((h) => ({
+      id: h.id,
+      at: h.at,
+      kind: h.toStage === "WITHDRAWN" ? "withdrawn" : "stage_change",
+      fromStage: h.fromStage,
+      toStage: h.toStage,
+      // We don't have a clean "did the candidate trigger this"
+      // signal — the only candidate-driven transition is to
+      // WITHDRAWN, so use that as the heuristic.
+      byCandidate: h.toStage === "WITHDRAWN",
+      job: {
+        id: h.application.job.id,
+        slug: h.application.job.slug,
+        title: h.application.job.title,
+        company: {
+          name: h.application.job.company.name,
+          logoUrl: h.application.job.company.logoUrl,
+        },
+      },
+    })),
+  ].sort((a, b) => b.at.getTime() - a.at.getTime()) : [];
+
+  const totalCards = applications.length + savedNotApplied.length;
+
   return (
-    // Chrome (header + footer) comes from `app/me/layout.tsx`. The
-    // page used to render its own mini-header with a "Dashboard" link
-    // but that double-stacked under the layout's SiteHeader. The "My
-    // applications" link in the user menu + the Dashboard tab in the
-    // SiteHeader already cover navigation back to /me.
-    <div className="container max-w-4xl space-y-6 py-10">
-        <PageHeader
-          title="My applications"
-          subtitle={`${applications.length} total`}
+    <div className="container max-w-6xl space-y-6 py-10">
+      <PageHeader
+        title="My applications"
+        subtitle={`${applications.length} application${applications.length === 1 ? "" : "s"} · ${savedNotApplied.length} saved`}
+      />
+
+      {applications.length > 0 && <ApplicationTracker stats={stats} />}
+
+      {sp.notice && (
+        <div className="rounded-md bg-emce-light-soft p-3 text-sm text-emce-dark">
+          {sp.notice}
+        </div>
+      )}
+
+      {/* View toggle — keeps the URL queryable so a recruiter glance at
+          a candidate's bookmark survives a page reload. */}
+      <div className="flex items-center gap-1 rounded-md border border-emce-border p-1">
+        {VIEWS.map((v) => (
+          <Link
+            key={v.value}
+            href={`/me/applications?view=${v.value}`}
+            className={`flex-1 rounded px-3 py-1.5 text-center text-xs font-bold ${
+              v.value === view
+                ? "bg-emce-light-soft text-emce-darkest"
+                : "text-emce-text-sec hover:text-emce-text"
+            }`}
+          >
+            {v.label}
+          </Link>
+        ))}
+      </div>
+
+      {totalCards === 0 ? (
+        <EmptyState
+          icon="📨"
+          title="No applications or saved jobs yet"
+          body="Browse jobs and save the interesting ones — they'll show up here in the Saved column."
+          action={
+            <Button asChild>
+              <Link href="/jobs">Find jobs →</Link>
+            </Button>
+          }
         />
-
-        {applications.length > 0 && <ApplicationTracker stats={stats} />}
-
-        {sp.notice && (
-          <div className="rounded-md bg-emce-light-soft p-3 text-sm text-emce-dark">{sp.notice}</div>
-        )}
-
-        {applications.length === 0 ? (
-          <EmptyState
-            icon="📨"
-            title="No applications yet"
-            body="Browse jobs and apply with your profile in one click."
-            action={
-              <Button asChild>
-                <Link href="/jobs">Find jobs →</Link>
-              </Button>
-            }
-          />
-        ) : (
-          <ul className="space-y-3">
-            {applications.map((a) => {
-              const stageInfo = STAGE_LABELS[a.stage] ?? STAGE_LABELS.APPLIED;
-              return (
-                <li key={a.id}>
-                  <Card>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-start gap-3">
-                        <div className="grid h-11 w-11 place-items-center overflow-hidden rounded-md bg-emce-light-soft text-base font-extrabold text-emce-dark">
-                          {a.job.company.logoUrl ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={a.job.company.logoUrl} alt={a.job.company.name} className="h-full w-full object-cover" />
-                          ) : (
-                            a.job.company.name[0]?.toUpperCase()
-                          )}
-                        </div>
-                        <div>
-                          <Link href={`/job/${a.job.slug}`} className="font-bold text-emce-text hover:underline">
-                            {a.job.title}
-                          </Link>
-                          <p className="text-hint text-emce-text-sec">
-                            {a.job.company.name} · Applied {relativeTime(a.appliedAt)}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge variant={stageInfo.variant}>{stageInfo.label}</Badge>
-                        {!["WITHDRAWN", "REJECTED", "HIRED"].includes(a.stage) && (
-                          <form action={withdrawApplication}>
-                            <input type="hidden" name="id" value={a.id} />
-                            <ConfirmSubmit
-                              confirm={`Withdraw your application for "${a.job.title}"? This can't be undone.`}
-                              variant="ghost"
-                              size="sm"
-                              pendingLabel="Withdrawing…"
-                            >
-                              Withdraw
-                            </ConfirmSubmit>
-                          </form>
-                        )}
-                      </div>
-                    </div>
-                  </Card>
-                </li>
-              );
-            })}
-          </ul>
-        )}
+      ) : view === "board" ? (
+        <JobTrackerBoard applications={kanbanApps} saved={kanbanSaved} />
+      ) : (
+        <JobTrackerTimeline events={timelineEvents} />
+      )}
     </div>
   );
 }

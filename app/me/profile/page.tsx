@@ -23,6 +23,7 @@ import { CustomCtaEditor } from "@/components/profile/sections/CustomCtaEditor";
 import { VolunteerExperienceEditor } from "@/components/profile/sections/VolunteerExperienceEditor";
 import { FeaturedPostsEditor } from "@/components/profile/sections/FeaturedPostsEditor";
 import { RecommendationsInbox } from "@/components/profile/sections/RecommendationsInbox";
+import { JobChangeAnnouncer } from "@/components/profile/JobChangeAnnouncer";
 import { ProfileCompletenessCard } from "@/components/profile/ProfileCompletenessCard";
 import { ImportProfileCard } from "@/components/profile/ImportProfileCard";
 import { DIYguruClaimCard } from "@/components/profile/DIYguruClaimCard";
@@ -72,7 +73,7 @@ export default async function MyProfilePage({
 
   // Side queries for the new sections — fetched in parallel so we
   // don't add a serial round-trip on top of the main profile load.
-  const [ownPosts, receivedRecs, hasLinkedinAccount] = await Promise.all([
+  const [ownPosts, receivedRecs, hasLinkedinAccount, jobChanges] = await Promise.all([
     db.post.findMany({
       where: { authorId: session.user.id },
       orderBy: [{ featured: "desc" }, { featuredAt: "desc" }, { createdAt: "desc" }],
@@ -109,6 +110,25 @@ export default async function MyProfilePage({
         select: { id: true },
       })
       .then((row) => Boolean(row)),
+    // Past job-change announcements (published + retracted). Powers
+    // the JobChangeAnnouncer card. Bounded — most users will have
+    // 1–3 over the platform's lifetime.
+    db.jobChangeAnnouncement.findMany({
+      where: { candidateId: profile.id },
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      select: {
+        id: true,
+        toCompany: true,
+        toTitle: true,
+        fromCompany: true,
+        fromTitle: true,
+        note: true,
+        published: true,
+        congratsCount: true,
+        createdAt: true,
+      },
+    }),
   ]);
 
   return (
@@ -305,6 +325,15 @@ export default async function MyProfilePage({
           </div>
           <div id="recommendations" className="scroll-mt-20">
             <RecommendationsInbox recs={receivedRecs} />
+          </div>
+          {/* Career-moves announcer — opt-in publishing to /pulse →
+              Who's moving. Lives next to recommendations because
+              both are "what others see about my career trajectory". */}
+          <div id="career-moves" className="scroll-mt-20">
+            <JobChangeAnnouncer
+              past={jobChanges}
+              optedIn={profile.announceJobChange}
+            />
           </div>
           <div id="privacy" className="scroll-mt-20">
             <PrivacyEditor

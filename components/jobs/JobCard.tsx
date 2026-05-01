@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { Prisma } from "@prisma/client";
 import { Badge } from "@/components/ui/badge";
+import { MatchScorePill } from "@/components/jobs/MatchScoreCard";
 import { formatSalaryRange, relativeTime } from "@/lib/utils";
 import { MapPin, Briefcase } from "lucide-react";
 
@@ -25,7 +26,7 @@ export interface JobCardData {
   };
 }
 
-export function JobCard({ job }: { job: JobCardData }) {
+export function JobCard({ job, matchScore }: { job: JobCardData; matchScore?: number | null }) {
   return (
     <Link
       href={`/job/${job.slug}`}
@@ -43,11 +44,17 @@ export function JobCard({ job }: { job: JobCardData }) {
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <h3 className="font-bold text-emce-text">{job.title}</h3>
-            {job.publishedAt && (
-              <span className="hidden flex-shrink-0 whitespace-nowrap text-hint text-emce-text-muted sm:inline">
-                {relativeTime(job.publishedAt)}
-              </span>
-            )}
+            <div className="flex flex-shrink-0 items-center gap-2">
+              {/* Match-score pill — only when the page passed in a
+                  candidate-specific score. Same colour scale as the
+                  full card on the job-detail page. */}
+              {typeof matchScore === "number" && <MatchScorePill score={matchScore} />}
+              {job.publishedAt && (
+                <span className="hidden whitespace-nowrap text-hint text-emce-text-muted sm:inline">
+                  {relativeTime(job.publishedAt)}
+                </span>
+              )}
+            </div>
           </div>
           <p className="text-hint text-emce-text-sec">{job.company.name}</p>
           <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-1 text-hint text-emce-text-muted">

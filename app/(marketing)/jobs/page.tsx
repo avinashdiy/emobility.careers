@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
+import { rankJobsForCandidate } from "@/server/matching/candidate-match";
 
 export const metadata = { title: "Browse EV jobs" };
 
@@ -22,12 +23,19 @@ export default async function JobsPage({
   // verified students. We resolve the flag here once and pass it down
   // so the WHERE clause stays a single Prisma roundtrip.
   let viewerIsDIYguru = false;
+  // Hold onto the candidate row when present so we can score the
+  // result set afterward. Skip the lookup entirely for non-candidates
+  // to keep the anonymous and recruiter paths cheap.
+  let candidateProfileId: string | null = null;
   if (session?.user) {
     const profile = await db.candidateProfile.findUnique({
       where: { userId: session.user.id },
-      select: { isDIYguruVerified: true },
+      select: { id: true, isDIYguruVerified: true },
     });
     viewerIsDIYguru = !!profile?.isDIYguruVerified;
+    if (session.user.role === "CANDIDATE" && profile) {
+      candidateProfileId = profile.id;
+    }
   }
   const filter = {
     q: sp.q,
@@ -40,6 +48,41 @@ export default async function JobsPage({
   };
   const { jobs, total, page, pages } = await searchJobs(filter);
   const evDomains = await db.eVDomain.findMany({ orderBy: { order: "asc" } });
+
+  // Score the visible page of results for the logged-in candidate so
+  // each card can carry an "X% match" pill. We pass the IDs through
+  // `rankJobsForCandidate` which prefers the cache and bounds live
+  // computes per request — no risk of N concurrent embed calls. The
+  // map is keyed by job id so the JobCard render stays a flat lookup.
+  let scoreByJobId: Map<string, number> = new Map();
+  let bestMatchesAbove60: { id: string; score: number }[] = [];
+  if (candidateProfileId && jobs.length > 0) {
+    try {
+      const ranked = await rankJobsForCandidate(
+        candidateProfileId,
+        jobs.map((j) => j.id),
+        jobs.length, // score everything on the page (rank takes top-K)
+      );
+      scoreByJobId = new Map(ranked.map((r) => [r.jobId, r.score]));
+      // "Best matches for you" only highlights jobs that are
+      // genuinely worth flagging. 0.6+ = decent or strong match per
+      // MatchScoreCard's tone bands; below that we'd be promoting
+      // weak fits and the section loses trust fast.
+      bestMatchesAbove60 = ranked
+        .filter((r) => r.score >= 0.6)
+        .slice(0, 3)
+        .map((r) => ({ id: r.jobId, score: r.score }));
+    } catch {
+      // Scoring is non-essential — let the page render.
+    }
+  }
+  // Resolve the JobCard rows for the highlighted "Best matches" strip
+  // (if any). We already have these objects in `jobs`, so a Map
+  // lookup beats a second DB roundtrip.
+  const jobsById = new Map(jobs.map((j) => [j.id, j]));
+  const bestMatches = bestMatchesAbove60
+    .map((b) => ({ job: jobsById.get(b.id), score: b.score }))
+    .filter((x): x is { job: NonNullable<typeof x.job>; score: number } => Boolean(x.job));
 
   return (
     <div className="container py-10">
@@ -147,6 +190,34 @@ export default async function JobsPage({
         </div>
       </Card>
 
+      {/* "Best matches for you" — surfaces only when at least one job
+          on the visible page scores 60%+ for this candidate. Keeps
+          the section credible: an empty page or a page of long-shots
+          shouldn't get a "best matches" headline. */}
+      {bestMatches.length > 0 && (
+        <Card className="mb-6 border-emce-mid/40 bg-emce-light-soft/40 p-4">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <div>
+              <Badge variant="success">For you</Badge>
+              <h2 className="mt-1 text-section text-emce-text">
+                Best matches based on your profile
+              </h2>
+              <p className="text-hint text-emce-text-sec">
+                Picked from the {jobs.length} jobs on this page using your
+                skills, experience, and EV domains.
+              </p>
+            </div>
+          </div>
+          <ul className="space-y-2">
+            {bestMatches.map(({ job, score }) => (
+              <li key={job.id}>
+                <JobCard job={job} matchScore={score} />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+
       {jobs.length === 0 ? (
         <Card className="p-10 text-center">
           <div className="text-4xl">🔎</div>
@@ -157,7 +228,7 @@ export default async function JobsPage({
         <ul className="space-y-3">
           {jobs.map((j) => (
             <li key={j.id}>
-              <JobCard job={j} />
+              <JobCard job={j} matchScore={scoreByJobId.get(j.id) ?? null} />
             </li>
           ))}
         </ul>

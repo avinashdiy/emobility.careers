@@ -60,11 +60,35 @@ async function runCleanup() {
     data: { status: "EXPIRED" },
   });
 
+  // Cap RateLimitEvent retention at 30 days. Longest active limit
+  // window we honour is 24h, so 30d covers a full month of forensics
+  // and the table can't grow unbounded.
+  const rateLimitPurged = await db.rateLimitEvent.deleteMany({
+    where: { createdAt: { lt: new Date(now.getTime() - 30 * 86400_000) } },
+  });
+
+  // Lift suspensions whose 7-day window has passed. The strike
+  // helper recomputes accountState based on the current strike
+  // count — most lifted users land at WARNED; users still over the
+  // BAN threshold stay BANNED.
+  const { liftExpiredSuspensions } = await import("@/lib/strikes");
+  const { lifted: suspensionsLifted } = await liftExpiredSuspensions();
+
   logger.info(
-    { deleted: result.count, expiredContactShares: expired.count },
+    {
+      deleted: result.count,
+      expiredContactShares: expired.count,
+      rateLimitPurged: rateLimitPurged.count,
+      suspensionsLifted,
+    },
     "[notif-maintenance] cleanup tick",
   );
-  return { deleted: result.count, expiredContactShares: expired.count };
+  return {
+    deleted: result.count,
+    expiredContactShares: expired.count,
+    rateLimitPurged: rateLimitPurged.count,
+    suspensionsLifted,
+  };
 }
 
 async function runDigest() {
@@ -139,11 +163,15 @@ async function runDigest() {
             </p>
           </div>
         </div>`;
+      // Daily digest is the biggest bulk volume on the platform —
+      // route it through the bulk SES identity so a complaint spike
+      // can't suppress transactional auth emails.
       await sendMail({
         to: u.email,
         subject: `${total} update${total === 1 ? "" : "s"} on eMobility Careers`,
         html,
         text: `You have ${total} unread updates. Open ${env.NEXT_PUBLIC_APP_URL}/me/notifications to read them.`,
+        kind: "bulk",
       });
       sent += 1;
     } catch (err) {
@@ -260,6 +288,28 @@ export function startNotificationMaintenanceWorker() {
       if (job.data.kind === "digest") return runDigest();
       if (job.data.kind === "stale-jobs") return runStaleJobArchival();
       if (job.data.kind === "purge-deleted") return runPurgeDeletedAccounts();
+      if (job.data.kind === "brigading") {
+        const { scanForBrigading } = await import("@/lib/social/brigading");
+        return scanForBrigading();
+      }
+      if (job.data.kind === "backup-verify") {
+        const { verifyLatestBackup } = await import("@/lib/ops/backup-verify");
+        return verifyLatestBackup();
+      }
+      if (job.data.kind === "drill-reminder") {
+        const { sendQuarterlyDrillReminder } = await import("@/lib/ops/backup-verify");
+        return sendQuarterlyDrillReminder();
+      }
+      if (job.data.kind === "pulse-aggregate") {
+        // Daily aggregator for the Pulse trend chart. Detects "first
+        // run on a fresh deploy" by checking for ANY existing
+        // PulseSnapshot row — if none, we back-fill 30 days so the
+        // velocity chart isn't blank. Subsequent ticks aggregate
+        // yesterday only. See lib/ops/pulse-aggregator.ts.
+        const { aggregatePulseSnapshots } = await import("@/lib/ops/pulse-aggregator");
+        const existing = await db.pulseSnapshot.findFirst({ select: { id: true } });
+        return aggregatePulseSnapshots(existing ? 1 : 30);
+      }
     },
     { connection: redis, concurrency: 1 },
   );
@@ -289,6 +339,40 @@ export function startNotificationMaintenanceWorker() {
     "purge-deleted-tick",
     { tick: true, kind: "purge-deleted" },
     { repeat: { every: PURGE_DELETED_INTERVAL_MS }, jobId: "purge-deleted-tick" },
+  );
+  // Hourly brigading scan — flags suspicious reaction clusters for
+  // /admin/content?tab=suspicious. See lib/social/brigading.ts.
+  void notificationMaintenanceQueue.add(
+    "brigading-tick",
+    { tick: true, kind: "brigading" },
+    { repeat: { every: 60 * 60 * 1000 }, jobId: "brigading-tick" },
+  );
+  // Weekly Postgres backup verification + per-quarter drill reminder.
+  // Both delegate to lib/ops/backup-verify.ts which decides whether
+  // it's actually time (drill reminder is monthly tick that fires only
+  // on the 1st of Jan/Apr/Jul/Oct).
+  void notificationMaintenanceQueue.add(
+    "backup-verify-tick",
+    { tick: true, kind: "backup-verify" },
+    { repeat: { every: 7 * 24 * 60 * 60 * 1000 }, jobId: "backup-verify-tick" },
+  );
+  void notificationMaintenanceQueue.add(
+    "drill-reminder-tick",
+    { tick: true, kind: "drill-reminder" },
+    { repeat: { every: 24 * 60 * 60 * 1000 }, jobId: "drill-reminder-tick" },
+  );
+  // Daily Pulse aggregator — writes yesterday's snapshots. Fires
+  // once on worker boot (`immediately: true`) so a freshly-deployed
+  // platform isn't stuck with a blank velocity chart for 24 hours,
+  // then every 24h after. Stable jobId means a worker restart only
+  // re-queues the existing repeat, so we don't double-fire.
+  void notificationMaintenanceQueue.add(
+    "pulse-aggregate-tick",
+    { tick: true, kind: "pulse-aggregate" },
+    {
+      repeat: { every: 24 * 60 * 60 * 1000, immediately: true },
+      jobId: "pulse-aggregate-tick",
+    },
   );
 
   return worker;

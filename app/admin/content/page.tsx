@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import type { Prisma } from "@prisma/client";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -20,8 +21,18 @@ export const metadata = { title: "Content moderation" };
 const TABS = [
   { value: "posts", label: "Posts" },
   { value: "comments", label: "Comments" },
+  { value: "suspicious", label: "Suspicious activity" },
 ] as const;
 type Tab = typeof TABS[number]["value"];
+
+interface BrigadingRow {
+  postId: string;
+  postBody: string;
+  authorName: string;
+  authorSlug: string | null;
+  signals: { signal: string; evidence: Record<string, unknown>; createdAt: Date }[];
+  latestAt: Date;
+}
 
 export default async function ContentModerationPage({
   searchParams,
@@ -80,6 +91,71 @@ export default async function ContentModerationPage({
     db.postComment.count(),
   ]);
 
+  // Brigading queue — read AuditLog rows with action="post.suspected_brigading"
+  // grouped by postId so multiple signals on the same post collapse
+  // into one card. Open status only — admin must explicitly mark
+  // resolved by hiding the post or by adding a note (future).
+  let suspiciousRows: BrigadingRow[] = [];
+  let suspiciousCount = 0;
+  if (tab === "suspicious") {
+    const flags = await db.auditLog.findMany({
+      where: {
+        action: "post.suspected_brigading",
+        meta: { path: ["status"], equals: "OPEN" } as Prisma.JsonFilter,
+      },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      select: { entityId: true, meta: true, createdAt: true },
+    });
+    suspiciousCount = flags.length;
+    const byPost = new Map<string, BrigadingRow["signals"]>();
+    for (const f of flags) {
+      if (!f.entityId) continue;
+      const sig = (f.meta as { signal?: string } | null)?.signal ?? "UNKNOWN";
+      const arr = byPost.get(f.entityId) ?? [];
+      arr.push({
+        signal: sig,
+        evidence: (f.meta ?? {}) as Record<string, unknown>,
+        createdAt: f.createdAt,
+      });
+      byPost.set(f.entityId, arr);
+    }
+    if (byPost.size > 0) {
+      const flaggedPosts = await db.post.findMany({
+        where: { id: { in: [...byPost.keys()] } },
+        select: {
+          id: true,
+          body: true,
+          author: {
+            select: {
+              candidateProfile: {
+                select: { slug: true, firstName: true, lastName: true },
+              },
+            },
+          },
+        },
+      });
+      const postById = new Map(flaggedPosts.map((p) => [p.id, p]));
+      suspiciousRows = [...byPost.entries()]
+        .map(([postId, signals]) => {
+          const p = postById.get(postId);
+          const cp = p?.author.candidateProfile;
+          return {
+            postId,
+            postBody: p?.body ?? "[post deleted]",
+            authorName: cp ? `${cp.firstName} ${cp.lastName ?? ""}`.trim() : "Unknown",
+            authorSlug: cp?.slug ?? null,
+            signals,
+            latestAt: signals.reduce(
+              (max, s) => (s.createdAt > max ? s.createdAt : max),
+              signals[0].createdAt,
+            ),
+          };
+        })
+        .sort((a, b) => b.latestAt.getTime() - a.latestAt.getTime());
+    }
+  }
+
   return (
     <AdminShell>
       <div className="px-4 py-6 lg:px-8 lg:py-8 space-y-4">
@@ -99,7 +175,11 @@ export default async function ContentModerationPage({
             >
               {t.label}
               <span className="rounded-full bg-emce-light-soft px-1.5 text-[10px] font-bold text-emce-text-sec">
-                {t.value === "posts" ? postsCount : commentsCount}
+                {t.value === "posts"
+                  ? postsCount
+                  : t.value === "comments"
+                    ? commentsCount
+                    : suspiciousCount}
               </span>
             </Link>
           ))}
@@ -230,6 +310,73 @@ export default async function ContentModerationPage({
                     </li>
                   );
                 })}
+              </ul>
+            )}
+          </>
+        )}
+
+        {tab === "suspicious" && (
+          <>
+            <div className="rounded-md border border-emce-orange/40 bg-emce-orange-light/30 p-3 text-sm text-emce-text-sec">
+              Posts flagged by the brigading detector. These are NOT auto-removed.
+              Review the signals (same-IP block, co-created accounts, single-author
+              loyalty) and decide whether to action via "Remove post" on the
+              individual post or take no action. Flags clear from this view 24h
+              after the brigading scan resolves.
+            </div>
+            {suspiciousRows.length === 0 ? (
+              <EmptyState
+                icon="🕵️"
+                title="No suspicious activity flagged"
+                body="The hourly scan hasn't found anything that meets the threshold (3+ reactors with co-created accounts, same /24, or single-author loyalty)."
+              />
+            ) : (
+              <ul className="space-y-3">
+                {suspiciousRows.map((r) => (
+                  <li key={r.postId}>
+                    <Card>
+                      <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-baseline gap-2">
+                            <Link
+                              href={`/posts/${r.postId}`}
+                              className="font-bold text-emce-text hover:underline"
+                            >
+                              {r.postBody.slice(0, 100)}
+                              {r.postBody.length > 100 ? "…" : ""}
+                            </Link>
+                            <span className="text-hint text-emce-text-muted">
+                              by{" "}
+                              {r.authorSlug ? (
+                                <Link
+                                  href={`/${r.authorSlug}`}
+                                  className="font-bold text-emce-dark hover:underline"
+                                >
+                                  {r.authorName}
+                                </Link>
+                              ) : (
+                                r.authorName
+                              )}
+                            </span>
+                          </div>
+                          <ul className="mt-2 space-y-2">
+                            {r.signals.map((s, i) => (
+                              <li
+                                key={i}
+                                className="rounded-md border border-emce-orange/40 bg-white p-2 text-hint"
+                              >
+                                <Badge variant="warning">{s.signal}</Badge>
+                                <pre className="mt-1 max-h-24 overflow-auto whitespace-pre-wrap text-emce-text-muted">
+                                  {JSON.stringify(s.evidence, null, 2)}
+                                </pre>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </div>
+                    </Card>
+                  </li>
+                ))}
               </ul>
             )}
           </>

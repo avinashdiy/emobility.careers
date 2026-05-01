@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { notificationsQueue } from "@/lib/queues";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { pgRateLimit } from "@/lib/rate-limit-pg";
 import { audit } from "@/lib/audit";
 import { requireEmailVerified } from "@/lib/anti-spam";
 import { extractHashtags, extractMentions } from "@/lib/social/extract";
@@ -52,6 +53,11 @@ const postCreateSchema = z.object({
 
 export async function createPost(formData: FormData): Promise<void> {
   const session = await requireUserVerified();
+  // Postgres-backed limiter — same window as the Redis layer above
+  // but with an audit trail. Returns gracefully when limited (the
+  // void-action redirects with a notice rather than throwing).
+  const pg = await pgRateLimit({ action: "post.create", userId: session.user.id });
+  if (!pg.ok) redirect("/feed?error=" + encodeURIComponent(pg.message));
   await rateLimitOrThrow(`post:${session.user.id}`, "message");
 
   const parsed = postCreateSchema.safeParse(Object.fromEntries(formData));
@@ -245,6 +251,8 @@ const commentSchema = z.object({
 
 export async function addComment(formData: FormData): Promise<void> {
   const session = await requireUserVerified();
+  const pgLimit = await pgRateLimit({ action: "comment.create", userId: session.user.id });
+  if (!pgLimit.ok) return;
   await rateLimitOrThrow(`comment:${session.user.id}`, "message");
   const parsed = commentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) return;

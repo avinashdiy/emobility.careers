@@ -287,6 +287,10 @@ export async function actionPostReport(formData: FormData) {
     // from public/connections feeds but stays around for the author's
     // record + appeal flow. Also drops the post out of the embedding
     // index implicitly because feed queries filter by visibility.
+    const post = await db.post.findUnique({
+      where: { id: entry.entityId },
+      select: { authorId: true, visibility: true },
+    });
     await db.post.update({
       where: { id: entry.entityId },
       data: { visibility: "PRIVATE" },
@@ -298,6 +302,21 @@ export async function actionPostReport(formData: FormData) {
       entityId: entry.entityId,
       meta: { sourceReportId: entry.id, notes },
     });
+    // Strike the author. The post-report → action path is the
+    // "report upheld" trail-of-truth, so the strike reason reflects
+    // that. Skip if the post was already PRIVATE — the report had
+    // no effect on visibility, so no strike-worthy moderation
+    // occurred. (issueStrike is also no-op-safe for ADMIN targets.)
+    if (post && post.visibility !== "PRIVATE") {
+      const { issueStrike } = await import("@/lib/strikes");
+      await issueStrike({
+        targetUserId: post.authorId,
+        authorId: session.user.id,
+        reason: "REPORT_UPHELD",
+        note: notes ?? "Your post was removed after a community report.",
+        evidenceRef: entry.entityId ?? undefined,
+      });
+    }
   }
 
   revalidatePath("/admin/post-reports");

@@ -363,6 +363,151 @@ export async function getFeaturedCandidates(limit = 5): Promise<FeaturedCandidat
   ];
 }
 
+// ─── Hiring-velocity trend (30-day chart) ────────────────────
+
+export interface VelocityPoint {
+  /// ISO date string, UTC midnight (e.g. "2026-04-15").
+  date: string;
+  /// New jobs published that day.
+  jobsNew: number;
+  /// New hires (HIRED stage transitions) that day.
+  hires: number;
+}
+
+export interface VelocitySummary {
+  /// Per-day rows for the last 30 days, oldest first. Missing days
+  /// (e.g. weekends with zero hiring activity) are zero-filled so
+  /// the sparkline doesn't have gaps.
+  points: VelocityPoint[];
+  /// 7-day rolling totals for the most recent week and the prior
+  /// week — drives the "↑ 12% week-over-week" delta.
+  thisWeekJobs: number;
+  prevWeekJobs: number;
+  thisWeekHires: number;
+  prevWeekHires: number;
+}
+
+/**
+ * Read 30 days of PulseSnapshot rows for the JOBS_NEW + HIRES kinds
+ * and stitch them into a per-day series. Falls back to live counts if
+ * the worker hasn't run yet (greenfield deployments) — the worker
+ * back-fills at startup.
+ */
+export async function getHiringVelocity(): Promise<VelocitySummary> {
+  const today = new Date();
+  // Anchor to UTC midnight so day boundaries match what the worker
+  // upserts.
+  const todayUtc = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate()));
+  const thirtyDaysAgo = new Date(todayUtc.getTime() - 30 * ONE_DAY);
+
+  const snapshots = await db.pulseSnapshot.findMany({
+    where: {
+      date: { gte: thirtyDaysAgo, lte: todayUtc },
+      kind: { in: ["JOBS_NEW", "HIRES"] },
+      // Empty-string sentinel = rollup level (everything-combined).
+      // Per-EV-domain slices use the domain slug here when added.
+      bucket: "",
+    },
+    orderBy: { date: "asc" },
+  });
+
+  const byDate = new Map<string, { jobsNew: number; hires: number }>();
+  for (const s of snapshots) {
+    const key = s.date.toISOString().slice(0, 10);
+    const cur = byDate.get(key) ?? { jobsNew: 0, hires: 0 };
+    if (s.kind === "JOBS_NEW") cur.jobsNew = s.value;
+    if (s.kind === "HIRES") cur.hires = s.value;
+    byDate.set(key, cur);
+  }
+
+  // Zero-fill the missing dates so the sparkline always has 30 points.
+  const points: VelocityPoint[] = [];
+  for (let i = 29; i >= 0; i--) {
+    const d = new Date(todayUtc.getTime() - i * ONE_DAY);
+    const key = d.toISOString().slice(0, 10);
+    const v = byDate.get(key) ?? { jobsNew: 0, hires: 0 };
+    points.push({ date: key, jobsNew: v.jobsNew, hires: v.hires });
+  }
+
+  // Roll up into the two weekly windows for the WoW delta.
+  const last7 = points.slice(-7);
+  const prev7 = points.slice(-14, -7);
+  const sum = (arr: VelocityPoint[], k: "jobsNew" | "hires") =>
+    arr.reduce((acc, p) => acc + p[k], 0);
+
+  return {
+    points,
+    thisWeekJobs: sum(last7, "jobsNew"),
+    prevWeekJobs: sum(prev7, "jobsNew"),
+    thisWeekHires: sum(last7, "hires"),
+    prevWeekHires: sum(prev7, "hires"),
+  };
+}
+
+// ─── "Who's Moving" — recent job-change announcements ────────
+
+export interface WhosMovingRow {
+  id: string;
+  candidateName: string;
+  candidateSlug: string;
+  candidatePhotoUrl: string | null;
+  toCompany: string;
+  toCompanySlug: string | null;
+  toCompanyLogoUrl: string | null;
+  toTitle: string;
+  fromCompany: string | null;
+  fromTitle: string | null;
+  note: string | null;
+  congratsCount: number;
+  createdAt: Date;
+}
+
+/**
+ * Latest published JobChangeAnnouncement rows whose candidate is
+ * still PUBLIC. Bounded to N items + the last 60 days so a long-quiet
+ * platform doesn't surface a stale-feeling feed.
+ */
+export async function getWhosMoving(limit = 10): Promise<WhosMovingRow[]> {
+  const since = new Date(Date.now() - 60 * ONE_DAY);
+  const rows = await db.jobChangeAnnouncement.findMany({
+    where: {
+      published: true,
+      createdAt: { gte: since },
+      candidate: { cvVisibility: "EVERYONE" },
+    },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    include: {
+      candidate: {
+        select: {
+          slug: true,
+          firstName: true,
+          lastName: true,
+          profilePhotoUrl: true,
+        },
+      },
+      toCompanyRef: { select: { slug: true, logoUrl: true } },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    candidateName: [r.candidate.firstName, r.candidate.lastName]
+      .filter(Boolean)
+      .join(" "),
+    candidateSlug: r.candidate.slug,
+    candidatePhotoUrl: r.candidate.profilePhotoUrl,
+    toCompany: r.toCompany,
+    toCompanySlug: r.toCompanyRef?.slug ?? null,
+    toCompanyLogoUrl: r.toCompanyRef?.logoUrl ?? null,
+    toTitle: r.toTitle,
+    fromCompany: r.fromCompany,
+    fromTitle: r.fromTitle,
+    note: r.note,
+    congratsCount: r.congratsCount,
+    createdAt: r.createdAt,
+  }));
+}
+
 // ─── Helpers ─────────────────────────────────────────────────
 
 /**

@@ -28,6 +28,59 @@ enum AccountStatus {
   DELETED
 }
 
+/// Finer-grained moderation lifecycle (see `User.accountState`).
+/// Distinct from `AccountStatus` because:
+///   • `AccountStatus` is the legacy hard-state (ACTIVE / SUSPENDED /
+///     DELETED) — gates auth + visibility platform-wide.
+///   • `AccountState` is a moderation-policy state derived from
+///     accumulated strikes. ACTIVE is the "in good standing" default;
+///     WARNED is "next strike triggers a suspension"; SUSPENDED is the
+///     same as AccountStatus.SUSPENDED but auto-stamped via the strike
+///     state machine; BANNED is permanent (5 strikes).
+///
+/// Both fields are kept and updated in sync inside the strike helper.
+/// Code paths read whichever fits the question — middleware reads
+/// AccountStatus for the auth gate; the user-facing /me/account page
+/// reads AccountState for the warning copy.
+enum AccountState {
+  ACTIVE     /// Default — full platform access.
+  WARNED     /// 1-2 strikes. Banner shown on /me explaining the next
+             /// strike triggers a 7-day suspension.
+  SUSPENDED  /// 3-4 strikes. 7-day cool-off; can read but not post,
+             /// comment, answer, apply, or message. Auto-restored
+             /// after 7 days back to WARNED.
+  BANNED     /// 5+ strikes. Permanent. Login blocked entirely.
+}
+
+/// Reasons an admin can issue a strike. Drives the "what happened"
+/// copy shown to the user on /me/account so they know exactly what
+/// triggered each strike — transparency is the deterrent. A strike
+/// row carries an optional free-text `note` that admins use for
+/// edge cases.
+enum StrikeReason {
+  COMMENT_HIDDEN          /// Comment hidden by a moderator
+  POST_REMOVED            /// Post hidden / removed by a moderator
+  REPORT_UPHELD           /// User reported; report was actioned
+  HARASSMENT              /// Repeated inappropriate behaviour
+  IMPERSONATION           /// Pretending to be another person / brand
+  SPAM                    /// Spammy posting / messaging
+  TOS_VIOLATION           /// Generic catch-all
+  OTHER                   /// Free-text reason (see `note`)
+}
+
+/// Grievance ticket lifecycle. Maps to Indian IT Rules 2021's
+/// 24-hour acknowledgement + 15-day resolution SLAs. ACK is auto-set
+/// when a grievance officer first opens the ticket OR after 24h
+/// elapses (worker tick — closes the SLA window even if no human
+/// looked).
+enum GrievanceStatus {
+  OPEN          /// New, no admin has touched it yet
+  ACKNOWLEDGED  /// Admin opened / commented (24h SLA met)
+  IN_PROGRESS   /// Admin actively working on it
+  RESOLVED      /// Admin closed with resolution notes
+  REJECTED      /// Out of scope / spam / duplicate
+}
+
 model User {
   id              String        @id @default(cuid())
   email           String        @unique
@@ -45,6 +98,14 @@ model User {
   shadowBannedAt  DateTime?
   shadowBannedById String?
   shadowBanReason String?       @db.Text
+  /// Cumulative moderation strikes — see model Strike + enum
+  /// AccountState. Helper `lib/strikes.ts` is the only writer.
+  strikes         Int           @default(0)
+  accountState    AccountState  @default(ACTIVE)
+  /// Auto-set to (now + 7d) when accountState transitions to
+  /// SUSPENDED at 3 strikes. The notification-maintenance worker
+  /// tick reads this to auto-restore at expiry.
+  suspendedUntil  DateTime?
   locale          String        @default("en")
   phone           String?
   phoneVerifiedAt DateTime?
@@ -123,6 +184,12 @@ model User {
   // a real User; if either party leaves, the row goes with them.
   contactShareRequestsSent     ContactShareRequest[] @relation("ContactShareRequester")
   contactShareRequestsReceived ContactShareRequest[] @relation("ContactShareTarget")
+  // Strike trail — both sides for audit + admin dashboards.
+  strikesReceived              Strike[]              @relation("StrikeTarget")
+  strikesIssued                Strike[]              @relation("StrikeAuthor")
+  // Grievance officer ticket queue (filer + assignee).
+  grievancesFiled              GrievanceTicket[]     @relation("GrievanceFiler")
+  grievancesAssigned           GrievanceTicket[]     @relation("GrievanceAssignee")
   followingUsers      Follow[]       @relation("Follower")
   followers           Follow[]       @relation("FolloweeUser")
   posts               Post[]         @relation("PostAuthor")
@@ -467,6 +534,14 @@ model CandidateProfile {
   documents          CandidateDocument[]
   assessmentAttempts AssessmentAttempt[]
   featuredSlots      FeaturedSlot[]
+  jobMatchCache      JobMatchCache[]
+  jobChangeAnnouncements JobChangeAnnouncement[]
+
+  /// Whether the platform should write a public JobChangeAnnouncement
+  /// when this candidate's `current` employer flips. Defaults to false
+  /// (opt-in) — same posture LinkedIn took before they made it the
+  /// default. Toggleable from /me/preferences.
+  announceJobChange Boolean @default(false)
 
   @@index([profileMode, availabilityStatus, openToWork])
   @@index([isDIYguruVerified])
@@ -781,6 +856,10 @@ model Company {
   // Events & webinars hosted by this company
   events Event[]
 
+  // Job-change announcements landing at this company (Who's Moving feed).
+  // Inverse of JobChangeAnnouncement.toCompanyRef.
+  incomingHires JobChangeAnnouncement[] @relation("JobChangeToCompany")
+
   // WordPress legacy tracking
   wpLegacyId Int? @unique
 
@@ -918,6 +997,7 @@ model JobPosting {
   assessments      Assessment[]
   campusDrives     CampusDriveJob[]
   reports          JobReport[]
+  matchCache       JobMatchCache[]
   // Posts that attach this job to the social feed
   feedPosts        Post[]
   // Competitions linked to this job (winner-perk pipeline)
@@ -3367,4 +3447,250 @@ model Subscription {
   @@index([userId, status])
   @@index([companyId, status])
   @@index([planId, status])
+}
+
+// ─── Postgres-backed rate limiter ────────────────────────────
+//
+// Audit-trail-style rate limiting used by every public-facing
+// server action. Each attempt (allowed or denied) creates a row.
+// The helper in `lib/rate-limit-pg.ts` reads recent rows for the
+// (action, ip|userId) tuple to decide whether to allow.
+//
+// Why Postgres + Redis side-by-side: we already have a Redis
+// limiter (`lib/rate-limit.ts`) for hot auth paths where every
+// extra millisecond hurts UX. The PG limiter is for everything
+// else AND for the audit trail — knowing who tried to apply 50
+// times in 5 minutes is forensically valuable, and Redis loses
+// that context the moment the window slides past.
+//
+// Rows are TTL'd via the notification-maintenance worker — anything
+// older than 30 days gets dropped because the slowest active limit
+// window we use is 24 hours.
+model RateLimitEvent {
+  id        String   @id @default(cuid())
+  /// Logical action key — e.g. "post.create", "auth.signin",
+  /// "id-verify.submit". Use dotted snake_case so dashboards can
+  /// `LIKE 'auth.%'` to filter a category.
+  action    String
+  /// Best-effort client IP from x-forwarded-for / x-real-ip.
+  /// Null for purely server-internal triggers (rare).
+  ip        String?
+  /// Authenticated user id when known. Null for signed-out paths
+  /// (signup, magic-link request, etc.).
+  userId    String?
+  /// Whether the action was allowed (true) or rate-limited (false).
+  /// Denied rows are the most useful signal in dashboards.
+  allowed   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([action, ip, createdAt])
+  @@index([action, userId, createdAt])
+  @@index([createdAt])
+}
+
+// ─── Moderation strike system ───────────────────────────────
+//
+// Each row is one admin action that costs the user a strike.
+// Helper `lib/strikes.ts` writes here AND updates the User's
+// `strikes` counter + `accountState` in one transaction.
+model Strike {
+  id        String       @id @default(cuid())
+  targetUserId String
+  target    User         @relation("StrikeTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  /// The admin who issued the strike. Null only when the strike was
+  /// auto-issued by the system (e.g. banned-word auto-flag → upheld).
+  authorId  String?
+  author    User?        @relation("StrikeAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  reason    StrikeReason
+  /// Free-text note shown to the user. Required for OTHER, optional
+  /// otherwise. The user sees this verbatim on /me/account.
+  note      String?      @db.Text
+  /// Optional link back to the offending content. Format depends on
+  /// reason — for COMMENT_HIDDEN it's the postComment.id, for
+  /// REPORT_UPHELD it's the audit-log id, etc. Free-form so the
+  /// admin UI can link contextually.
+  evidenceRef String?
+  /// Strike-state transition snapshot — what the user's strikes
+  /// counter was AFTER this strike was issued. Useful for
+  /// "this was your 3rd strike → 7-day suspension" copy.
+  newStrikeCount Int
+  newAccountState AccountState
+  createdAt DateTime     @default(now())
+
+  @@index([targetUserId, createdAt])
+  @@index([reason, createdAt])
+}
+
+// ─── Grievance ticket (Indian IT Rules 2021 compliance) ─────
+//
+// Every public service in India must publish a grievance officer
+// + a 24-hour acknowledgement SLA + a 15-day resolution SLA. We
+// ship a public form that creates a ticket; the assigned grievance
+// officer (admin role flagged via SiteSetting) actions it.
+//
+// Ack SLA is auto-met when an admin opens the ticket OR after 24h
+// elapses (notification-maintenance tick — closes the window even
+// if no human looked, so we can prove SLA compliance via audit log).
+model GrievanceTicket {
+  id          String          @id @default(cuid())
+  /// Optional — anonymous grievances are allowed by IT Rules. When
+  /// the filer is signed in we store the userId for follow-up.
+  filerId     String?
+  filer       User?           @relation("GrievanceFiler", fields: [filerId], references: [id], onDelete: SetNull)
+  /// Required even for anonymous filings — used for the 24h ack
+  /// email + correspondence.
+  filerEmail  String
+  filerName   String
+  filerPhone  String?
+  /// Free-text — what the user is complaining about. 2000 char cap.
+  subject     String
+  body        String          @db.Text
+  /// Optional category — drives routing in the future. Free string
+  /// for now.
+  category    String?
+  status      GrievanceStatus @default(OPEN)
+  /// First admin to view / comment — sets ACK and stamps this.
+  acknowledgedAt   DateTime?
+  acknowledgedById String?
+  /// The grievance officer assigned to action it. Initially null;
+  /// set when an admin claims the ticket.
+  assigneeId  String?
+  assignee    User?           @relation("GrievanceAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  resolvedAt  DateTime?
+  resolution  String?         @db.Text
+  /// Deadline for resolution (filed + 15 days). Stamped at create
+  /// time so SLA reports work even after the rule changes.
+  slaDueAt    DateTime
+  /// Best-effort client IP captured at filing for forensics.
+  filerIp     String?
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  @@index([status, createdAt])
+  @@index([slaDueAt])
+}
+
+// ─── Job-match cache (candidate-side scoring) ─────────────────
+//
+// Persists the hybrid match-score breakdown for a (candidate, job)
+// pair so the public job page can surface "87% match" without
+// recomputing every view. The compute path runs the existing
+// scoring engine (vector + skill jaccard + domain overlap +
+// DIYguru boost) plus generates the top-3 reason chips with GPT-4o-mini.
+//
+// TTL is 7 days — long enough that a candidate revisiting a job
+// they bookmarked last week sees the cached value, short enough
+// that the score reflects recent profile edits (a candidate who
+// added 5 new skills shouldn't see stale scores forever).
+//
+// One row per (candidate, job). When the candidate edits their
+// profile we don't proactively invalidate — the next read past
+// `expiresAt` will recompute. The 7-day stale window is acceptable
+// because the score is advisory ("look here first"), not a gate.
+model JobMatchCache {
+  id            String           @id @default(cuid())
+  candidateId   String
+  candidate     CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId         String
+  job           JobPosting       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  /// 0..1 weighted score from server/matching/score.ts
+  score         Float
+  /// JSON breakdown: { vectorScore, skillScore, domainScore, diyguruBoost,
+  /// matchedSkills: string[], reasons: { positive: string[], negative: string[] } }
+  breakdown     Json
+  computedAt    DateTime         @default(now())
+  expiresAt     DateTime
+  createdAt     DateTime         @default(now())
+
+  @@unique([candidateId, jobId])
+  @@index([candidateId, expiresAt])
+  @@index([jobId, score])
+}
+
+// ─── EV Industry Pulse aggregates ─────────────────────────────
+//
+// Daily snapshot of the platform numbers needed for the Pulse
+// trend charts. The on-demand `lib/pulse.ts` helpers compute
+// "right now" totals; this table gives us "the trend" — 30 days
+// of daily counts to render the hiring-velocity sparkline and
+// the comparable counts ("up 12% week-over-week") on /pulse.
+//
+// One row per (date, kind). Worker fires daily at 02:00 IST and
+// upserts that day's row. We keep ~365 days then prune (handled
+// by notification-maintenance cleanup tick).
+enum PulseSnapshotKind {
+  /// Count of NEW jobs published that calendar day (UTC).
+  JOBS_NEW
+  /// Count of NEW applications submitted that day.
+  APPLICATIONS_NEW
+  /// Count of HIRED stage transitions that day.
+  HIRES
+  /// Count of new candidate profiles created that day.
+  CANDIDATES_NEW
+  /// Count of OPEN jobs at end of day (snapshot).
+  JOBS_OPEN_TOTAL
+  /// Count of active companies (≥1 OPEN job) at end of day.
+  COMPANIES_ACTIVE
+}
+
+model PulseSnapshot {
+  id        String            @id @default(cuid())
+  /// UTC midnight of the day this row covers.
+  date      DateTime          @db.Date
+  kind      PulseSnapshotKind
+  value     Int
+  /// Optional bucket — when `kind = JOBS_NEW` and we slice by EV
+  /// domain we set this to the domain slug; otherwise empty string.
+  /// Stored as `""` (not NULL) so Postgres's NULL-as-distinct rule
+  /// can't break the unique constraint or let two rollup rows
+  /// silently coexist for the same (date, kind).
+  bucket    String            @default("")
+  createdAt DateTime          @default(now())
+
+  @@unique([date, kind, bucket])
+  @@index([kind, date])
+}
+
+// ─── "Who's Moving" — public job-change announcements ─────────
+//
+// When a candidate updates their CURRENT employer (Experience.current
+// flips from one company to another), the workers/processors/profile-
+// changes worker writes a JobChangeAnnouncement. Visible only when
+// the candidate opted in (announceJobChange flag on CandidateProfile)
+// — defaults to OPT_IN required, since not everyone wants their move
+// public.
+//
+// The /pulse page reads the latest 10 announcements that:
+//   • are within the last 30 days
+//   • the candidate's profile is still PUBLIC (cvVisibility = EVERYONE)
+//   • the announcement is `published = true` (the candidate hasn't
+//     since hidden it from /me/preferences)
+model JobChangeAnnouncement {
+  id              String           @id @default(cuid())
+  candidateId     String
+  candidate       CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  /// New employer — free text always (matches Experience.company).
+  toCompany       String
+  /// Optional FK to the canonical Company row when one exists.
+  toCompanyId     String?
+  toCompanyRef    Company?         @relation("JobChangeToCompany", fields: [toCompanyId], references: [id], onDelete: SetNull)
+  toTitle         String
+  /// Previous employer (free text). Nullable for the candidate's
+  /// first job.
+  fromCompany     String?
+  fromTitle       String?
+  /// User's authored note ("Excited to join — building the next-gen
+  /// fast-charging stack"). 280 char cap so it fits the feed card.
+  note            String?
+  /// Whether the user wants the announcement on /pulse. Defaults to
+  /// true; flip to false to retract without deleting (so we keep
+  /// the audit row).
+  published       Boolean          @default(true)
+  /// Reactions count (mirrors Post — no separate Reaction table).
+  congratsCount   Int              @default(0)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  @@index([candidateId, createdAt])
+  @@index([published, createdAt])
 }

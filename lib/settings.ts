@@ -65,6 +65,14 @@ export const SETTING_DEFINITIONS: SettingDefinition[] = [
   { key: "legal.terms_url", category: "legal", type: "URL", label: "Terms of Service URL", default: "/terms" },
   { key: "legal.privacy_url", category: "legal", type: "URL", label: "Privacy Policy URL", default: "/privacy" },
   { key: "legal.cookies_url", category: "legal", type: "URL", label: "Cookie Policy URL", default: "/cookies" },
+  // Grievance officer (Indian IT Rules 2021 §3(2)(a) compliance — every
+  // intermediary serving Indian users must publish these). The /grievance
+  // page reads them; setting them is a one-time admin task at first deploy.
+  { key: "legal.grievance_officer_name", category: "legal", type: "STRING", label: "Grievance officer name", default: "" },
+  { key: "legal.grievance_officer_designation", category: "legal", type: "STRING", label: "Grievance officer designation", default: "Grievance Officer" },
+  { key: "legal.grievance_officer_email", category: "legal", type: "EMAIL", label: "Grievance officer email", default: "" },
+  { key: "legal.grievance_officer_phone", category: "legal", type: "STRING", label: "Grievance officer phone", default: "" },
+  { key: "legal.grievance_officer_address", category: "legal", type: "TEXT", label: "Grievance officer postal address", default: "" },
 
   // ─── Features (kill switches) ───────────────────────────────
   { key: "feature.social_enabled", category: "feature", type: "BOOLEAN", label: "Social feed", default: "true", description: "Hides /feed, posts UI, hashtags, and reactions when off." },

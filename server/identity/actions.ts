@@ -8,6 +8,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { pgRateLimit } from "@/lib/rate-limit-pg";
 import { buckets, objectKey, publicUrl, s3 } from "@/lib/storage";
 import { logger } from "@/lib/logger";
 import { notificationsQueue } from "@/lib/queues";
@@ -70,6 +71,11 @@ export async function submitIDVerification(formData: FormData): Promise<{
   try {
     const { session, profile } = await requireCandidate();
     await rateLimitOrThrow(`id-verify:${profile.userId}`, "resumeUpload");
+    const pgLimit = await pgRateLimit({
+      action: "id_verification.submit",
+      userId: profile.userId,
+    });
+    if (!pgLimit.ok) return { ok: false, message: pgLimit.message };
 
     const file = formData.get("idDoc") as File | null;
     if (!file || file.size === 0) {

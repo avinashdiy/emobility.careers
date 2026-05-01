@@ -12,6 +12,8 @@ import { applyToJob, saveJob } from "@/server/jobs/actions";
 import { getJobResponseStats } from "@/lib/sla";
 import { ResponseTimePill } from "@/components/recruiter/ResponseTimePill";
 import { ReportJobButton } from "@/components/jobs/ReportJobButton";
+import { MatchScoreCard } from "@/components/jobs/MatchScoreCard";
+import { getOrComputeCandidateMatch } from "@/server/matching/candidate-match";
 import { jobPostingJsonLd } from "@/lib/seo/job-schema";
 import { breadcrumbJsonLd } from "@/lib/seo/schemas";
 import { env } from "@/lib/env";
@@ -178,6 +180,11 @@ export default async function PublicJobDetail({
   // bounce them. The pct is also passed into the message so they know
   // exactly how far they are.
   let candidateCompleteness: number | null = null;
+  // The match score panel — populated only for logged-in candidates with
+  // a profile attached. We compute (or pull cached) once here so the
+  // sidebar card and any inline references can share the same payload
+  // without re-querying.
+  let candidateMatch: Awaited<ReturnType<typeof getOrComputeCandidateMatch>> = null;
   if (session?.user && session.user.role === "CANDIDATE") {
     const profile = await db.candidateProfile.findUnique({
       where: { userId: session.user.id },
@@ -189,6 +196,13 @@ export default async function PublicJobDetail({
         where: { jobId_candidateId: { jobId: job.id, candidateId: profile.id } },
       });
       alreadyApplied = !!existing;
+      // Don't block the page on a slow embed call — race against a 4s
+      // ceiling and fall through to "no match shown" if we miss it.
+      // The next visit will hit the cache, so no permanent regression.
+      candidateMatch = await Promise.race([
+        getOrComputeCandidateMatch(profile.id, job.id),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
+      ]);
     }
   }
 
@@ -305,6 +319,12 @@ export default async function PublicJobDetail({
         </div>
 
         <aside className="space-y-4">
+          {/* Match-score card — only for logged-in candidates with a
+              profile, computed (or cache-hit) above. Lives at the top
+              of the apply column so it answers "should I bother?"
+              before the candidate scrolls to read responsibilities. */}
+          {candidateMatch && <MatchScoreCard match={candidateMatch} />}
+
           <Card className="p-6">
             <h3 className="text-section text-emce-text">Apply</h3>
             {/* External-apply jobs: when the listing carries an

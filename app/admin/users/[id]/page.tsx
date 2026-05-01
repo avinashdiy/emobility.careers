@@ -224,6 +224,43 @@ export default async function AdminUserDetail({ params }: { params: Promise<{ id
               </Card>
             )}
 
+            {/* Strike history — surfaced for every non-admin user.
+                Always-visible because zero strikes is itself useful
+                signal ("clean record"). The strike state machine is
+                in lib/strikes.ts; the UI here is read-only. Strikes
+                are issued automatically when admins hide comments,
+                remove flagged posts, or uphold reports. */}
+            {user.role !== "ADMIN" && (
+              <Card>
+                <h2 className="text-section text-emce-text">Moderation strikes</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <Badge
+                    variant={
+                      user.accountState === "BANNED"
+                        ? "danger"
+                        : user.accountState === "SUSPENDED"
+                          ? "warning"
+                          : user.accountState === "WARNED"
+                            ? "warning"
+                            : "success"
+                    }
+                  >
+                    {user.strikes} strike{user.strikes === 1 ? "" : "s"} · {user.accountState}
+                  </Badge>
+                  {user.suspendedUntil && user.accountState === "SUSPENDED" && (
+                    <span className="text-hint text-emce-text-muted">
+                      Until {user.suspendedUntil.toLocaleString()}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-2 text-hint text-emce-text-sec">
+                  3 strikes → 7-day suspension. 5 strikes → permanent ban.
+                  Each comment-hide / post-removal automatically issues a
+                  strike via the moderation flow.
+                </p>
+              </Card>
+            )}
+
             {user.employerProfile && (
               <Card>
                 <h2 className="text-section text-emce-text">Employer profile</h2>

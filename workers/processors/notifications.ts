@@ -95,10 +95,18 @@ export function startNotificationsWorker() {
         (type.startsWith("job.") && prefs.jobAlertsSMS);
 
       if (ch.includes("EMAIL") && wantEmail && user.email) {
+        // Notification fan-out goes through the bulk SES lane —
+        // there are far more of these than transactional sends and
+        // a single buggy notification template that triggers
+        // complaints shouldn't cascade into auth-email suppression.
+        // Auth-only emails (verification, password reset, magic link)
+        // still go through the transactional lane via their direct
+        // sendMail() call sites.
         await sendMail({
           to: user.email,
           subject: title,
           html: `<p>${body}</p>${link ? `<p><a href="${env.NEXT_PUBLIC_APP_URL}${link}">Open in eMobility Careers</a></p>` : ""}`,
+          kind: "bulk",
         });
       }
 

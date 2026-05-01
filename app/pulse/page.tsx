@@ -13,8 +13,12 @@ import {
   getRecentHires,
   getSalaryTeasers,
   getFeaturedCandidates,
+  getHiringVelocity,
+  getWhosMoving,
   formatLakhs,
 } from "@/lib/pulse";
+import { HiringVelocityChart } from "@/components/pulse/HiringVelocityChart";
+import { WhosMovingFeed } from "@/components/pulse/WhosMovingFeed";
 import { relativeTime } from "@/lib/utils";
 import { env } from "@/lib/env";
 
@@ -55,13 +59,15 @@ export const metadata: Metadata = {
  * (matching, alerts, applying) still require auth.
  */
 export default async function PulsePage() {
-  const [counters, companies, skills, hires, salaries, candidates] = await Promise.all([
+  const [counters, companies, skills, hires, salaries, candidates, velocity, whosMoving] = await Promise.all([
     getPulseCounters(),
     getTopHiringCompanies(),
     getHottestSkills(),
     getRecentHires(),
     getSalaryTeasers(),
     getFeaturedCandidates(),
+    getHiringVelocity(),
+    getWhosMoving(),
   ]);
 
   return (
@@ -98,6 +104,21 @@ export default async function PulsePage() {
         </section>
 
         <div className="container max-w-6xl space-y-8 py-10">
+          {/* ─── Hiring velocity (30-day trend) ─── */}
+          <section>
+            <HiringVelocityChart data={velocity} />
+          </section>
+
+          {/* ─── Who's moving (job-change announcements) ─── */}
+          <section>
+            <SectionHeader
+              eyebrow="On the move"
+              title="Who's moving in EV"
+              hint="Recent job changes shared by professionals on the platform."
+            />
+            <WhosMovingFeed rows={whosMoving} />
+          </section>
+
           {/* ─── Top hiring companies ─── */}
           <section>
             <SectionHeader

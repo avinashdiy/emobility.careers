@@ -66,7 +66,7 @@ export type WhatsAppDigestJob = { tick: true };
 /** Tick payload for the notification maintenance worker. Fires
     cleanup (delete past-expiresAt rows) AND the daily email digest
     in the same run since both are users-table sweeps. */
-export type NotificationMaintenanceJob = { tick: true; kind: "cleanup" | "digest" | "stale-jobs" | "purge-deleted" };
+export type NotificationMaintenanceJob = { tick: true; kind: "cleanup" | "digest" | "stale-jobs" | "purge-deleted" | "brigading" | "backup-verify" | "drill-reminder" | "pulse-aggregate" };
 
 export const resumeParseQueue = new Queue<ResumeParseJob>(QueueNames.ResumeParse, baseOpts);
 export const embeddingsQueue = new Queue<EmbeddingsJob>(QueueNames.Embeddings, baseOpts);

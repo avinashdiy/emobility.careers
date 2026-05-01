@@ -38,6 +38,16 @@ export interface SendMailOptions {
   html: string;
   text?: string;
   replyTo?: string;
+  /// Two-lane SES setup:
+  ///   • "transactional" — verification, password reset, magic link,
+  ///      booking confirmation, ID-verification result. Sent from the
+  ///      `EMAIL_FROM` identity through `AWS_SES_CONFIGURATION_SET_TRANSACTIONAL`.
+  ///   • "bulk" — daily digest, broadcasts, notification fan-outs,
+  ///      grievance acks. Sent from `EMAIL_FROM_BULK` through
+  ///      `AWS_SES_CONFIGURATION_SET_BULK`.
+  /// When omitted, defaults to "transactional" — safer to start with
+  /// the lane you definitely want delivering.
+  kind?: "transactional" | "bulk";
 }
 
 /** Active provider — useful for diagnostics + the admin Settings page. */
@@ -47,16 +57,33 @@ export function activeMailProvider(): "ses" | "resend" | "none" {
   return "none";
 }
 
-async function resolveFromAddress(): Promise<string> {
-  // EMAIL_FROM is the canonical default ("Name <addr@domain>"). The admin
-  // Settings page lets admins change just the display name without touching
-  // env vars, so we splice it in when both are present.
+async function resolveFromAddress(kind: "transactional" | "bulk"): Promise<string> {
+  // Transactional uses EMAIL_FROM; bulk uses EMAIL_FROM_BULK. Both
+  // get the admin-editable display-name override applied. Falling
+  // back to the transactional address when bulk isn't configured
+  // (small-deploy default) keeps everything working with one
+  // identity if the operator hasn't set up the second lane yet.
+  const base = kind === "bulk" ? env.EMAIL_FROM_BULK || env.EMAIL_FROM : env.EMAIL_FROM;
   const settingName = await getSetting("email.from_name").catch(() => "");
-  const base = env.EMAIL_FROM;
   if (!settingName) return base;
   const m = base.match(/^(.*?)<(.+)>\s*$/);
   if (m) return `${settingName} <${m[2].trim()}>`;
   return `${settingName} <${base}>`;
+}
+
+function configurationSetFor(kind: "transactional" | "bulk"): string | undefined {
+  if (kind === "bulk") {
+    return (
+      env.AWS_SES_CONFIGURATION_SET_BULK ||
+      env.AWS_SES_CONFIGURATION_SET ||
+      undefined
+    );
+  }
+  return (
+    env.AWS_SES_CONFIGURATION_SET_TRANSACTIONAL ||
+    env.AWS_SES_CONFIGURATION_SET ||
+    undefined
+  );
 }
 
 async function appendSignature(html: string, text?: string): Promise<{ html: string; text?: string }> {
@@ -71,7 +98,8 @@ async function appendSignature(html: string, text?: string): Promise<{ html: str
 
 export async function sendMail(opts: SendMailOptions): Promise<void> {
   const recipients = Array.isArray(opts.to) ? opts.to : [opts.to];
-  const from = await resolveFromAddress();
+  const kind: "transactional" | "bulk" = opts.kind ?? "transactional";
+  const from = await resolveFromAddress(kind);
   const settingReplyTo = await getSetting("email.reply_to").catch(() => "");
   const replyTo = opts.replyTo ?? (settingReplyTo || undefined);
   const { html, text } = await appendSignature(opts.html, opts.text);
@@ -84,7 +112,7 @@ export async function sendMail(opts: SendMailOptions): Promise<void> {
           FromEmailAddress: from,
           Destination: { ToAddresses: recipients },
           ReplyToAddresses: replyTo ? [replyTo] : undefined,
-          ConfigurationSetName: env.AWS_SES_CONFIGURATION_SET,
+          ConfigurationSetName: configurationSetFor(kind),
           Content: {
             Simple: {
               Subject: { Data: opts.subject, Charset: "UTF-8" },
@@ -98,7 +126,7 @@ export async function sendMail(opts: SendMailOptions): Promise<void> {
       );
       return;
     } catch (err) {
-      logger.error({ err, to: recipients, subject: opts.subject }, "[mail] SES send failed");
+      logger.error({ err, to: recipients, subject: opts.subject, kind }, "[mail] SES send failed");
       throw err;
     }
   }

@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { pgRateLimit } from "@/lib/rate-limit-pg";
 import { requireEmailVerified, EmailNotVerifiedError } from "@/lib/anti-spam";
 import { notificationsQueue } from "@/lib/queues";
 import { detectEmbed } from "@/lib/social/embeds";
@@ -161,6 +162,8 @@ export async function createRichPost(
     throw e;
   }
   await rateLimitOrThrow(`post:${session.user.id}`, "message").catch(() => undefined);
+  const pgLimit = await pgRateLimit({ action: "post.create", userId: session.user.id });
+  if (!pgLimit.ok) return { ok: false, message: pgLimit.message };
 
   const parsed = RichPostSchema.safeParse(input);
   if (!parsed.success) {

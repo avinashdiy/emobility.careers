@@ -34,6 +34,12 @@ const envSchema = z.object({
 
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().default("eMobility Careers <noreply@emobility.careers>"),
+  /// Bulk-mail "from" — used for digests, broadcasts, notification fan-outs.
+  /// Separate identity so a complaint-rate suppression on the bulk lane
+  /// can't kill the transactional lane (verification emails, magic-link
+  /// sign-in, password reset). If unset, falls back to EMAIL_FROM (single
+  /// identity — fine for dev / small deploys).
+  EMAIL_FROM_BULK: z.string().default("eMobility Careers <digest@emobility.careers>"),
 
   // Amazon SES — preferred email transport in production. If both SES_* and
   // RESEND_API_KEY are set, SES wins (see lib/mail.ts). Region is required
@@ -41,9 +47,15 @@ const envSchema = z.object({
   AWS_SES_REGION: z.string().optional(),
   AWS_SES_ACCESS_KEY_ID: z.string().optional(),
   AWS_SES_SECRET_ACCESS_KEY: z.string().optional(),
-  // Optional ARN for the configured SES sending identity used when sending
-  // through a delegated configuration set (open-tracking, complaints, etc.).
-  AWS_SES_CONFIGURATION_SET: z.string().optional(),
+  // Two SES configuration sets — one for transactional, one for bulk.
+  // SES tracks bounce + complaint rates per configuration set, and the
+  // bulk → suppression policy is set on its own set. Keeping them
+  // separate stops a bad digest run (high complaint rate from a poorly
+  // segmented broadcast) from suppressing the verification-email lane.
+  // When neither is set, sends use SES "default" sender behaviour.
+  AWS_SES_CONFIGURATION_SET: z.string().optional(),               // legacy / shared
+  AWS_SES_CONFIGURATION_SET_TRANSACTIONAL: z.string().optional(),
+  AWS_SES_CONFIGURATION_SET_BULK: z.string().optional(),
 
   MSG91_AUTH_KEY: z.string().optional(),
   MSG91_SENDER_ID: z.string().optional(),

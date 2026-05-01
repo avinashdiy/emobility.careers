@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { pgRateLimit } from "@/lib/rate-limit-pg";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { notificationsQueue } from "@/lib/queues";
 
@@ -83,6 +84,11 @@ export async function requestContactShare(input: {
     }
 
     await rateLimitOrThrow(`contact-share:${session.user.id}`, "invite");
+    const pgLimit = await pgRateLimit({
+      action: "contact_share.request",
+      userId: session.user.id,
+    });
+    if (!pgLimit.ok) return { ok: false, message: pgLimit.message };
 
     // Pull target + verify they're a candidate. Don't surface to
     // recruiter that the user doesn't exist (privacy) — we say

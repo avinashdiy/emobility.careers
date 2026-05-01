@@ -6,6 +6,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { audit } from "@/lib/audit";
+import { issueStrike } from "@/lib/strikes";
 
 async function requireAdmin() {
   const session = await auth();
@@ -18,6 +19,13 @@ export async function hideComment(formData: FormData) {
   const session = await requireAdmin();
   const id = z.string().parse(formData.get("id"));
   const reason = String(formData.get("reason") ?? "").slice(0, 500) || null;
+  // Look up the comment author so we can issue a strike. Cheap join.
+  const comment = await db.postComment.findUnique({
+    where: { id },
+    select: { authorId: true, hiddenAt: true },
+  });
+  // Idempotent: hiding an already-hidden comment shouldn't double-strike.
+  const wasAlreadyHidden = Boolean(comment?.hiddenAt);
   await db.postComment.update({
     where: { id },
     data: {
@@ -33,6 +41,18 @@ export async function hideComment(formData: FormData) {
     entityId: id,
     meta: { reason },
   });
+  // Issue a strike against the author. The strike helper updates the
+  // accountState (WARNED → SUSPENDED → BANNED), notifies the user,
+  // and audit-logs separately. Skipped on re-hide.
+  if (comment && !wasAlreadyHidden) {
+    await issueStrike({
+      targetUserId: comment.authorId,
+      authorId: session.user.id,
+      reason: "COMMENT_HIDDEN",
+      note: reason ?? undefined,
+      evidenceRef: id,
+    });
+  }
   revalidatePath("/admin/content");
   revalidatePath("/feed");
 }

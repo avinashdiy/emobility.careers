@@ -30,6 +30,7 @@ import { PostCard, type FeedPostShape } from "@/components/social/PostCard";
 import { getConnectionStatus, isFollowingUser } from "@/server/social/queries";
 import { breadcrumbJsonLd, personJsonLd as buildPersonJsonLd } from "@/lib/seo/schemas";
 import { getViewerContext, canSeeContact, canSeeResume } from "@/lib/profile-visibility";
+import { shouldSuppressExperienceYears } from "@/lib/k-anonymity";
 import { env } from "@/lib/env";
 import { formatMonthYear } from "@/lib/utils";
 import { RESERVED_SLUGS } from "@/lib/reserved-slugs";
@@ -183,6 +184,26 @@ export default async function PublicCandidateProfile({
   const isOwner = session?.user?.id === profile.userId;
   const isEmployer = session?.user?.role === "EMPLOYER" || session?.user?.role === "ADMIN";
   const totalYears = (profile.totalExperienceMonths / 12).toFixed(1);
+
+  // k-anonymity gate on the precise experience-years display. Hides the
+  // "12.4 yrs experience" label when the (current_company, title,
+  // 5-year exp bucket) cohort has fewer than K profiles to hide
+  // alongside. Owner + employer + admin always see the precise number;
+  // see lib/k-anonymity.ts for the rationale.
+  const kAnon = await shouldSuppressExperienceYears(
+    {
+      totalExperienceMonths: profile.totalExperienceMonths,
+      experiences: profile.experiences.map((e) => ({
+        company: e.company,
+        title: e.title,
+        current: e.current,
+      })),
+    },
+    {
+      isOwner,
+      role: (session?.user?.role as "ADMIN" | "EMPLOYER" | "CANDIDATE" | undefined) ?? null,
+    },
+  );
 
   // Privacy gates — central helpers so every surface follows the same rules.
   // ContactVisibility hides email/phone by default; ResumeVisibility hides
@@ -594,13 +615,23 @@ export default async function PublicCandidateProfile({
                 <p className="text-[15px] text-emce-text">{profile.headline}</p>
               )}
 
-              {/* Location · institution · experience — single tight row */}
+              {/* Location · institution · experience — single tight row.
+                  Experience years go through the k-anonymity gate: small
+                  cohorts (company+title+5y bucket < K) get a generic
+                  "experienced professional" label so the precise number
+                  can't be combined with other quasi-identifiers to
+                  re-identify the person. Owner + employers see the
+                  exact number. */}
               {(profile.location || profile.institution || profile.totalExperienceMonths > 0) && (
                 <p className="text-sm text-emce-text-sec">
                   {[
                     profile.location,
                     profile.institution,
-                    profile.totalExperienceMonths > 0 ? `${totalYears} yrs experience` : null,
+                    profile.totalExperienceMonths > 0
+                      ? kAnon.suppress
+                        ? "experienced professional"
+                        : `${totalYears} yrs experience`
+                      : null,
                   ].filter(Boolean).join(" · ")}
                   {!isOwner && session?.user && (
                     <>
