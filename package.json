@@ -17,6 +17,8 @@
     "prisma:deploy": "prisma migrate deploy",
     "prisma:push": "prisma db push",
     "prisma:studio": "prisma studio",
+    "setup:buckets": "tsx scripts/setup-buckets.ts",
+    "setup:vps": "bash scripts/setup-vps.sh",
     "db:seed": "tsx scripts/seed.ts",
     "db:seed-skills": "tsx scripts/seed-skills.ts",
     "wp:import": "tsx scripts/import-wordpress.ts",
