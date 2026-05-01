@@ -15,6 +15,7 @@ import { toggleSkillEndorsement } from "@/server/candidates/actions";
 import { ShareButton } from "@/components/profile/ShareButton";
 import { CountryFlag } from "@/components/profile/CountryFlag";
 import { VerifiedBadge } from "@/components/profile/VerifiedBadge";
+import { RequestContactButton } from "@/components/profile/RequestContactButton";
 import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { ExpandableText } from "@/components/profile/ExpandableText";
 import { EditPencil } from "@/components/profile/EditPencil";
@@ -192,6 +193,29 @@ export default async function PublicCandidateProfile({
     (session?.user?.role as "ADMIN" | "EMPLOYER" | "CANDIDATE" | undefined) ?? null,
   );
   const showContact = canSeeContact(profile.contactVisibility, viewerCtx);
+
+  // For the contact-share CTA: when contact is hidden AND the viewer
+  // is an employer (not the owner), look up any existing
+  // ContactShareRequest from this recruiter to this candidate so the
+  // button can show "Pending" / "Declined" instead of letting them
+  // re-spam. We only do this query when actually needed (employer +
+  // contact hidden) so the public + candidate-viewer paths skip it.
+  const shouldOfferContactRequest =
+    !showContact &&
+    !viewerCtx.isOwner &&
+    viewerCtx.role === "EMPLOYER" &&
+    Boolean(session?.user?.id);
+  const existingContactShare = shouldOfferContactRequest
+    ? await db.contactShareRequest.findUnique({
+        where: {
+          requesterUserId_targetUserId: {
+            requesterUserId: session!.user!.id,
+            targetUserId: profile.userId,
+          },
+        },
+        select: { status: true },
+      })
+    : null;
   const showResume = canSeeResume(profile.resumeVisibility, viewerCtx) && Boolean(profile.resumeUrl || profile.aiResumeUrl);
   // Résumé download routes through `/api/resume/{slug}` rather than
   // the raw column value. The columns store bucket keys (or, for
@@ -723,6 +747,29 @@ export default async function PublicCandidateProfile({
                     )}
                   </span>
                 )}
+              </div>
+            )}
+
+            {/* "Request contact" CTA — only shown to employers when
+                contact is currently hidden. Lets recruiters ask the
+                candidate to share email + phone via an inbox card the
+                candidate explicitly approves or denies. The component
+                renders different states (PENDING / DENIED) when the
+                recruiter has already asked. */}
+            {shouldOfferContactRequest && (
+              <div className="mt-3 border-t border-emce-border pt-3">
+                <RequestContactButton
+                  targetUserId={profile.userId}
+                  targetFirstName={profile.firstName}
+                  initialStatus={
+                    (existingContactShare?.status as
+                      | "PENDING"
+                      | "DENIED"
+                      | "REVOKED"
+                      | "EXPIRED"
+                      | undefined) ?? "NONE"
+                  }
+                />
               </div>
             )}
 

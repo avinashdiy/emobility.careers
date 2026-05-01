@@ -13,6 +13,7 @@ const NAV = [
   { href: "/employer/verifications", label: "Verify" },
   { href: "/employer/saved", label: "Saved" },
   { href: "/employer/messages", label: "Messages" },
+  { href: "/employer/contact-requests", label: "Contact requests" },
   { href: "/employer/team", label: "Team" },
   { href: "/employer/company", label: "Company" },
 ];

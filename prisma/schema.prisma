@@ -117,6 +117,12 @@ model User {
   // Social graph
   connectionRequests  Connection[]   @relation("ConnectionRequester")
   connectionsReceived Connection[]   @relation("ConnectionRecipient")
+  // Contact-share request flow — recruiter side (sent) + candidate
+  // side (received). See `model ContactShareRequest` for the
+  // lifecycle. Cascade-on-user-delete is fine: requests are tied to
+  // a real User; if either party leaves, the row goes with them.
+  contactShareRequestsSent     ContactShareRequest[] @relation("ContactShareRequester")
+  contactShareRequestsReceived ContactShareRequest[] @relation("ContactShareTarget")
   followingUsers      Follow[]       @relation("Follower")
   followers           Follow[]       @relation("FolloweeUser")
   posts               Post[]         @relation("PostAuthor")
@@ -651,6 +657,19 @@ enum IDVerificationStatus {
   REJECTED
 }
 
+/// State machine for a recruiter's request to see a candidate's email
+/// + phone. Documented next to the field on `ContactShareRequest`.
+enum ContactShareStatus {
+  PENDING    /// Recruiter has asked; candidate hasn't responded.
+  GRANTED    /// Candidate approved; recruiter can see contact.
+  DENIED     /// Candidate refused. Recruiter can re-request only after a
+             /// cool-off — enforced server-side in requestContactShare.
+  REVOKED    /// Candidate previously granted but later changed their mind.
+  EXPIRED    /// PENDING request that aged past `expiresAt`. Set by the
+             /// notification-maintenance cleanup tick so stale rows
+             /// stop counting against rate limits / dashboard counts.
+}
+
 /// Per-call OpenAI usage record. Written by `lib/ai/track-cost.ts` after
 /// every chat-completion / embedding call so /admin/ai-ops can report
 /// cost-per-feature, daily spend, and surface error rates by model. We
@@ -981,6 +1000,10 @@ model Application {
   messageThread      MessageThread?
   assessmentAttempts AssessmentAttempt[]
   slaBreaches        SLABreach[]
+  // Contact-share requests filed from this application's ATS row.
+  // Optional 1:N — a recruiter could re-request if a previous one
+  // expired or was denied.
+  contactShareRequests ContactShareRequest[]
 
   @@unique([jobId, candidateId])
   @@index([jobId, stage])
@@ -1861,6 +1884,73 @@ model Connection {
   @@unique([requesterId, recipientId])
   @@index([recipientId, status])
   @@index([requesterId, status])
+}
+
+/// Recruiter → candidate request to see contact (email + phone).
+/// LinkedIn-style consent flow: even when contactVisibility is the
+/// strict-but-pragmatic default, an employer who wants to reach a
+/// candidate by email/phone has to ASK; the candidate has to GRANT.
+///
+/// Lifecycle:
+///   PENDING  ── candidate clicks Approve ─→ GRANTED
+///            ── candidate clicks Deny    ─→ DENIED
+///            ── 30 days pass               ─→ EXPIRED (cleanup tick)
+///   GRANTED  ── candidate clicks Revoke ─→ REVOKED
+///
+/// Multiple PENDING rows from the same recruiter to the same candidate
+/// are blocked at the server-action layer (resubmit re-uses the row).
+/// DENIED has a server-enforced cool-off (90 days) before another
+/// PENDING from the same pair is allowed — stops harassment loops.
+///
+/// `applicationId` is optional context: when the request was sent
+/// from an ATS row (recruiter reviewing applications), we record
+/// which application triggered it so the candidate sees "Acme HR
+/// asked for your contact about your application to {Job Title}"
+/// in the inbox card.
+model ContactShareRequest {
+  id              String              @id @default(cuid())
+  requesterUserId String
+  requester       User                @relation("ContactShareRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
+  /// Always a candidate userId (i.e. CandidateProfile.userId). We
+  /// don't bother adding a FK to CandidateProfile because the
+  /// User → CandidateProfile relation is 1:1 and User is the more
+  /// reliable join key (employer user → candidate user).
+  targetUserId    String
+  target          User                @relation("ContactShareTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  status          ContactShareStatus  @default(PENDING)
+  /// Free-text "why I want your contact" message from the recruiter.
+  /// Surfaced verbatim in the candidate's inbox card. 1000 char cap
+  /// enforced server-side.
+  message         String?             @db.Text
+  /// Optional ATS context — see model docstring.
+  applicationId   String?
+  application     Application?        @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  /// PENDING requests auto-expire 30 days after creation. We stamp
+  /// this at insert time rather than computing on read so cleanup
+  /// can use a simple WHERE expiresAt < NOW() index scan.
+  expiresAt       DateTime
+  /// Status-change timestamps. Multi-column instead of one column
+  /// + last-status because dashboards want "granted in last 30 days"
+  /// and "denied recently" as separate counts.
+  grantedAt       DateTime?
+  deniedAt        DateTime?
+  revokedAt       DateTime?
+  /// Optional reason given by the candidate when they DENIED the
+  /// request. Surfaced to the recruiter in their dashboard but
+  /// never to other admins / users. Most candidates leave it null.
+  denyReason      String?             @db.Text
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  /// One open / decided thread per pair — re-submission reuses the
+  /// row. Composite unique handles both the create-or-update case
+  /// at the action layer and the "is there an active grant" lookup
+  /// in canSeeContact.
+  @@unique([requesterUserId, targetUserId])
+  @@index([targetUserId, status])
+  @@index([requesterUserId, status])
+  /// Cleanup tick scans on this for PENDING rows past `expiresAt`.
+  @@index([status, expiresAt])
 }
 
 /// One-way follow: candidates following experts/influencers and users

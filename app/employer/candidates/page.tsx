@@ -97,15 +97,35 @@ export default async function TalentSearch({
     },
   });
 
+  // ─── Contact-privacy gate (LinkedIn-strict) ──────────────────────
+  // Phone is forwarded ONLY when:
+  //   • candidate set contactVisibility = EVERYONE (rare opt-in), OR
+  //   • candidate set contactVisibility = EMPLOYERS_ONLY AND has at
+  //     least one Application to a job at THIS recruiter's company.
+  // The "applied to this company" check is what distinguishes us
+  // from the previous loose policy that leaked phone to any employer
+  // browsing the search page. We do it once with a single batch
+  // query: collect the candidate ids on the page, look up which ones
+  // have an application to a job at the recruiter's company, then
+  // gate per-row.
+  const candidateIds = candidates.map((c) => c.id);
+  const candidatesWithApplication = candidateIds.length
+    ? await db.application.findMany({
+        where: {
+          candidateId: { in: candidateIds },
+          job: { companyId: employer.companyId },
+        },
+        select: { candidateId: true },
+      })
+    : [];
+  const appliedSet = new Set(candidatesWithApplication.map((a) => a.candidateId));
+
   const evDomains = await db.eVDomain.findMany({ orderBy: { order: "asc" } });
 
-  // Pre-serialise lastActiveAt as a number so the client component can
-  // hydrate without runtime Date marshalling. Phone is only forwarded
-  // when contactVisibility allows employers to see it — otherwise the
-  // bulk-WhatsApp link would leak a private number.
   const rows: SearchCandidate[] = candidates.map((c) => {
     const phoneVisible =
-      c.contactVisibility === "EVERYONE" || c.contactVisibility === "EMPLOYERS_ONLY";
+      c.contactVisibility === "EVERYONE" ||
+      (c.contactVisibility === "EMPLOYERS_ONLY" && appliedSet.has(c.id));
     return {
       id: c.id,
       slug: c.slug,

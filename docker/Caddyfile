@@ -15,7 +15,13 @@ emobility.careers, www.emobility.careers {
         reverse_proxy soketi:6001
     }
 
-    # MinIO public buckets (avatars, logos)
+    # Legacy: MinIO public buckets via /static/* prefix.
+    # Kept for back-compat with any URLs already in the wild that
+    # were stored against this prefix (older avatars / logos). New
+    # private-bucket presigned URLs use the `files.` subdomain
+    # below — strip-prefix breaks AWS Signature V4 because the SDK
+    # signs the URL the client sees, but MinIO recomputes against
+    # the URL after Caddy strips the prefix → SignatureDoesNotMatch.
     handle /static/* {
         uri strip_prefix /static
         reverse_proxy minio:9000
@@ -24,4 +30,36 @@ emobility.careers, www.emobility.careers {
     handle {
         reverse_proxy web:3000
     }
+}
+
+# Dedicated subdomain for object storage. NO prefix stripping —
+# whatever path arrives gets forwarded verbatim to MinIO. This is
+# the URL set in `S3_PUBLIC_URL`, and the `s3Public` SDK client
+# (`lib/storage.ts`) signs presigned URLs against it. Because the
+# SDK's signed path === the path MinIO sees, signatures validate.
+#
+# DNS step before this works:
+#   • Add an A or CNAME record for `files.emobility.careers`
+#     pointing to the same VPS as `emobility.careers`.
+#   • Caddy auto-issues a Let's Encrypt cert on first request.
+#
+# Buckets that need to be reachable here:
+#   • emce-avatars, emce-logos — public-read (no signature)
+#   • emce-resumes — private; presigned download URLs
+#   • emce-docs — private; presigned ICS / future use. Aadhar
+#     uploads NEVER go through here — they're proxied via the
+#     admin-gated /api/admin/id-document route for defence in
+#     depth on highly-sensitive PII.
+files.emobility.careers {
+    encode zstd gzip
+    log {
+        output file /var/log/caddy/files-access.log
+    }
+    # Cache headers for the genuinely-public buckets only. MinIO
+    # already adds reasonable defaults; we just nudge browsers to
+    # cache avatars/logos for an hour. Presigned URLs carry their
+    # own TTL via the signature so caching them is safe.
+    header /emce-avatars/* Cache-Control "public, max-age=3600"
+    header /emce-logos/*   Cache-Control "public, max-age=3600"
+    reverse_proxy minio:9000
 }

@@ -48,8 +48,23 @@ async function runCleanup() {
       ],
     },
   });
-  logger.info({ deleted: result.count }, "[notif-maintenance] cleanup tick");
-  return { deleted: result.count };
+
+  // Expire stale ContactShareRequest rows. PENDINGs older than their
+  // `expiresAt` flip to `EXPIRED` so the candidate's inbox stops
+  // showing them as actionable + the recruiter dashboard can offer
+  // a clean "re-request" path. We don't delete the row — keeping
+  // EXPIRED preserves the audit trail and supports the cool-off
+  // logic in `requestContactShare`.
+  const expired = await db.contactShareRequest.updateMany({
+    where: { status: "PENDING", expiresAt: { lt: now } },
+    data: { status: "EXPIRED" },
+  });
+
+  logger.info(
+    { deleted: result.count, expiredContactShares: expired.count },
+    "[notif-maintenance] cleanup tick",
+  );
+  return { deleted: result.count, expiredContactShares: expired.count };
 }
 
 async function runDigest() {

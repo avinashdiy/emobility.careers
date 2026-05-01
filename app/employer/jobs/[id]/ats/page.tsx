@@ -51,11 +51,22 @@ export default async function ATSPage({
   });
 
   const board: PipelineApp[] = applications.map((a) => {
-    // For ATS-context phones we're more permissive than for cold
-    // talent search — candidates have applied to this job, so an
-    // employer-only contact share is implicit (LinkedIn does the
-    // same). PRIVATE still blocks the number.
-    const phoneVisible = a.candidate.contactVisibility !== "PRIVATE";
+    // ATS contact-privacy gate. Every row here is an application
+    // to a job at THIS recruiter's company (auth-gated above), so
+    // the application relationship exists for every candidate on
+    // the board. We honour the candidate's chosen visibility:
+    //   • EVERYONE         → visible (rare opt-in, public profile)
+    //   • EMPLOYERS_ONLY   → visible (legitimate-need: they applied)
+    //   • CONNECTIONS      → HIDDEN (LinkedIn-strict: connection
+    //                        contact-share is for the candidate's
+    //                        social graph, not recruiters at jobs
+    //                        they applied to)
+    //   • PRIVATE          → HIDDEN (no exception for applications;
+    //                        recruiter must message in-app and let
+    //                        the candidate share contact in reply)
+    const phoneVisible =
+      a.candidate.contactVisibility === "EVERYONE" ||
+      a.candidate.contactVisibility === "EMPLOYERS_ONLY";
     return {
       id: a.id,
       stage: a.stage,

@@ -9,7 +9,6 @@ import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { Textarea } from "@/components/ui/textarea";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { reviewIDVerification } from "@/server/identity/actions";
-import { presignDownload, buckets } from "@/lib/storage";
 import { relativeTime } from "@/lib/utils";
 import { CountryFlag } from "@/components/profile/CountryFlag";
 import { VerifiedBadge } from "@/components/profile/VerifiedBadge";
@@ -18,21 +17,6 @@ export const metadata = { title: "ID verifications" };
 
 const TABS = ["PENDING", "VERIFIED", "REJECTED", "NONE"] as const;
 type Tab = (typeof TABS)[number];
-
-/**
- * Reverse-engineer the bucket key from a publicUrl. The submission
- * action stored `publicUrl("docs", key)` which encodes
- * `{S3_PUBLIC_URL}/{bucketName}/{key}`. We need just the {key} portion
- * to call presignDownload. Splitting on the bucket name is robust
- * enough — the bucket name is in env so it's stable.
- */
-function keyFromUrl(url: string | null): string | null {
-  if (!url) return null;
-  const bucket = buckets.docs;
-  const idx = url.indexOf(`/${bucket}/`);
-  if (idx === -1) return null;
-  return url.slice(idx + bucket.length + 2); // +2 for the two slashes
-}
 
 export default async function IDVerificationsPage({
   searchParams,
@@ -81,24 +65,23 @@ export default async function IDVerificationsPage({
     }),
   ]);
 
-  // Pre-compute presigned download URLs for the doc images on this
-  // page. Cheap (one round-trip per row, all parallel) and hides the
-  // private bucket details from the client. URLs expire in 5 minutes
-  // so even if the page is open in a tab the link won't outlive review.
-  const docLinks: Record<string, string | null> = {};
-  await Promise.all(
-    rows.map(async (r) => {
-      const k = keyFromUrl(r.idVerificationDocUrl);
-      if (!k) {
-        docLinks[r.id] = null;
-        return;
-      }
-      try {
-        docLinks[r.id] = await presignDownload("docs", k, 60 * 5);
-      } catch {
-        docLinks[r.id] = null;
-      }
-    }),
+  // Doc links go through the admin proxy at `/api/admin/id-document`
+  // — a server-side route that re-validates admin auth on every fetch
+  // and streams the file from MinIO. This avoids two failure modes
+  // of presigned URLs in production:
+  //   1. The presigned URL signs against the internal MinIO endpoint
+  //      (e.g. http://minio:9000) which the admin's browser can't reach.
+  //   2. Presigned URLs are bearer tokens — once issued, anyone with
+  //      the URL can fetch the doc until expiry. The proxy re-validates
+  //      session on every request, so a leaked URL is useless.
+  // Each fetch is audit-logged inside the route.
+  const docLinks: Record<string, string | null> = Object.fromEntries(
+    rows.map((r) => [
+      r.id,
+      r.idVerificationDocUrl
+        ? `/api/admin/id-document?profileId=${encodeURIComponent(r.id)}`
+        : null,
+    ]),
   );
 
   const countMap = Object.fromEntries(
@@ -115,7 +98,7 @@ export default async function IDVerificationsPage({
         <p className="mt-1 text-sm text-emce-text-sec">
           Review candidate-submitted government IDs (Aadhar by default). Approving
           flips the public blue checkmark on. The doc image stays in our private
-          bucket — review links expire in 5 minutes.
+          bucket — every doc view is admin-gated and audit-logged.
         </p>
 
         <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Filter by status">
@@ -191,7 +174,7 @@ export default async function IDVerificationsPage({
                           rel="noopener noreferrer"
                           className="mt-2 inline-block text-hint font-bold text-emce-dark hover:underline"
                         >
-                          View ID document (link expires in 5 min) →
+                          View ID document →
                         </a>
                       ) : tab === "PENDING" ? (
                         <Badge variant="warning" className="mt-2">

@@ -141,6 +141,7 @@ export function HeaderUserMenu({ user }: { user: UserMenuViewerData }) {
             <Item href="/me/verify" label="Verify profile (blue checkmark)" />
             <Item href="/me/applications" icon={<Briefcase className="h-4 w-4" />} label="My applications" />
             <Item href="/me/saved" label="Saved jobs" />
+            <Item href="/me/contact-shares" label="Contact share requests" />
             <Item href="/me/account" label="Account & data rights" />
           </Group>
 
