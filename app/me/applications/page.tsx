@@ -6,7 +6,6 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { Badge } from "@/components/ui/badge";
-import { Logo } from "@/components/brand/Logo";
 import { withdrawApplication } from "@/server/jobs/actions";
 import { relativeTime } from "@/lib/utils";
 import { getCandidateApplicationStats } from "@/lib/applications-stats";
@@ -56,17 +55,12 @@ export default async function MyApplications({
   ]);
 
   return (
-    <div className="min-h-screen bg-emce-light-bg">
-      <header className="border-b border-emce-border bg-white">
-        <div className="container flex h-14 items-center justify-between">
-          <Link href="/" aria-label="Home" className="flex items-center">
-            <Logo size="md" />
-          </Link>
-          <Button asChild variant="ghost" size="sm"><Link href="/me">Dashboard</Link></Button>
-        </div>
-      </header>
-
-      <main className="container max-w-4xl space-y-6 py-10">
+    // Chrome (header + footer) comes from `app/me/layout.tsx`. The
+    // page used to render its own mini-header with a "Dashboard" link
+    // but that double-stacked under the layout's SiteHeader. The "My
+    // applications" link in the user menu + the Dashboard tab in the
+    // SiteHeader already cover navigation back to /me.
+    <div className="container max-w-4xl space-y-6 py-10">
         <PageHeader
           title="My applications"
           subtitle={`${applications.length} total`}
@@ -138,7 +132,6 @@ export default async function MyApplications({
             })}
           </ul>
         )}
-      </main>
     </div>
   );
 }

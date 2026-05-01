@@ -53,123 +53,176 @@ async function requireCandidate() {
   return { session, profile };
 }
 
+// Re-export of the shared helper kept under this name so existing
+// uses below don't need to change. See `lib/server-action-errors.ts`
+// for the full rationale.
+import { isRouterControlError } from "@/lib/server-action-errors";
+
 export async function submitIDVerification(formData: FormData): Promise<{
   ok: boolean;
   message: string;
 }> {
-  const { session, profile } = await requireCandidate();
-  await rateLimitOrThrow(`id-verify:${profile.userId}`, "resumeUpload");
+  // Top-level try/catch so an unexpected throw (MinIO outage, schema
+  // mismatch on the prod DB, Prisma constraint violation, Redis down
+  // mid-request, etc.) surfaces as a graceful toast instead of the
+  // global "something went wrong" page. Real errors land in the server
+  // logs at `error` level so ops can grep for `[id-verify]`.
+  try {
+    const { session, profile } = await requireCandidate();
+    await rateLimitOrThrow(`id-verify:${profile.userId}`, "resumeUpload");
 
-  const file = formData.get("idDoc") as File | null;
-  if (!file || file.size === 0) {
-    return { ok: false, message: "Please pick a file." };
-  }
-  if (file.size > MAX_BYTES) {
-    return { ok: false, message: "File must be under 6MB." };
-  }
-  if (file.type && !ALLOWED_ID_MIMES.has(file.type)) {
-    return {
-      ok: false,
-      message: "Only JPEG, PNG, WebP, or PDF accepted.",
-    };
-  }
-  // Don't allow re-submission while a request is already pending —
-  // forces the candidate to wait for review or admin action so the
-  // queue doesn't get spammed by repeated uploads of the same person.
-  if (profile.idVerificationStatus === "PENDING") {
-    return {
-      ok: false,
-      message: "You've already submitted — admins are reviewing it.",
-    };
-  }
-  if (profile.idVerificationStatus === "VERIFIED") {
+    const file = formData.get("idDoc") as File | null;
+    if (!file || file.size === 0) {
+      return { ok: false, message: "Please pick a file." };
+    }
+    if (file.size > MAX_BYTES) {
+      return { ok: false, message: "File must be under 6MB." };
+    }
+    if (file.type && !ALLOWED_ID_MIMES.has(file.type)) {
+      return {
+        ok: false,
+        message: "Only JPEG, PNG, WebP, or PDF accepted.",
+      };
+    }
+    // Don't allow re-submission while a request is already pending —
+    // forces the candidate to wait for review or admin action so the
+    // queue doesn't get spammed by repeated uploads of the same person.
+    if (profile.idVerificationStatus === "PENDING") {
+      return {
+        ok: false,
+        message: "You've already submitted — admins are reviewing it.",
+      };
+    }
+    if (profile.idVerificationStatus === "VERIFIED") {
+      return {
+        ok: true,
+        message: "You're already verified.",
+      };
+    }
+
+    const buffer = Buffer.from(await file.arrayBuffer());
+    const ext =
+      file.type === "application/pdf"
+        ? "pdf"
+        : file.type === "image/png"
+          ? "png"
+          : file.type === "image/webp"
+            ? "webp"
+            : "jpg";
+    const key = objectKey(`identity/${profile.id}`, ext);
+
+    try {
+      await s3.send(
+        new PutObjectCommand({
+          Bucket: buckets.docs,
+          Key: key,
+          Body: buffer,
+          ContentType: file.type || `image/${ext}`,
+          // Private — admin reads via server-side presigned GET.
+          Metadata: { "x-content-type-options": "nosniff" },
+        }),
+      );
+    } catch (err) {
+      logger.error(
+        { err, profileId: profile.id, bucket: buckets.docs, key },
+        "[id-verify] MinIO upload failed",
+      );
+      return {
+        ok: false,
+        message:
+          "Couldn't upload the image — likely a storage issue on our end. Try again in a minute.",
+      };
+    }
+
+    // We store the URL in `publicUrl` form for symmetry with other
+    // image fields, but the bucket isn't actually public — the
+    // download requires a presigned URL. The URL is just a stable
+    // identifier; admin code re-presigns by deriving the key from it.
+    const docUrl = publicUrl("docs", key);
+
+    try {
+      await db.candidateProfile.update({
+        where: { id: profile.id },
+        data: {
+          idVerificationStatus: "PENDING",
+          idVerificationDocUrl: docUrl,
+          idVerificationSubmittedAt: new Date(),
+          idVerificationReviewedAt: null,
+          idVerificationReviewedById: null,
+          idVerificationNotes: null,
+        },
+      });
+    } catch (err) {
+      // Most likely cause in production: schema columns / enum exist
+      // in `schema.prisma` but haven't been pushed to the prod DB.
+      // Logging the full error so the operator can read the Prisma
+      // error code (P2002 unique violation, P2025 not found, etc.)
+      // straight from the container logs.
+      logger.error(
+        { err, profileId: profile.id },
+        "[id-verify] DB update failed — check that idVerification* columns + IDVerificationStatus enum exist on prod DB",
+      );
+      return {
+        ok: false,
+        message:
+          "Couldn't save your submission — the team has been notified. Try again later.",
+      };
+    }
+
+    // Audit + admin notify are best-effort; either failing should not
+    // sink the candidate's UX since the actual verification request
+    // has already landed in the DB above.
+    try {
+      await audit({
+        actorId: session.user.id,
+        action: "id_verification.submitted",
+        entity: "CandidateProfile",
+        entityId: profile.id,
+      });
+    } catch (err) {
+      logger.warn({ err, profileId: profile.id }, "[id-verify] audit log failed");
+    }
+
+    // Notify all admins so the new request shows up in their inbox.
+    // We fan out via queue rather than e-mail loop here so a quiet
+    // outage doesn't block the candidate's submission UX.
+    try {
+      const admins = await db.user.findMany({
+        where: { role: "ADMIN", status: "ACTIVE" },
+        select: { id: true },
+      });
+      for (const a of admins) {
+        await notificationsQueue.add("id-verification-pending", {
+          userId: a.id,
+          type: "admin.id_verification_pending",
+          title: "New ID verification to review",
+          body: `${profile.firstName} ${profile.lastName ?? ""} submitted their ID for verification.`,
+          link: `/admin/identity-verifications?id=${profile.id}`,
+          channels: ["IN_APP"],
+          groupKey: `id-verify-${profile.id}`,
+        });
+      }
+    } catch (err) {
+      logger.warn({ err }, "[id-verify] admin notify failed");
+    }
+
+    revalidatePath("/me/profile");
+    revalidatePath("/me/verify");
     return {
       ok: true,
-      message: "You're already verified.",
+      message: "Submitted. Admins typically review within 24 hours.",
+    };
+  } catch (err) {
+    // Re-throw control-flow signals so Next.js can do its thing
+    // (redirect to /signin if session expired mid-request, etc.).
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[id-verify] unhandled error");
+    return {
+      ok: false,
+      message:
+        "Something went wrong on our end. The team has been notified — please try again in a few minutes.",
     };
   }
-
-  const buffer = Buffer.from(await file.arrayBuffer());
-  const ext =
-    file.type === "application/pdf"
-      ? "pdf"
-      : file.type === "image/png"
-        ? "png"
-        : file.type === "image/webp"
-          ? "webp"
-          : "jpg";
-  const key = objectKey(`identity/${profile.id}`, ext);
-
-  try {
-    await s3.send(
-      new PutObjectCommand({
-        Bucket: buckets.docs,
-        Key: key,
-        Body: buffer,
-        ContentType: file.type || `image/${ext}`,
-        // Private — admin reads via server-side presigned GET.
-        Metadata: { "x-content-type-options": "nosniff" },
-      }),
-    );
-  } catch (err) {
-    logger.warn({ err, profileId: profile.id }, "[id-verify] upload failed");
-    return { ok: false, message: "Upload failed — try again in a moment." };
-  }
-
-  // We store the URL in `publicUrl` form for symmetry with other
-  // image fields, but the bucket isn't actually public — the
-  // download requires a presigned URL. The URL is just a stable
-  // identifier; admin code re-presigns by deriving the key from it.
-  const docUrl = publicUrl("docs", key);
-
-  await db.candidateProfile.update({
-    where: { id: profile.id },
-    data: {
-      idVerificationStatus: "PENDING",
-      idVerificationDocUrl: docUrl,
-      idVerificationSubmittedAt: new Date(),
-      idVerificationReviewedAt: null,
-      idVerificationReviewedById: null,
-      idVerificationNotes: null,
-    },
-  });
-
-  await audit({
-    actorId: session.user.id,
-    action: "id_verification.submitted",
-    entity: "CandidateProfile",
-    entityId: profile.id,
-  });
-
-  // Notify all admins so the new request shows up in their inbox.
-  // We fan out via queue rather than e-mail loop here so a quiet
-  // outage doesn't block the candidate's submission UX.
-  try {
-    const admins = await db.user.findMany({
-      where: { role: "ADMIN", status: "ACTIVE" },
-      select: { id: true },
-    });
-    for (const a of admins) {
-      await notificationsQueue.add("id-verification-pending", {
-        userId: a.id,
-        type: "admin.id_verification_pending",
-        title: "New ID verification to review",
-        body: `${profile.firstName} ${profile.lastName ?? ""} submitted their ID for verification.`,
-        link: `/admin/identity-verifications?id=${profile.id}`,
-        channels: ["IN_APP"],
-        groupKey: `id-verify-${profile.id}`,
-      });
-    }
-  } catch (err) {
-    logger.warn({ err }, "[id-verify] admin notify failed");
-  }
-
-  revalidatePath("/me/profile");
-  revalidatePath("/me/verify");
-  return {
-    ok: true,
-    message: "Submitted. Admins typically review within 24 hours.",
-  };
 }
 
 /**
@@ -182,26 +235,39 @@ export async function withdrawIDVerification(): Promise<{
   ok: boolean;
   message: string;
 }> {
-  const { session, profile } = await requireCandidate();
-  if (profile.idVerificationStatus !== "PENDING") {
-    return { ok: false, message: "Nothing to withdraw." };
+  try {
+    const { session, profile } = await requireCandidate();
+    if (profile.idVerificationStatus !== "PENDING") {
+      return { ok: false, message: "Nothing to withdraw." };
+    }
+    await db.candidateProfile.update({
+      where: { id: profile.id },
+      data: {
+        idVerificationStatus: "NONE",
+        idVerificationDocUrl: null,
+        idVerificationSubmittedAt: null,
+      },
+    });
+    try {
+      await audit({
+        actorId: session.user.id,
+        action: "id_verification.withdrawn",
+        entity: "CandidateProfile",
+        entityId: profile.id,
+      });
+    } catch (err) {
+      logger.warn({ err }, "[id-verify] withdraw audit log failed");
+    }
+    revalidatePath("/me/verify");
+    return { ok: true, message: "Withdrawn." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[id-verify] withdraw unhandled error");
+    return {
+      ok: false,
+      message: "Couldn't withdraw — try again in a moment.",
+    };
   }
-  await db.candidateProfile.update({
-    where: { id: profile.id },
-    data: {
-      idVerificationStatus: "NONE",
-      idVerificationDocUrl: null,
-      idVerificationSubmittedAt: null,
-    },
-  });
-  await audit({
-    actorId: session.user.id,
-    action: "id_verification.withdrawn",
-    entity: "CandidateProfile",
-    entityId: profile.id,
-  });
-  revalidatePath("/me/verify");
-  return { ok: true, message: "Withdrawn." };
 }
 
 // ─── Admin: review queue actions ────────────────────────────

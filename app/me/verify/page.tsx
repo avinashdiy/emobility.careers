@@ -4,8 +4,8 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { SiteHeader } from "@/components/layout/site-header";
-import { SiteFooter } from "@/components/layout/site-footer";
+// Don't import SiteHeader / SiteFooter here — `app/me/layout.tsx`
+// already renders them. Importing again would double-stack the bar.
 import { VerifiedBadge } from "@/components/profile/VerifiedBadge";
 import { IDVerificationForm } from "@/components/profile/IDVerificationForm";
 
@@ -61,7 +61,6 @@ export default async function MyVerifyPage() {
 
   return (
     <>
-      <SiteHeader />
       <div className="container max-w-2xl py-10">
         <div className="mb-2 flex items-center gap-2">
           <h1 className="text-dashboard text-emce-text">Verify your profile</h1>
@@ -129,7 +128,6 @@ export default async function MyVerifyPage() {
           </ul>
         </Card>
       </div>
-      <SiteFooter />
     </>
   );
 }

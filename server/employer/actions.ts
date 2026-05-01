@@ -9,6 +9,7 @@ import { auth, unstable_update } from "@/lib/auth";
 import { withUniqueSlug } from "@/lib/slug";
 import { embeddingsQueue, notificationsQueue } from "@/lib/queues";
 import { logger } from "@/lib/logger";
+import { isRouterControlError } from "@/lib/server-action-errors";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import {
@@ -752,6 +753,7 @@ export async function sendBulkInMail(input: {
   subject?: string;
   body: string;
 }): Promise<{ ok: boolean; sent: number; skipped: number; message?: string }> {
+  try {
   const { session, employer } = await requireEmployerWithCompany();
   const parsed = bulkInMailSchema.safeParse(input);
   if (!parsed.success) {
@@ -862,4 +864,15 @@ export async function sendBulkInMail(input: {
 
   revalidatePath("/employer/messages");
   return { ok: true, sent, skipped };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[bulk-inmail] unhandled error");
+    return {
+      ok: false,
+      sent: 0,
+      skipped: 0,
+      message:
+        "Couldn't send the messages — the team has been notified. Try again in a moment.",
+    };
+  }
 }

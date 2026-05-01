@@ -54,25 +54,42 @@ export function IDVerificationForm({
     const fd = new FormData();
     fd.append("idDoc", picked);
     startTransition(async () => {
-      const r = await submitIDVerification(fd);
-      if (r.ok) {
-        toast.success(r.message);
-        clearPick();
-        router.refresh();
-      } else {
-        toast.error(r.message);
+      try {
+        const r = await submitIDVerification(fd);
+        if (r.ok) {
+          toast.success(r.message);
+          clearPick();
+          router.refresh();
+        } else {
+          toast.error(r.message);
+        }
+      } catch (err) {
+        // Defence-in-depth: server action already wraps its body in
+        // try/catch, but a network blip or framework-level throw
+        // (e.g. session expired mid-request → NEXT_REDIRECT) can
+        // still surface here. Show a friendly toast instead of the
+        // global error.tsx page.
+        // eslint-disable-next-line no-console
+        console.error("[id-verify] submit failed", err);
+        toast.error("Submission failed. Please try again.");
       }
     });
   }
 
   function handleWithdraw() {
     startTransition(async () => {
-      const r = await withdrawIDVerification();
-      if (r.ok) {
-        toast.success(r.message);
-        router.refresh();
-      } else {
-        toast.error(r.message);
+      try {
+        const r = await withdrawIDVerification();
+        if (r.ok) {
+          toast.success(r.message);
+          router.refresh();
+        } else {
+          toast.error(r.message);
+        }
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[id-verify] withdraw failed", err);
+        toast.error("Couldn't withdraw — try again in a moment.");
       }
     });
   }

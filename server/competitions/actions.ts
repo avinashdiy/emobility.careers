@@ -13,6 +13,8 @@ import { notificationsQueue } from "@/lib/queues";
 import { sendMail } from "@/lib/mail";
 import { env } from "@/lib/env";
 import type { FormState } from "@/lib/form-state";
+import { isRouterControlError } from "@/lib/server-action-errors";
+import { logger } from "@/lib/logger";
 import { zodErrorsToFieldErrors } from "@/lib/form-state";
 
 async function requireUser() {
@@ -614,6 +616,7 @@ export async function setRegistrationFinalRank(registrationId: string, rank: num
 }
 
 export async function announceResults(competitionId: string): Promise<FormState> {
+  try {
   const session = await requireUser();
   await assertCanEditCompetition(session.user.id, competitionId);
   const comp = await db.competition.findUnique({
@@ -668,6 +671,15 @@ export async function announceResults(competitionId: string): Promise<FormState>
   revalidatePath(`/employer/competitions/${competitionId}`);
   revalidatePath(`/competitions/${comp.slug}`);
   return { ok: true, message: "Results announced." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err, competitionId }, "[announce-results] unhandled error");
+    return {
+      ok: false,
+      message:
+        "Couldn't announce results — the team has been notified. Try again in a moment.",
+    };
+  }
 }
 
 // ─── Admin moderation ───────────────────────────────────────

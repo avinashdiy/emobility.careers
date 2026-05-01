@@ -10,6 +10,8 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { requireEmailVerified, EmailNotVerifiedError } from "@/lib/anti-spam";
 import { extractHashtags, extractMentions } from "@/lib/social/extract";
 import { notificationsQueue } from "@/lib/queues";
+import { isRouterControlError } from "@/lib/server-action-errors";
+import { logger } from "@/lib/logger";
 import type { FormState } from "@/lib/form-state";
 
 /**
@@ -169,34 +171,40 @@ const EditAnswerSchema = z.object({
 });
 
 export async function editAnswerWithState(formData: FormData): Promise<FormState> {
-  const session = await requireUser();
-  const parsed = EditAnswerSchema.safeParse({
-    id: formData.get("id"),
-    body: formData.get("body"),
-  });
-  if (!parsed.success) {
-    return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
-  }
+  try {
+    const session = await requireUser();
+    const parsed = EditAnswerSchema.safeParse({
+      id: formData.get("id"),
+      body: formData.get("body"),
+    });
+    if (!parsed.success) {
+      return { ok: false, message: parsed.error.issues[0]?.message ?? "Invalid input." };
+    }
 
-  const answer = await db.answer.findUnique({
-    where: { id: parsed.data.id },
-    select: { id: true, authorId: true, postId: true },
-  });
-  if (!answer) return { ok: false, message: "Answer not found." };
-  if (answer.authorId !== session.user.id && session.user.role !== "ADMIN") {
-    return { ok: false, message: "You can only edit your own answers." };
-  }
+    const answer = await db.answer.findUnique({
+      where: { id: parsed.data.id },
+      select: { id: true, authorId: true, postId: true },
+    });
+    if (!answer) return { ok: false, message: "Answer not found." };
+    if (answer.authorId !== session.user.id && session.user.role !== "ADMIN") {
+      return { ok: false, message: "You can only edit your own answers." };
+    }
 
-  await db.answer.update({
-    where: { id: answer.id },
-    data: {
-      body: parsed.data.body,
-      hashtags: extractHashtags(parsed.data.body),
-      mentions: extractMentions(parsed.data.body),
-    },
-  });
-  revalidatePath(`/posts/${answer.postId}`);
-  return { ok: true };
+    await db.answer.update({
+      where: { id: answer.id },
+      data: {
+        body: parsed.data.body,
+        hashtags: extractHashtags(parsed.data.body),
+        mentions: extractMentions(parsed.data.body),
+      },
+    });
+    revalidatePath(`/posts/${answer.postId}`);
+    return { ok: true };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[answer-edit] unhandled error");
+    return { ok: false, message: "Couldn't save the edit — try again in a moment." };
+  }
 }
 
 export async function deleteAnswerWithState(formData: FormData): Promise<FormState> {

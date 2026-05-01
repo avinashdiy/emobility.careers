@@ -13,6 +13,8 @@ import { detectEmbed } from "@/lib/social/embeds";
 import { findBannedWord, autoFlagContent } from "@/lib/social/banned-words";
 import { extractHashtags, extractMentions } from "@/lib/social/extract";
 import { objectKey, presignUpload, publicUrl } from "@/lib/storage";
+import { isRouterControlError } from "@/lib/server-action-errors";
+import { logger } from "@/lib/logger";
 import type { FormState } from "@/lib/form-state";
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10MB cap on every uploaded asset
@@ -148,6 +150,7 @@ const RichPostSchema = z.object({
 export async function createRichPost(
   input: z.input<typeof RichPostSchema>,
 ): Promise<{ ok: boolean; postId?: string; message?: string }> {
+  try {
   const session = await requireUser();
   try {
     await requireEmailVerified(session.user.id);
@@ -297,6 +300,18 @@ export async function createRichPost(
       ? "Posted — held for review because it contains a flagged term."
       : undefined,
   };
+  } catch (err) {
+    // Top-level catch so DB / Redis / MinIO failures surface as a
+    // toast in the composer rather than the global error.tsx page.
+    // Real cause is logged at error level for ops to grep.
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[rich-post] create unhandled error");
+    return {
+      ok: false,
+      message:
+        "Couldn't post — the team has been notified. Try again in a moment.",
+    };
+  }
 }
 
 // ─── Poll voting ────────────────────────────────────────────

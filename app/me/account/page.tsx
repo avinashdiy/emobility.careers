@@ -4,8 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
-import { SiteHeader } from "@/components/layout/site-header";
-import { SiteFooter } from "@/components/layout/site-footer";
+// Chrome (header + footer) comes from `app/me/layout.tsx`. Don't
+// import SiteHeader/SiteFooter here — that double-stacks the bar.
 import { Download, AlertTriangle } from "lucide-react";
 import { softDeleteAccount } from "@/server/account/data-rights";
 
@@ -17,7 +17,6 @@ export default async function AccountPage() {
 
   return (
     <>
-      <SiteHeader />
       <div className="container max-w-2xl py-10">
         <h1 className="text-dashboard text-emce-text">Account &amp; data rights</h1>
         <p className="mt-1 text-sm text-emce-text-sec">
@@ -77,7 +76,6 @@ export default async function AccountPage() {
           </div>
         </Card>
       </div>
-      <SiteFooter />
     </>
   );
 }

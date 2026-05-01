@@ -6,6 +6,8 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
+import { isRouterControlError } from "@/lib/server-action-errors";
 
 /**
  * Candidate-initiated self-claim of the DIYguru Verified badge.
@@ -35,6 +37,7 @@ export async function claimDIYguruVerification(): Promise<{
   ok: boolean;
   message: string;
 }> {
+  try {
   const session = await auth();
   if (!session?.user) redirect("/signin");
   if (session.user.role !== "CANDIDATE" && session.user.role !== "ADMIN") {
@@ -152,4 +155,13 @@ export async function claimDIYguruVerification(): Promise<{
     ok: true,
     message: `Verified${courseSuffix}. Your profile now shows the DIYguru badge.`,
   };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[diyguru-claim] unhandled error");
+    return {
+      ok: false,
+      message:
+        "Couldn't process your claim — the team has been notified. Try again in a few minutes.",
+    };
+  }
 }

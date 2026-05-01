@@ -8,6 +8,8 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
+import { isRouterControlError } from "@/lib/server-action-errors";
 import { JobReportReason, JobReportStatus, JobStatus } from "@prisma/client";
 
 // ─── Public: report a job ───────────────────────────────────
@@ -183,53 +185,62 @@ export async function reportPost(formData: FormData): Promise<{
   ok: boolean;
   message: string;
 }> {
-  const parsed = reportPostSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    return { ok: false, message: "Pick a reason and try again." };
+  try {
+    const parsed = reportPostSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      return { ok: false, message: "Pick a reason and try again." };
+    }
+    const session = await auth();
+    const h = await headers();
+    const ip =
+      h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+      h.get("x-real-ip") ||
+      null;
+
+    // Reuse the same rate-limit bucket as job reports — same risk profile,
+    // same abuse model.
+    const limitKey = session?.user?.id ?? ip ?? "anon";
+    await rateLimitOrThrow(`report:${limitKey}`, "saveItem");
+
+    // Cheap existence check before logging — we don't want a queue full
+    // of reports against deleted posts.
+    const post = await db.post.findUnique({
+      where: { id: parsed.data.postId },
+      select: { id: true, authorId: true },
+    });
+    if (!post) {
+      return { ok: false, message: "That post no longer exists." };
+    }
+
+    await audit({
+      actorId: session?.user?.id ?? null,
+      action: "post.flagged",
+      entity: "Post",
+      entityId: post.id,
+      meta: {
+        reason: parsed.data.reason,
+        details: parsed.data.details ?? null,
+        authorId: post.authorId,
+        // Status lives in meta so dismiss/action handlers can flip it
+        // without losing the original report context. Default OPEN; the
+        // /admin/post-reports queue filters on this.
+        status: "OPEN",
+      },
+      ip,
+    });
+
+    return {
+      ok: true,
+      message: "Thanks — our team will review this report.",
+    };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[report-post] unhandled error");
+    return {
+      ok: false,
+      message: "Couldn't submit your report — try again in a moment.",
+    };
   }
-  const session = await auth();
-  const h = await headers();
-  const ip =
-    h.get("x-forwarded-for")?.split(",")[0]?.trim() ||
-    h.get("x-real-ip") ||
-    null;
-
-  // Reuse the same rate-limit bucket as job reports — same risk profile,
-  // same abuse model.
-  const limitKey = session?.user?.id ?? ip ?? "anon";
-  await rateLimitOrThrow(`report:${limitKey}`, "saveItem");
-
-  // Cheap existence check before logging — we don't want a queue full
-  // of reports against deleted posts.
-  const post = await db.post.findUnique({
-    where: { id: parsed.data.postId },
-    select: { id: true, authorId: true },
-  });
-  if (!post) {
-    return { ok: false, message: "That post no longer exists." };
-  }
-
-  await audit({
-    actorId: session?.user?.id ?? null,
-    action: "post.flagged",
-    entity: "Post",
-    entityId: post.id,
-    meta: {
-      reason: parsed.data.reason,
-      details: parsed.data.details ?? null,
-      authorId: post.authorId,
-      // Status lives in meta so dismiss/action handlers can flip it
-      // without losing the original report context. Default OPEN; the
-      // /admin/post-reports queue filters on this.
-      status: "OPEN",
-    },
-    ip,
-  });
-
-  return {
-    ok: true,
-    message: "Thanks — our team will review this report.",
-  };
 }
 
 // ─── Admin: act on a post report ────────────────────────────

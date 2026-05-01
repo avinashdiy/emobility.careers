@@ -6,7 +6,6 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
-import { Logo } from "@/components/brand/Logo";
 import { AvatarUploader } from "@/components/profile/AvatarUploader";
 import { BannerUploader } from "@/components/profile/BannerUploader";
 import { CustomizeUrlEditor } from "@/components/profile/CustomizeUrlEditor";
@@ -113,25 +112,21 @@ export default async function MyProfilePage({
   ]);
 
   return (
-    <div className="min-h-screen bg-emce-light-bg">
-      {/* Top nav */}
-      <header className="border-b border-emce-border bg-white">
-        <div className="container flex h-14 items-center justify-between">
-          <Link href="/" aria-label="Home" className="flex items-center">
-            <Logo size="md" />
-          </Link>
-          <div className="flex items-center gap-2">
-            <Button asChild variant="outline" size="sm">
-              <Link href={`/${profile.slug}`}>Preview public profile →</Link>
-            </Button>
-            <Button asChild variant="ghost" size="sm">
-              <Link href="/me">My dashboard</Link>
-            </Button>
-          </div>
-        </div>
-      </header>
-
-      <main className="container max-w-4xl py-10">
+    // Chrome (header + footer) comes from `app/me/layout.tsx`. The
+    // page used to render its own mini-header with Logo + actions but
+    // that double-stacked under the layout's SiteHeader. We keep the
+    // page-specific actions ("Preview public profile", "My dashboard")
+    // as a small action row at the top of the content — the layout's
+    // <main> already wraps this fragment.
+    <div className="container max-w-4xl py-10">
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+        <Button asChild variant="outline" size="sm">
+          <Link href={`/${profile.slug}`}>Preview public profile →</Link>
+        </Button>
+        <Button asChild variant="ghost" size="sm">
+          <Link href="/me">My dashboard</Link>
+        </Button>
+      </div>
         {/* Gate-redirect notice — shown when the user arrived here because
             the apply gate (90%) blocked them. The pct + jobId carry the
             context so the message is specific to what they were trying to
@@ -322,7 +317,6 @@ export default async function MyProfilePage({
             />
           </div>
         </div>
-      </main>
     </div>
   );
 }

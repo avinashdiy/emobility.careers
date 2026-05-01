@@ -11,6 +11,7 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { resumeParseQueue, embeddingsQueue, resumeDraftQueue, notificationsQueue } from "@/lib/queues";
 import { parseResume } from "@/lib/ai/resume-parser";
 import { logger } from "@/lib/logger";
+import { isRouterControlError } from "@/lib/server-action-errors";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { recalcCompleteness } from "@/lib/profile-completeness";
 import {
@@ -1420,23 +1421,29 @@ const PrivacySchema = z.object({
 });
 
 export async function updatePrivacySettings(formData: FormData): Promise<{ ok: boolean; message?: string }> {
-  const { profile } = await requireCandidate();
-  const parsed = PrivacySchema.safeParse({
-    contactVisibility: formData.get("contactVisibility"),
-    resumeVisibility: formData.get("resumeVisibility"),
-    useAiResume: formData.get("useAiResume") === "on" || formData.get("useAiResume") === "true",
-  });
-  if (!parsed.success) return { ok: false, message: "Invalid visibility values." };
+  try {
+    const { profile } = await requireCandidate();
+    const parsed = PrivacySchema.safeParse({
+      contactVisibility: formData.get("contactVisibility"),
+      resumeVisibility: formData.get("resumeVisibility"),
+      useAiResume: formData.get("useAiResume") === "on" || formData.get("useAiResume") === "true",
+    });
+    if (!parsed.success) return { ok: false, message: "Invalid visibility values." };
 
-  await db.candidateProfile.update({
-    where: { id: profile.id },
-    data: {
-      contactVisibility: parsed.data.contactVisibility,
-      resumeVisibility: parsed.data.resumeVisibility,
-      useAiResume: parsed.data.useAiResume,
-    },
-  });
-  revalidatePath("/me/profile");
-  revalidatePath(`/${profile.slug}`);
-  return { ok: true, message: "Privacy settings saved." };
+    await db.candidateProfile.update({
+      where: { id: profile.id },
+      data: {
+        contactVisibility: parsed.data.contactVisibility,
+        resumeVisibility: parsed.data.resumeVisibility,
+        useAiResume: parsed.data.useAiResume,
+      },
+    });
+    revalidatePath("/me/profile");
+    revalidatePath(`/${profile.slug}`);
+    return { ok: true, message: "Privacy settings saved." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[privacy-settings] unhandled error");
+    return { ok: false, message: "Couldn't save privacy settings — try again in a moment." };
+  }
 }
