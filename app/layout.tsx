@@ -4,6 +4,7 @@ import { Suspense } from "react";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toaster";
+import { TooltipProvider } from "@/components/ui/tooltip";
 import { ToastFromSearchParams } from "@/components/ui/toast-from-params";
 import { MaintenanceGate } from "@/components/layout/MaintenanceGate";
 import { ImpersonationBanner } from "@/components/layout/ImpersonationBanner";
@@ -158,7 +159,23 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <AnnouncementBanner />
         </Suspense>
-        <MaintenanceGate>{children}</MaintenanceGate>
+        {/* `id="main"` is the skip-to-content target — see the
+            sr-only anchor at the top of SiteHeader. Wrapping the
+            page tree with <main> here gives every route the skip
+            target without each layout having to re-declare it.
+            The header sits sticky above this; tabIndex=-1 lets the
+            anchor's focus land here when activated. */}
+        <main id="main" tabIndex={-1} className="focus:outline-none">
+          {/* TooltipProvider mounted once at the root so any
+              <Tooltip> in the tree shares one queue (Radix
+              dedupes hovers across siblings — without a single
+              provider, two tooltips on the same row can fire
+              simultaneously). delayDuration overridable per
+              tooltip; 200ms is the default. */}
+          <TooltipProvider delayDuration={200} skipDelayDuration={500}>
+            <MaintenanceGate>{children}</MaintenanceGate>
+          </TooltipProvider>
+        </main>
         {/* Google Translate widget loader — opt-in via the language
             switcher. Renders nothing visible; mounts a hidden host
             element + injects the translate.google.com script so

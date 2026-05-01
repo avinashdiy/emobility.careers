@@ -769,11 +769,16 @@ export default async function PublicCandidateProfile({
                     )}
                   </>
                 ) : (
+                  // Don't echo the contactVisibility enum — under the
+                  // 2026-05 privacy floor, the candidate's setting is
+                  // ignored anyway, so saying "is connections" would
+                  // be misleading. One generic "private by default"
+                  // line is the honest answer.
                   <span className="inline-flex items-center gap-1 text-emce-text-sec">
-                    🔒 Contact info is {profile.contactVisibility.toLowerCase().replace("_", " ")}.
+                    🔒 Contact info is private. Send a contact-share request to ask.
                     {isOwner && (
                       <Link href="/me/profile?tab=privacy" className="font-bold text-emce-dark hover:underline">
-                        Change visibility →
+                        Privacy settings →
                       </Link>
                     )}
                   </span>

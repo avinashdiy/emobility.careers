@@ -23,6 +23,17 @@ export async function applyToJob(formData: FormData) {
 
   const jobId = z.string().parse(formData.get("jobId"));
   const coverLetter = String(formData.get("coverLetter") ?? "").slice(0, 4000);
+  // Optional fair attribution. When the candidate landed on the
+  // job from a /fairs/[slug] page, the page passes the drive id
+  // through a hidden input. We validate (must be a real drive
+  // that this job is actually attached to) and silently drop a
+  // bogus value rather than 4xx — the apply flow shouldn't break
+  // if the URL was tampered with.
+  const recruitmentDriveIdRaw = formData.get("recruitmentDriveId");
+  const recruitmentDriveIdInput =
+    typeof recruitmentDriveIdRaw === "string" && recruitmentDriveIdRaw.length > 0
+      ? recruitmentDriveIdRaw
+      : null;
 
   const profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
@@ -35,7 +46,9 @@ export async function applyToJob(formData: FormData) {
     redirect(`/jobs/${jobId}?error=` + encodeURIComponent("Verify your email before applying. Check /me for the link."));
   }
 
-  // Profile-completeness gate — applications require ≥90% complete. The
+  // Profile-completeness gate — applications require the threshold
+  // defined in COMPLETENESS_THRESHOLDS.APPLY (60% as of 2026-05; was
+  // 90% — see lib/profile-completeness.ts for the rationale). The
   // calculated value is denormalised on the row, kept fresh by every
   // profile-edit action via recalcCompleteness().
   if (profile.profileCompleteness < COMPLETENESS_THRESHOLDS.APPLY) {
@@ -85,13 +98,36 @@ export async function applyToJob(formData: FormData) {
     redirect(`/me/applications?notice=` + encodeURIComponent("You've already applied to this job"));
   }
 
+  // Validate the recruitment-drive attribution if the form claimed
+  // one. The drive must (a) exist, (b) be in OPEN/IN_PROGRESS, and
+  // (c) actually have this job attached. Otherwise treat as DIRECT.
+  let resolvedDriveId: string | null = null;
+  if (recruitmentDriveIdInput) {
+    const driveJob = await db.recruitmentDriveJob.findUnique({
+      where: {
+        driveId_jobId: { driveId: recruitmentDriveIdInput, jobId },
+      },
+      select: { drive: { select: { id: true, status: true } } },
+    });
+    if (
+      driveJob?.drive &&
+      (driveJob.drive.status === "OPEN" || driveJob.drive.status === "IN_PROGRESS")
+    ) {
+      resolvedDriveId = driveJob.drive.id;
+    }
+  }
+
   const application = await db.$transaction(async (tx) => {
     const app = await tx.application.create({
       data: {
         jobId,
         candidateId: profile.id,
         stage: ApplicationStage.APPLIED,
-        source: ApplicationSource.DIRECT,
+        // CAMPUS source when fair-attributed, DIRECT otherwise. This
+        // keeps the existing source-based analytics + the per-fair
+        // ATS filter both work without us inventing a new source.
+        source: resolvedDriveId ? ApplicationSource.CAMPUS : ApplicationSource.DIRECT,
+        recruitmentDriveId: resolvedDriveId,
         coverLetter: coverLetter || null,
         resumeSnapshotUrl: profile.resumeUrl,
       },
@@ -100,6 +136,12 @@ export async function applyToJob(formData: FormData) {
       where: { id: jobId },
       data: { appliesCount: { increment: 1 } },
     });
+    if (resolvedDriveId) {
+      await tx.recruitmentDrive.update({
+        where: { id: resolvedDriveId },
+        data: { applicationsCount: { increment: 1 } },
+      });
+    }
     await tx.stageHistory.create({
       data: {
         applicationId: app.id,

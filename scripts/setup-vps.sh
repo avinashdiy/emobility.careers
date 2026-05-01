@@ -110,6 +110,44 @@ else
   fi
 fi
 
+# ───── Full-text search post-push migration ─────────────────
+# Runs the GENERATED tsvector + GIN index DDL that Prisma's `db push`
+# can't express. Idempotent — every block guards on pg_attribute /
+# IF NOT EXISTS. See scripts/setup-fts.sql for the rationale.
+step "Apply FTS post-push (tsvector columns + GIN indexes)"
+
+if [ -z "${DATABASE_URL:-}" ]; then
+  warn "DATABASE_URL not set in this shell — skipping FTS post-push."
+  warn "Re-run this script with DATABASE_URL exported once you've sourced .env."
+elif command -v psql >/dev/null 2>&1; then
+  if psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "scripts/setup-fts.sql"; then
+    ok "FTS post-push applied"
+  else
+    err "FTS post-push failed — check the SQL output above"
+    OVERALL_RC=1
+  fi
+else
+  warn "psql not found on PATH — install postgresql-client to run the FTS migration."
+  warn "Falling back to pnpm-tsx runner (slower but works without psql)."
+  if pnpm exec tsx -e "
+    const { Client } = require('pg');
+    const fs = require('fs');
+    (async () => {
+      const c = new Client({ connectionString: process.env.DATABASE_URL });
+      await c.connect();
+      const sql = fs.readFileSync('scripts/setup-fts.sql', 'utf8');
+      await c.query(sql);
+      await c.end();
+      console.log('FTS post-push applied via pg client.');
+    })().catch((e) => { console.error(e); process.exit(1); });
+  "; then
+    ok "FTS post-push applied (via pg client)"
+  else
+    err "FTS post-push failed via pg client fallback"
+    OVERALL_RC=1
+  fi
+fi
+
 # ───── MinIO bucket reconciliation ──────────────────────────
 step "Reconcile MinIO buckets"
 

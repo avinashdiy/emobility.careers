@@ -9,8 +9,16 @@ import { db } from "@/lib/db";
  * Two thresholds drive product behaviour:
  *   • 50% — unlocks site-wide browsing (feed, jobs, mentors, network).
  *           Below this, soft-redirects to /me/profile with a guidance banner.
- *   • 90% — unlocks job applications. Below this, the apply server action
+ *   • 60% — unlocks job applications. Below this, the apply server action
  *           throws and the apply button shows "Complete profile to apply".
+ *           (Was 90%; softened on 2026-05-01 — the 90% bar was so high
+ *           that even motivated candidates with a verified resume,
+ *           experience, and skills could fall short and bounce off the
+ *           apply CTA. 60% is a "you've put in real effort" floor — it
+ *           still requires the headline, summary, photo, and a couple
+ *           of structured sections — without locking the door on
+ *           pragmatic profiles. Recruiters can still rank by full
+ *           completeness in the ATS.)
  *
  * Weights below total exactly 100. They reflect what a recruiter scans
  * for in 5 seconds: who you are, what you've done, what you can do, where
@@ -26,7 +34,7 @@ export const COMPLETENESS_THRESHOLDS = {
   /** Soft gate — below this, candidate is redirected to /me/profile. */
   EXPLORE: 50,
   /** Hard gate — below this, applyToJob throws. */
-  APPLY: 90,
+  APPLY: 60,
 } as const;
 
 interface ProfileShape {

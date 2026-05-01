@@ -14,6 +14,7 @@ import { ResponseTimePill } from "@/components/recruiter/ResponseTimePill";
 import { ReportJobButton } from "@/components/jobs/ReportJobButton";
 import { MatchScoreCard } from "@/components/jobs/MatchScoreCard";
 import { getOrComputeCandidateMatch } from "@/server/matching/candidate-match";
+import { COMPLETENESS_THRESHOLDS } from "@/lib/profile-completeness";
 import { jobPostingJsonLd } from "@/lib/seo/job-schema";
 import { breadcrumbJsonLd } from "@/lib/seo/schemas";
 import { env } from "@/lib/env";
@@ -74,10 +75,16 @@ export default async function PublicJobDetail({
   searchParams,
 }: {
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; fair?: string }>;
 }) {
   const { slug } = await params;
   const sp = await searchParams;
+  // Optional `?fair=<driveId>` carry-through. Set when the candidate
+  // arrived from /fairs/[slug] — we pipe it into the apply form's
+  // hidden input so the resulting Application is correctly tagged
+  // with the recruitment-drive source. Validation happens server-
+  // side in applyToJob; here we just trust-and-forward.
+  const fairId = typeof sp.fair === "string" ? sp.fair : null;
 
   const job = await db.jobPosting.findUnique({
     where: { slug },
@@ -367,10 +374,12 @@ export default async function PublicJobDetail({
                 </Button>
               </div>
             ) : session.user.role === "CANDIDATE" ? (
-              candidateCompleteness !== null && candidateCompleteness < 90 ? (
-                // Hard 90% gate — apply server action would redirect anyway,
+              candidateCompleteness !== null && candidateCompleteness < COMPLETENESS_THRESHOLDS.APPLY ? (
+                // Hard gate — apply server action would redirect anyway,
                 // but showing the locked state up-front avoids a useless
-                // form submission round-trip.
+                // form submission round-trip. Threshold lives on
+                // COMPLETENESS_THRESHOLDS so a future tweak is one
+                // constant change.
                 <div className="mt-3 space-y-2">
                   <div className="rounded-md border border-emce-orange bg-emce-orange-light p-3 text-sm">
                     <p className="font-bold text-emce-orange">
@@ -378,7 +387,7 @@ export default async function PublicJobDetail({
                     </p>
                     <p className="mt-1 text-emce-text">
                       Your profile is <strong>{candidateCompleteness}%</strong>. Reach{" "}
-                      <strong>90%</strong> and the apply button unlocks.
+                      <strong>{COMPLETENESS_THRESHOLDS.APPLY}%</strong> and the apply button unlocks.
                     </p>
                   </div>
                   <Button asChild className="w-full" size="lg">
@@ -390,6 +399,14 @@ export default async function PublicJobDetail({
               ) : (
                 <form action={applyToJob} className="mt-3 space-y-3">
                   <input type="hidden" name="jobId" value={job.id} />
+                  {/* Carry the fair-attribution forward when the
+                      candidate landed here from /fairs/[slug]. The
+                      server action validates the driveId is real +
+                      has this job attached before stamping the
+                      Application row. */}
+                  {fairId && (
+                    <input type="hidden" name="recruitmentDriveId" value={fairId} />
+                  )}
                   <Textarea
                     name="coverLetter"
                     rows={4}

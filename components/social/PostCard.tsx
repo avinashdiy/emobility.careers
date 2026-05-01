@@ -7,7 +7,7 @@ import { SharePostMenu } from "@/components/social/SharePostMenu";
 import { CommentSection } from "@/components/social/CommentSection";
 import { PostActions } from "@/components/social/PostActions";
 import { PollCard } from "@/components/social/PollCard";
-import { iframeFor } from "@/lib/social/embeds";
+import { iframeFor, parseLinkedInUrn } from "@/lib/social/embeds";
 import { relativeTime } from "@/lib/utils";
 import { CountryFlag } from "@/components/profile/CountryFlag";
 import { VerifiedBadge } from "@/components/profile/VerifiedBadge";
@@ -575,7 +575,20 @@ function EmbedRenderer({
   title: string | null;
   thumbnailUrl: string | null;
 }) {
-  const embed = iframeFor({ provider, url, iframe: true, videoId: extractVideoId(url, provider) });
+  // Re-parse the URL into a detection at render time — Posts only
+  // persist `embedUrl` + `embedProvider`, so we have to recover the
+  // videoId / linkedInUrn fields each render. For LinkedIn, the URN
+  // (not just numeric ID) drives the embed URL — see
+  // lib/social/embeds.ts → iframeFor for the full reasoning.
+  const linkedInParsed =
+    provider === "LINKEDIN" ? parseLinkedInUrn(url) : null;
+  const embed = iframeFor({
+    provider,
+    url,
+    iframe: true,
+    videoId: linkedInParsed?.numericId ?? extractVideoId(url, provider),
+    linkedInUrn: linkedInParsed?.urn,
+  });
   // LinkedIn iframe needs a different shape than video providers.
   // YouTube/Vimeo render at 16:9 — a fixed aspect-ratio container is
   // perfect. LinkedIn's embed is a card-shaped post (variable height,
@@ -662,14 +675,11 @@ function extractVideoId(url: string, provider: EmbedProvider): string | undefine
     const m = url.match(/vimeo\.com\/(?:video\/)?(\d+)/);
     return m?.[1];
   }
-  if (provider === "LINKEDIN") {
-    // Mirror lib/social/embeds.ts: pull the activity / share / ugcPost
-    // numeric ID. Old rows persisted before LinkedIn embeds shipped
-    // also flow through here so previously-saved /posts/... links
-    // start rendering inline once the user re-renders the page.
-    const m = url.match(/(?:activity[:-]|share[:-]|ugcPost[:-])(\d{15,25})/i);
-    return m?.[1];
-  }
+  // LinkedIn handled separately via `parseLinkedInUrn` at the call
+  // site — that path needs the full URN, not just the numeric ID,
+  // because LinkedIn's embed iframe is keyed on the URN type
+  // (activity / share / ugcPost). Returning undefined here is the
+  // right thing if a caller mistakenly calls us for LinkedIn.
   return undefined;
 }
 

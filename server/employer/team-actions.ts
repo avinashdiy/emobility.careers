@@ -9,6 +9,7 @@ import { auth, unstable_update } from "@/lib/auth";
 import { sendMail } from "@/lib/mail";
 import { env } from "@/lib/env";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { logger } from "@/lib/logger";
 import { CompanyTeamRole } from "@prisma/client";
 
 async function requireCompanyAdmin() {
@@ -55,14 +56,27 @@ export async function inviteTeammate(formData: FormData) {
     },
   });
 
+  // Email send is best-effort — the invite row is already
+  // persisted, so a transient SES outage shouldn't fail the whole
+  // server action and leave the inviter staring at an error
+  // toast. Log the failure so on-call notices, but let the action
+  // succeed; the inviter can re-send from the team management
+  // page if the email never lands.
   const link = `${env.NEXT_PUBLIC_APP_URL}/invite/${token}`;
-  await sendMail({
-    to: parsed.data.email,
-    subject: `You've been invited to join ${employer.company.name} on eMobility Careers`,
-    html: `<p>${session.user.name ?? "A teammate"} invited you to join <strong>${employer.company.name}</strong> on eMobility Careers as a <strong>${parsed.data.role}</strong>.</p>
-      <p><a href="${link}">Accept invite →</a></p>
-      <p>This link expires in 7 days.</p>`,
-  });
+  try {
+    await sendMail({
+      to: parsed.data.email,
+      subject: `You've been invited to join ${employer.company.name} on eMobility Careers`,
+      html: `<p>${session.user.name ?? "A teammate"} invited you to join <strong>${employer.company.name}</strong> on eMobility Careers as a <strong>${parsed.data.role}</strong>.</p>
+        <p><a href="${link}">Accept invite →</a></p>
+        <p>This link expires in 7 days.</p>`,
+    });
+  } catch (err) {
+    logger.warn(
+      { err, to: parsed.data.email, companyId: employer.companyId },
+      "[team-invite] mail send failed",
+    );
+  }
 
   revalidatePath("/employer/team");
 }

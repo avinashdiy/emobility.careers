@@ -6,6 +6,7 @@ import { auth } from "@/lib/auth";
 import { withUniqueSlug } from "@/lib/slug";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { buildTsQuery } from "@/lib/search-fts";
 import type { InstitutionType } from "@prisma/client";
 
 /**
@@ -35,17 +36,26 @@ export interface CompanyMatch {
 
 export async function searchCompanies(q: string): Promise<CompanyMatch[]> {
   if (!q || q.trim().length < 2) return [];
-  return db.company.findMany({
-    where: {
-      OR: [
-        { name: { contains: q, mode: "insensitive" } },
-        { slug: { contains: q.toLowerCase().replace(/\s+/g, "-") } },
-      ],
-    },
-    take: 10,
-    orderBy: [{ verificationStatus: "desc" }, { name: "asc" }],
-    select: { id: true, slug: true, name: true, logoUrl: true, hqLocation: true },
-  });
+  // Migrated to Postgres FTS on Company.searchTsv (2026-05). The
+  // 'simple' tokenizer + unaccent give us proper-noun-friendly
+  // matching without English stemming false-positives. We still
+  // OR with a slug exact-match because pickers sometimes get
+  // pasted an exact slug from a URL — no FTS magic needed there.
+  const tsq = buildTsQuery(q);
+  if (!tsq) return [];
+  const slugCandidate = q.toLowerCase().replace(/\s+/g, "-");
+  return db.$queryRaw<CompanyMatch[]>`
+    SELECT id, slug, name, "logoUrl", "hqLocation"
+    FROM "Company"
+    WHERE "searchTsv" @@ to_tsquery('simple', ${tsq})
+       OR slug = ${slugCandidate}
+    ORDER BY
+      ts_rank("searchTsv", to_tsquery('simple', ${tsq}))
+        + CASE WHEN "verificationStatus" = 'VERIFIED' THEN 0.1 ELSE 0 END
+        DESC,
+      name ASC
+    LIMIT 10
+  `;
 }
 
 const CreateCompanySchema = z.object({
@@ -110,19 +120,27 @@ export interface InstitutionMatch {
 
 export async function searchInstitutions(q: string): Promise<InstitutionMatch[]> {
   if (!q || q.trim().length < 2) return [];
-  return db.institution.findMany({
-    where: {
-      OR: [
-        { name: { contains: q, mode: "insensitive" } },
-        { shortName: { contains: q, mode: "insensitive" } },
-        { slug: { contains: q.toLowerCase().replace(/\s+/g, "-") } },
-      ],
-      verificationStatus: { not: "REJECTED" },
-    },
-    take: 10,
-    orderBy: [{ verificationStatus: "desc" }, { name: "asc" }],
-    select: { id: true, slug: true, name: true, type: true, city: true, logoUrl: true },
-  });
+  // Same FTS migration as searchCompanies — see lib/search-fts.ts
+  // for the rationale and lib/institution-search.ts for the
+  // canonical implementation. This function is the version used by
+  // the profile-editor entity-picker (it shapes the result
+  // differently — `type` instead of `verificationStatus`).
+  const tsq = buildTsQuery(q);
+  if (!tsq) return [];
+  const slugCandidate = q.toLowerCase().replace(/\s+/g, "-");
+  return db.$queryRaw<InstitutionMatch[]>`
+    SELECT id, slug, name, type::text, city, "logoUrl"
+    FROM "Institution"
+    WHERE ("searchTsv" @@ to_tsquery('simple', ${tsq})
+        OR slug = ${slugCandidate})
+      AND "verificationStatus" <> 'REJECTED'
+    ORDER BY
+      ts_rank("searchTsv", to_tsquery('simple', ${tsq}))
+        + CASE WHEN "verificationStatus" = 'VERIFIED' THEN 0.1 ELSE 0 END
+        DESC,
+      name ASC
+    LIMIT 10
+  `;
 }
 
 const CreateInstitutionSchema = z.object({

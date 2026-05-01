@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { CompetitionCard } from "@/components/competitions/CompetitionCard";
+import { findFtsIds } from "@/lib/search-fts";
 
 export const metadata = { title: "Search" };
 
@@ -41,17 +42,26 @@ export default async function SearchPage({
   const showComps = tab === "all" || tab === "competitions";
   const showPosts = tab === "all" || tab === "posts";
 
+  // FTS pre-pass for the three models that have a searchTsv column.
+  // We resolve the matching IDs FIRST (one tiny query per model)
+  // then hand them to Prisma's `findMany({ where: { id: { in: ... } } })`
+  // so we keep the existing relation includes + ordering. See
+  // lib/search-fts.ts for the helper. Mentors / Competitions / Posts
+  // still use ILIKE — those models haven't been migrated yet.
+  const [peopleIds, jobIds, companyIds] = q
+    ? await Promise.all([
+        showPeople ? findFtsIds("CandidateProfile", q) : null,
+        showJobs ? findFtsIds("JobPosting", q) : null,
+        showCompanies ? findFtsIds("Company", q) : null,
+      ])
+    : [null, null, null];
+
   const [people, jobs, companies, mentors, competitions, posts] = await Promise.all([
-    showPeople && q
+    showPeople && q && peopleIds && peopleIds.length > 0
       ? db.candidateProfile.findMany({
           where: {
+            id: { in: peopleIds },
             cvVisibility: { in: ["EVERYONE", "EMPLOYERS_ONLY"] },
-            OR: [
-              { firstName: { contains: q, mode: "insensitive" } },
-              { lastName: { contains: q, mode: "insensitive" } },
-              { headline: { contains: q, mode: "insensitive" } },
-              { institution: { contains: q, mode: "insensitive" } },
-            ],
           },
           take: TAKE_PER_GROUP,
           orderBy: { followersCount: "desc" },
@@ -61,14 +71,11 @@ export default async function SearchPage({
           },
         })
       : Promise.resolve([]),
-    showJobs && q
+    showJobs && q && jobIds && jobIds.length > 0
       ? db.jobPosting.findMany({
           where: {
+            id: { in: jobIds },
             status: "OPEN",
-            OR: [
-              { title: { contains: q, mode: "insensitive" } },
-              { description: { contains: q, mode: "insensitive" } },
-            ],
           },
           take: TAKE_PER_GROUP,
           orderBy: { publishedAt: "desc" },
@@ -78,14 +85,9 @@ export default async function SearchPage({
           },
         })
       : Promise.resolve([]),
-    showCompanies && q
+    showCompanies && q && companyIds && companyIds.length > 0
       ? db.company.findMany({
-          where: {
-            OR: [
-              { name: { contains: q, mode: "insensitive" } },
-              { description: { contains: q, mode: "insensitive" } },
-            ],
-          },
+          where: { id: { in: companyIds } },
           take: TAKE_PER_GROUP,
           select: { id: true, slug: true, name: true, logoUrl: true, hqLocation: true, teamSize: true, _count: { select: { jobs: true } } },
         })

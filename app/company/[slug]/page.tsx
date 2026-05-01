@@ -187,6 +187,56 @@ export default async function PublicCompanyPage({
       )
     : false;
 
+  // Claim-CTA gate. Show "Work here? Claim →" only when:
+  //   • viewer is signed in
+  //   • viewer is NOT already on the company team
+  //   • viewer is NOT the company owner
+  //   • viewer doesn't already have a claim filed (we surface
+  //     PENDING / APPROVED separately as a status pill instead)
+  // Resolved in one round-trip — Promise.all keeps page render fast.
+  let claimState:
+    | "INVITE"            // signed-in non-team viewer with no prior claim
+    | "PENDING"           // claim filed, awaiting admin
+    | "APPROVED"          // approved (will resolve to /employer redirect on next sign-in)
+    | "REJECTED"          // rejected — UI offers re-submit
+    | "TEAM"              // already on team, no CTA
+    | null = null;
+  if (session?.user) {
+    if (company.ownerUserId === session.user.id) {
+      claimState = "TEAM";
+    } else {
+      const [onTeam, existingClaim] = await Promise.all([
+        db.employerProfile.findFirst({
+          where: { userId: session.user.id, companyId: company.id },
+          select: { id: true },
+        }),
+        db.companyClaim.findUnique({
+          where: {
+            companyId_claimantUserId: {
+              companyId: company.id,
+              claimantUserId: session.user.id,
+            },
+          },
+          select: { status: true },
+        }),
+      ]);
+      if (onTeam) {
+        claimState = "TEAM";
+      } else if (existingClaim) {
+        // PENDING / APPROVED / REJECTED / WITHDRAWN — show the
+        // claim's current status; WITHDRAWN re-opens the INVITE
+        // CTA because the user explicitly cancelled.
+        claimState =
+          existingClaim.status === "WITHDRAWN" ? "INVITE" : (existingClaim.status as
+            | "PENDING"
+            | "APPROVED"
+            | "REJECTED");
+      } else {
+        claimState = "INVITE";
+      }
+    }
+  }
+
   const orgLd = organizationJsonLd({
     name: company.name,
     slug: company.slug,
@@ -282,6 +332,32 @@ export default async function PublicCompanyPage({
                 initialFollowing={isFollowing}
                 signedIn={Boolean(session?.user)}
               />
+              {/* Work here? CTA — opens the claim form. Three render
+                  states reflect the claim lifecycle: fresh INVITE,
+                  in-flight PENDING, REJECTED-needs-fix. APPROVED +
+                  TEAM render nothing (the user already has access).
+                  Anonymous viewers also see the INVITE CTA — clicking
+                  routes through /signin then back to the form. */}
+              {claimState === "INVITE" && (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/company/${company.slug}/claim`}>Work here? Claim →</Link>
+                </Button>
+              )}
+              {claimState === "PENDING" && (
+                <Button asChild variant="ghost" size="sm" className="cursor-default">
+                  <Link href={`/company/${company.slug}/claim`}>⏳ Claim under review</Link>
+                </Button>
+              )}
+              {claimState === "REJECTED" && (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/company/${company.slug}/claim`}>Re-submit claim →</Link>
+                </Button>
+              )}
+              {!session?.user && (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={`/company/${company.slug}/claim`}>Work here? Claim →</Link>
+                </Button>
+              )}
               {company.website && (
                 <Button asChild variant="outline" size="sm">
                   <a href={company.website} target="_blank" rel="noopener noreferrer">Visit website</a>

@@ -53,7 +53,7 @@ export function PrivacyEditor({
         <h2 className="text-section text-emce-text">Privacy & resume</h2>
       </div>
       <p className="mt-1 text-hint text-emce-text-sec">
-        Sensitive fields default to private. Loosen them when you're ready to be reached.
+        Sensitive fields default to private. Loosen them when you&apos;re ready to be reached.
       </p>
 
       <form action={save} className="mt-4 space-y-4">
@@ -65,7 +65,17 @@ export function PrivacyEditor({
             <option value="EMPLOYERS_ONLY">Verified employers only</option>
             <option value="EVERYONE">Public on my profile</option>
           </NativeSelect>
-          <p className="mt-1 text-hint text-emce-text-sec">{CONTACT_VISIBILITY_DESCRIPTIONS[contactVisibility]}</p>
+          {/* Site-wide privacy floor explainer — added 2026-05 alongside
+              the canSeeContact tightening. The dropdown still lets you
+              pick the looser options because we plan to relax this in
+              future, but right now they all behave the same. */}
+          <div className="mt-2 rounded-md border border-emce-border bg-emce-light-soft/50 p-2 text-hint text-emce-text-sec">
+            <strong>Heads up:</strong> regardless of your choice above, email
+            and phone are currently kept off your public profile. They surface
+            only to admins, recruiters at companies where you&apos;ve applied,
+            and people you&apos;ve granted via a contact-share request.
+          </div>
+          <p className="mt-2 text-hint text-emce-text-sec">{CONTACT_VISIBILITY_DESCRIPTIONS[contactVisibility]}</p>
         </div>
 
         <div>

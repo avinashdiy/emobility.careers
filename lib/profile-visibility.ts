@@ -123,46 +123,45 @@ export async function getViewerContext(
 
 /**
  * Decide whether the viewer is allowed to see the candidate's email
- * + phone. LinkedIn-strict by default:
+ * + phone. Strict-by-default policy (tightened on 2026-05-01 in
+ * response to user-reported leakage on legacy `EVERYONE` profiles):
  *
  *   • Owner — always.
  *   • Admin — always (audit-logged elsewhere; site-ops need contact
  *     for support tickets, account recovery, abuse investigations).
  *   • Active contact-share GRANT from this viewer to this owner —
- *     always, regardless of the candidate's `contactVisibility`.
- *     A GRANT is the candidate explicitly saying "yes you can have
- *     my contact" via the request flow in `server/contact-share/`.
- *     This is the "consent overrides default privacy" path.
- *   • EVERYONE visibility — public on the profile page (rare opt-in).
- *   • EMPLOYERS_ONLY visibility — gated on BOTH (a) viewer is an
- *     employer AND (b) the candidate has applied to one of their
- *     company's jobs. This is the "legitimate need" gate. We
- *     deliberately do NOT honour `EMPLOYERS_ONLY` for any random
- *     verified employer — that's the leak we're closing.
- *   • CONNECTIONS visibility — only ACCEPTED connections see contact.
- *   • PRIVATE — nobody but owner sees contact (unless granted above).
+ *     always, regardless of any other field. A GRANT is the candidate
+ *     explicitly saying "yes you can have my contact" via the request
+ *     flow in `server/contact-share/`. This is the "consent overrides
+ *     default privacy" path.
+ *   • Verified employer who has at least one Application from this
+ *     candidate to one of their company's jobs — they have a
+ *     legitimate need (the candidate volunteered into their pipeline).
+ *
+ *   • EVERYONE ELSE — hidden. This includes:
+ *      - signed-out / anonymous visitors
+ *      - other CANDIDATE viewers (peer browsing)
+ *      - 1st-degree CONNECTIONS (use messaging instead)
+ *      - verified EMPLOYERS without an application from this candidate
+ *        (they should send a contact-share request — same as LinkedIn
+ *        InMail-then-reveal flow)
+ *
+ * The candidate's `ContactVisibility` setting is intentionally
+ * IGNORED here — it remains in the schema and the editor for a
+ * future relaxation, but for now the floor (admin / grant /
+ * applied-employer) is the policy regardless of what the candidate
+ * picked. Legacy EVERYONE / CONNECTIONS settings are not honoured;
+ * those candidates effectively land at the same privacy posture as
+ * PRIVATE until they explicitly grant a contact-share request.
  */
-export function canSeeContact(visibility: ContactVisibility, ctx: ViewerContext): boolean {
+export function canSeeContact(_visibility: ContactVisibility, ctx: ViewerContext): boolean {
   if (ctx.isOwner) return true;
   if (ctx.role === "ADMIN") return true;
-  // Explicit grant trumps every other rule below — including PRIVATE.
-  // The candidate said yes; that's the strongest possible consent.
+  // Explicit consent — strongest signal. Trumps everything else.
   if (ctx.hasActiveContactGrant) return true;
-  switch (visibility) {
-    case "EVERYONE":
-      return true;
-    case "EMPLOYERS_ONLY":
-      // Strict: employer role alone isn't enough — they need a real
-      // application relationship with the candidate. Without that,
-      // they should send an InMail / messaging request like LinkedIn,
-      // not silently lift the candidate's email + phone.
-      return ctx.role === "EMPLOYER" && ctx.hasApplicationRelationship;
-    case "CONNECTIONS":
-      return ctx.isConnection;
-    case "PRIVATE":
-    default:
-      return false;
-  }
+  // Application-derived legitimate need.
+  if (ctx.role === "EMPLOYER" && ctx.hasApplicationRelationship) return true;
+  return false;
 }
 
 export function canSeeResume(visibility: ResumeVisibility, ctx: ViewerContext): boolean {
@@ -179,12 +178,19 @@ export function canSeeResume(visibility: ResumeVisibility, ctx: ViewerContext): 
   }
 }
 
-/** UI-friendly description for the toggle screens in /me/profile. */
+/** UI-friendly description for the toggle screens in /me/profile.
+ *  Note: as of 2026-05 the platform enforces a privacy floor —
+ *  contact info only surfaces to admins, employers at companies
+ *  where you've applied, and people you've explicitly granted via a
+ *  contact-share request. The dropdown options below stay in the
+ *  schema for a future relaxation but every option behaves the
+ *  same right now: signed-out visitors and casual browsers never
+ *  see your email/phone. */
 export const CONTACT_VISIBILITY_DESCRIPTIONS: Record<ContactVisibility, string> = {
-  PRIVATE: "Only you can see your email and phone. Recruiters can still message you in-app — your contact stays hidden until you reply.",
-  CONNECTIONS: "Your accepted 1st-degree connections can see your email and phone. Everyone else can only message you in-app.",
-  EMPLOYERS_ONLY: "Recruiters at companies where you've applied can see your email and phone. Other employers can only message you in-app — like LinkedIn.",
-  EVERYONE: "Your email and phone are public on your profile page. Visible to anyone with the link, including search engines.",
+  PRIVATE: "Hidden by default. Recruiters at companies you've applied to see it; everyone else has to send a contact-share request which you can accept or decline.",
+  CONNECTIONS: "Same as Private right now — site-wide policy keeps email and phone hidden from connections too. Use the contact-share flow if you want a connection to have your details.",
+  EMPLOYERS_ONLY: "Recruiters at companies where you've applied see your contact. Other employers must send a contact-share request — like LinkedIn InMail.",
+  EVERYONE: "Same as Private right now — site-wide privacy policy keeps email and phone off the public profile regardless. Change back to PRIVATE if you don't want to revisit this when the policy relaxes.",
 };
 
 export const RESUME_VISIBILITY_DESCRIPTIONS: Record<ResumeVisibility, string> = {

@@ -134,6 +134,19 @@ export async function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-40 w-full border-b border-emce-border bg-white text-emce-text">
+      {/* Skip-to-content link — invisible until keyboard-focused.
+          Critical for keyboard + screen-reader users so they don't
+          have to tab through the full nav on every page. The
+          `focus:not-sr-only` + `focus:fixed` pattern keeps it out
+          of the visual flow until needed, then lifts it above the
+          sticky header at z-50. The destination id="main" must
+          exist in each layout shell — see the audit notes. */}
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-3 focus:z-50 focus:rounded-md focus:bg-emce-dark focus:px-3 focus:py-2 focus:text-sm focus:font-bold focus:text-emce-light focus:shadow-emce-modal focus:outline-none focus:ring-2 focus:ring-emce-mid"
+      >
+        Skip to content
+      </a>
       <div className="container flex h-14 items-center gap-3 py-2 md:gap-4 md:py-2.5">
         {/* Brand mark — full wordmark at every breakpoint, but a
             tighter `sm` size on phones so it fits next to the rest of

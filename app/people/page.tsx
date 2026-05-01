@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
+import { buildTsQuery } from "@/lib/search-fts";
 import { ConnectButton } from "@/components/social/ConnectButton";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
@@ -37,13 +38,27 @@ export default async function PeoplePage({
   const where: Prisma.CandidateProfileWhereInput = {
     cvVisibility: { in: ["EVERYONE", "EMPLOYERS_ONLY"] },
   };
+  // Hybrid FTS pattern (mirrors searchJobs): a raw SQL pass collects
+  // candidateProfile IDs whose searchTsv matches the query, then we
+  // hand the ID set to Prisma so the rest of the filter
+  // combinatorics + relations + ordering by followersCount stay in
+  // familiar Prisma land. See lib/search-fts.ts + scripts/setup-fts.sql.
   if (sp.q) {
-    where.OR = [
-      { firstName: { contains: sp.q, mode: "insensitive" } },
-      { lastName: { contains: sp.q, mode: "insensitive" } },
-      { headline: { contains: sp.q, mode: "insensitive" } },
-      { institution: { contains: sp.q, mode: "insensitive" } },
-    ];
+    const tsq = buildTsQuery(sp.q);
+    if (tsq) {
+      const matches = await db.$queryRaw<{ id: string }[]>`
+        SELECT id FROM "CandidateProfile"
+        WHERE "searchTsv" @@ to_tsquery('simple', ${tsq})
+        LIMIT 1000
+      `;
+      if (matches.length === 0) {
+        // No FTS hits → render an empty results page rather than
+        // running a `WHERE id IN ()` round-trip.
+        where.id = { in: [] };
+      } else {
+        where.id = { in: matches.map((r) => r.id) };
+      }
+    }
   }
   if (sp.type) where.personType = sp.type as Prisma.CandidateProfileWhereInput["personType"];
   if (sp.domain) where.evDomains = { some: { evDomain: { slug: sp.domain } } };

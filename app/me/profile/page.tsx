@@ -148,9 +148,10 @@ export default async function MyProfilePage({
         </Button>
       </div>
         {/* Gate-redirect notice — shown when the user arrived here because
-            the apply gate (90%) blocked them. The pct + jobId carry the
-            context so the message is specific to what they were trying to
-            do. Hidden once the profile crosses the threshold. */}
+            the apply gate blocked them. The pct + jobId carry the
+            context so the message is specific to what they were trying
+            to do. Hidden once the profile crosses
+            COMPLETENESS_THRESHOLDS.APPLY (60% as of 2026-05). */}
         {sp.incomplete === "apply" && completeness.pct < COMPLETENESS_THRESHOLDS.APPLY && (
           <div className="mb-6 rounded-md border border-emce-orange bg-emce-orange-light p-4 text-sm">
             <p className="font-bold text-emce-orange">

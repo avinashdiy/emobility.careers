@@ -213,6 +213,11 @@ model User {
   competitionRegistrations    CompetitionRegistration[] @relation("CompetitionLeader")
   competitionTeamMemberships  CompetitionTeamMember[]   @relation("CompetitionMember")
   competitionJudgeAssignments CompetitionJudge[]        @relation("CompetitionJudge")
+  competitionTeamsVerified    CompetitionRegistration[] @relation("CompetitionTeamVerifier")
+  recruitmentDrivesCreated    RecruitmentDrive[]        @relation("RecruitmentDriveCreator")
+  companyClaimsFiled          CompanyClaim[]            @relation("CompanyClaimant")
+  companyClaimsReviewed       CompanyClaim[]            @relation("CompanyClaimReviewer")
+  articlesAuthored            Article[]                 @relation("ArticleAuthor")
 
   // TPO / placement
   cohortsCreated Cohort[]
@@ -297,6 +302,13 @@ model Skill {
 
   candidateSkills CandidateSkill[]
   jobSkills       JobSkill[]
+
+  // FTS: GENERATED tsvector built post-push by scripts/setup-fts.sql.
+  // The Prisma schema declares the column as Unsupported because
+  // Prisma's `db push` can't generate the GENERATED ALWAYS expression
+  // — the ALTER lives in setup-fts.sql and runs idempotently on every
+  // setup-vps.sh. See lib/search-fts.ts for query usage.
+  searchTsv  Unsupported("tsvector")?
 
   @@index([evDomainId])
   @@index([category])
@@ -542,6 +554,9 @@ model CandidateProfile {
   /// (opt-in) — same posture LinkedIn took before they made it the
   /// default. Toggleable from /me/preferences.
   announceJobChange Boolean @default(false)
+
+  // FTS — see Skill.searchTsv comment for the pattern.
+  searchTsv Unsupported("tsvector")?
 
   @@index([profileMode, availabilityStatus, openToWork])
   @@index([isDIYguruVerified])
@@ -859,6 +874,14 @@ model Company {
   // Job-change announcements landing at this company (Who's Moving feed).
   // Inverse of JobChangeAnnouncement.toCompanyRef.
   incomingHires JobChangeAnnouncement[] @relation("JobChangeToCompany")
+  // Recruitment-drive (job fair) participation.
+  recruitmentDriveParticipations RecruitmentDriveCompany[] @relation("RecruitmentDriveCompany")
+  recruitmentDriveJobs           RecruitmentDriveJob[]     @relation("RecruitmentDriveJobCompany")
+  // "I work here, prove me admin" claim queue. Reviewed via /admin/claims.
+  claims                         CompanyClaim[]            @relation("CompanyClaims")
+
+  // FTS — see Skill.searchTsv for the rationale.
+  searchTsv Unsupported("tsvector")?
 
   // WordPress legacy tracking
   wpLegacyId Int? @unique
@@ -998,10 +1021,14 @@ model JobPosting {
   campusDrives     CampusDriveJob[]
   reports          JobReport[]
   matchCache       JobMatchCache[]
+  recruitmentDriveJobs RecruitmentDriveJob[]
   // Posts that attach this job to the social feed
   feedPosts        Post[]
   // Competitions linked to this job (winner-perk pipeline)
   competitionPerks CompetitionPerk[]
+
+  // FTS — see Skill.searchTsv for the rationale.
+  searchTsv Unsupported("tsvector")?
 
   // WordPress legacy tracking
   wpLegacyId Int? @unique
@@ -1085,9 +1112,17 @@ model Application {
   // expired or was denied.
   contactShareRequests ContactShareRequest[]
 
+  // Optional FK to a RecruitmentDrive — set when the candidate
+  // applied via /fairs/[slug] flow. Enables per-fair applicant
+  // queues + analytics for recruiters and admins. NULL on direct
+  // /jobs/[slug] applies (the bulk of traffic).
+  recruitmentDriveId String?
+  recruitmentDrive   RecruitmentDrive? @relation(fields: [recruitmentDriveId], references: [id], onDelete: SetNull)
+
   @@unique([jobId, candidateId])
   @@index([jobId, stage])
   @@index([candidateId, stage])
+  @@index([recruitmentDriveId, stage])
 }
 
 enum NoteVisibility {
@@ -1233,6 +1268,10 @@ model Assessment {
   updatedAt    DateTime       @updatedAt
 
   attempts AssessmentAttempt[]
+  // Inverse of RecruitmentDriveJob.challengeAssessment — same
+  // assessment can be reused as the challenge across multiple
+  // fairs / drive-jobs without duplicating questions JSON.
+  recruitmentDriveJobs RecruitmentDriveJob[] @relation("RecruitmentDriveJobChallenge")
 
   @@index([jobId])
 }
@@ -1718,7 +1757,12 @@ model Institution {
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
-  educationLinks Education[]
+  educationLinks    Education[]
+  competitionTeams  CompetitionRegistration[] @relation("CompetitionTeamInstitution")
+
+  // FTS — see Skill.searchTsv for the rationale. Built across name +
+  // shortName (tier A) + city/state (tier B) + about (tier C).
+  searchTsv Unsupported("tsvector")?
 
   @@index([verificationStatus, name])
   @@index([type, city])
@@ -2858,12 +2902,93 @@ model CompetitionRegistration {
   finalScore     Float?
   notes          String?            @db.Text
 
+  // ─── Public team-page fields (added for the Team EV Challenge feature) ───
+  // The registration row IS the team for our purposes — these fields just
+  // give the team a face. Captain fills them in on /me/teams/[id]; once
+  // verification clears + captain publishes, the public page is live at
+  // /teams/[teamSlug].
+
+  /// URL-safe slug for /teams/[slug]. NULL until the captain creates one
+  /// (registration row creates first, captain enters team profile next).
+  /// Globally unique so team URLs are stable + sharable.
+  teamSlug             String?              @unique
+  /// Square logo (square crop preferred, 256×256 minimum). Stored in MinIO
+  /// avatars bucket like Company logos.
+  teamLogoUrl          String?
+  teamBio              String?              @db.Text
+  /// The real-world event the team is preparing for ("eBAJA SAEINDIA 2026",
+  /// "Formula Bharat 2025"). Free text in v1; v2 swaps to canonical
+  /// ExternalEvent table.
+  externalEvent        String?
+  /// Their team number / ID at the external event (eBAJA team #234).
+  externalTeamId       String?
+  /// College the team represents — free-text fallback.
+  /// Captured even when `institutionId` is set so the public team
+  /// page can render a name without joining (and so legacy rows
+  /// created before the canonical FK existed keep displaying).
+  institution          String?
+  /// Optional FK to the canonical Institution table. When set, the
+  /// public team page links the institution name to /institutions/[slug]
+  /// and counts the team toward the institution's leaderboard.
+  /// NULL is fine — captains can pick from the autocomplete or type
+  /// free text; we don't force them to find a canonical entry.
+  institutionId        String?
+  institutionRef       Institution?         @relation("CompetitionTeamInstitution", fields: [institutionId], references: [id], onDelete: SetNull)
+  facultyAdvisor       String?
+  /// Used during verification — admin pings this address to confirm the
+  /// team is real. Required for VERIFIED status.
+  facultyEmail         String?
+  /// JSON: { instagram?, linkedin?, website?, youtube?, github? }. Same
+  /// shape as Company.socialLinks so we can reuse the URL-validation +
+  /// render helpers.
+  socialLinks          Json?
+  /// Page visibility ladder. DRAFT until captain explicitly publishes
+  /// (and team is VERIFIED). HIDDEN if captain or admin pulled it.
+  publicPageStatus     TeamPagePublicStatus @default(DRAFT)
+  publishedAt          DateTime?
+  /// Verification ladder. UNVERIFIED → captain submits docs →
+  /// PENDING_REVIEW → admin approves → VERIFIED. Only VERIFIED teams
+  /// can publish + receive prize disbursement; submission and member
+  /// onboarding work at any state (so we never lose growth signups
+  /// while waiting for admin review).
+  verificationStatus   TeamVerificationStatus @default(UNVERIFIED)
+  verificationNote     String?               @db.Text
+  verifiedAt           DateTime?
+  verifiedById         String?
+  verifiedBy           User?                 @relation("CompetitionTeamVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+
   members     CompetitionTeamMember[]
   submissions CompetitionSubmission[]
   scores      CompetitionScore[]
 
-  @@unique([competitionId, leaderUserId])
+  // (No unique on (competitionId, leaderUserId).) A user CAN lead
+  // multiple teams in the same competition — for cross-college
+  // captains entering one team per college, or for staging /
+  // demo workflows. The captain dashboard handles N teams
+  // gracefully and the register page lands the captain on /me/teams
+  // (the list view) when they already have ≥1 team for the comp.
+  @@index([competitionId, leaderUserId])
   @@index([competitionId, status])
+  @@index([publicPageStatus, publishedAt])
+  @@index([verificationStatus])
+}
+
+/// Public-page visibility for a competition team.
+enum TeamPagePublicStatus {
+  /// Captain hasn't published yet. Members can still see /me/teams/[id].
+  DRAFT
+  /// Live at /teams/[slug]. Indexable, shareable, listed on /pulse.
+  PUBLISHED
+  /// Was published, then captain or admin took it down.
+  HIDDEN
+}
+
+/// Admin-driven verification state.
+enum TeamVerificationStatus {
+  UNVERIFIED       // freshly registered
+  PENDING_REVIEW   // captain submitted for review
+  VERIFIED         // admin approved
+  REJECTED         // admin rejected (with note)
 }
 
 model CompetitionTeamMember {
@@ -2877,9 +3002,18 @@ model CompetitionTeamMember {
   inviteToken    String?                 @unique
   role           TeamMemberRole          @default(MEMBER)
   status         TeamMemberStatus        @default(INVITED)
+  /// When the invite expires. Captain can resend (regenerates the
+  /// token + bumps this). NULL on rows created before the team-
+  /// challenge feature shipped — `acceptTeamInvite` treats NULL as
+  /// non-expiring for backwards compat.
   invitedAt      DateTime                @default(now())
+  inviteExpiresAt DateTime?
   acceptedAt     DateTime?
+  /// Free-text role assigned by the captain — "Driver", "Suspension
+  /// Lead", "Powertrain Engineer". Surfaces on the public team page.
+  positionTitle  String?
 
+  @@unique([registrationId, invitedEmail])
   @@index([registrationId])
   @@index([userId])
 }
@@ -2895,6 +3029,11 @@ model CompetitionSubmission {
   body           String?                 @db.Text // rich write-up
   attachmentUrls String[]                @default([])
   externalUrl    String? // GitHub / Figma / Drive
+  /// First-class field for a working-prototype video. Validated as a
+  /// YouTube / Vimeo / MinIO URL on the server action. Surfaced on the
+  /// public team page when the team has published. Optional — not all
+  /// competition formats want a video deliverable.
+  prototypeVideoUrl String?
   submittedAt    DateTime                @default(now())
   isLate         Boolean                 @default(false)
 
@@ -3693,4 +3832,346 @@ model JobChangeAnnouncement {
 
   @@index([candidateId, createdAt])
   @@index([published, createdAt])
+}
+
+// ─── RecruitmentDrive (multi-company job fair) ────────────────
+//
+// A time-bound public event where MULTIPLE companies participate.
+// Distinct from CampusDrive (single company × one institution) —
+// the recruitment-drive primitive models a city-level job fair like
+// "Pune EV Job Fair · June 2026" with N companies, N challenges, a
+// public landing, and a per-fair applicant queue per company.
+//
+// The event is admin-owned (the platform team curates the fair),
+// not company-owned. Each participating company joins via the
+// RecruitmentDriveCompany join table after admin invites them.
+//
+// Apply flow reuses the existing JobPosting + Application + ATS
+// pipeline — `Application.recruitmentDriveId` is set automatically
+// when a candidate applies via /fairs/[slug] so the recruiter can
+// filter their ATS to "applicants from the fair." Optional per-job
+// challenge step uses the existing Assessment model with
+// `gateAdvance = true`.
+enum RecruitmentDriveStatus {
+  /// Admin is still drafting — invisible to public + employers.
+  DRAFT
+  /// Published, registration / company invites open.
+  OPEN
+  /// Fair is in progress (on-the-day status).
+  IN_PROGRESS
+  /// Past — keeps URL alive for SEO / recap.
+  CLOSED
+  /// Admin cancelled before it ran.
+  CANCELLED
+}
+
+model RecruitmentDrive {
+  id                  String                 @id @default(cuid())
+  slug                String                 @unique
+  title               String
+  tagline             String?
+  /// Rich description (markdown / plain text). Renders on the
+  /// public landing under the hero.
+  description         String?                @db.Text
+  bannerImageUrl      String?
+  /// Optional secondary hero — the photo of the venue or last
+  /// year's fair. Falls back to the brand gradient when null.
+  heroImageUrl        String?
+
+  // ─── Venue ─────────────────────────────────────────────────
+  city                String
+  state               String?
+  country             String                 @default("IN")
+  venueName           String?
+  venueAddress        String?
+  /// Optional map pin so we can render an embedded map on the
+  /// public page. Stored as Decimal so we don't lose precision on
+  /// FP round-trips.
+  venueLat            Decimal?               @db.Decimal(10, 7)
+  venueLng            Decimal?               @db.Decimal(10, 7)
+
+  // ─── Dates ─────────────────────────────────────────────────
+  /// When the fair itself happens (start of day 1 of the event).
+  startsAt            DateTime
+  /// End of the event window. Same as startsAt for a one-day fair.
+  endsAt              DateTime
+  /// When candidate registration / job applications open. We use a
+  /// separate window from the event itself so candidates can apply
+  /// in advance — companies often want pre-screened pipelines
+  /// before opening their booths.
+  registrationOpensAt DateTime?
+  registrationClosesAt DateTime?
+
+  // ─── Lifecycle ─────────────────────────────────────────────
+  status              RecruitmentDriveStatus @default(DRAFT)
+  publishedAt         DateTime?
+  /// When set, the fair appears in the homepage / pulse "featured
+  /// events" rail. Admin-toggled.
+  featuredAt          DateTime?
+
+  // ─── Audit ─────────────────────────────────────────────────
+  createdById         String
+  createdBy           User                   @relation("RecruitmentDriveCreator", fields: [createdById], references: [id])
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  /// Denorm counters — kept fresh inside the same transactions
+  /// that mutate the related rows. Saves the public landing from a
+  /// COUNT(*) per render.
+  participatingCount  Int                    @default(0)
+  jobsCount           Int                    @default(0)
+  applicationsCount   Int                    @default(0)
+
+  participatingCompanies RecruitmentDriveCompany[]
+  driveJobs              RecruitmentDriveJob[]
+  applications           Application[]
+
+  @@index([status, startsAt])
+  @@index([city, startsAt])
+}
+
+/// A company's participation in a recruitment drive. The join is
+/// a real model (not a pure many-to-many) because we carry per-row
+/// state — invitation status, booth label, "what we're looking
+/// for at this fair" pitch — that doesn't belong on either side.
+enum RecruitmentDriveCompanyStatus {
+  /// Admin invited, awaiting employer acceptance.
+  INVITED
+  /// Employer accepted — booth is live.
+  CONFIRMED
+  /// Employer declined or admin removed them.
+  WITHDRAWN
+}
+
+model RecruitmentDriveCompany {
+  id            String                          @id @default(cuid())
+  driveId       String
+  drive         RecruitmentDrive                @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  companyId     String
+  company       Company                         @relation("RecruitmentDriveCompany", fields: [companyId], references: [id], onDelete: Cascade)
+  status        RecruitmentDriveCompanyStatus   @default(INVITED)
+  /// Display label for the booth ("Booth 7", "Hall B / Booth 12").
+  /// Free text — admins can leave blank for virtual fairs.
+  boothLabel    String?
+  /// Per-fair pitch — different from Company.about, which is the
+  /// permanent corporate copy. This is what the company is
+  /// specifically looking for AT THIS FAIR ("hiring 5 battery
+  /// engineers + 2 cell QA leads — talk to us at Booth 7").
+  aboutAtFair   String?                         @db.Text
+  /// Set by admin on invite + on accept.
+  invitedAt     DateTime                        @default(now())
+  confirmedAt   DateTime?
+  withdrawnAt   DateTime?
+
+  driveJobs     RecruitmentDriveJob[]
+
+  @@unique([driveId, companyId])
+  @@index([companyId, status])
+}
+
+/// A specific JobPosting that a participating company is featuring
+/// at the fair. One company can feature many jobs at one fair; the
+/// same job can be at multiple fairs (e.g. Pune fair + Bangalore
+/// fair) without duplicating the JobPosting row.
+model RecruitmentDriveJob {
+  id              String                  @id @default(cuid())
+  driveId         String
+  drive           RecruitmentDrive        @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  jobId           String
+  job             JobPosting              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  /// Denormalised so we can `where: { driveId, companyId }` in one
+  /// query instead of joining to the participation row. Auto-set
+  /// from JobPosting.companyId at attach-time.
+  companyId       String
+  company         Company                 @relation("RecruitmentDriveJobCompany", fields: [companyId], references: [id], onDelete: Cascade)
+  participationId String
+  participation   RecruitmentDriveCompany @relation(fields: [participationId], references: [id], onDelete: Cascade)
+  /// Optional pre-screening challenge. When set, applying triggers
+  /// the existing ATS gate (Assessment.gateAdvance) — the candidate
+  /// must complete the challenge before the recruiter can move them
+  /// past ASSESSMENT stage.
+  challengeAssessmentId String?
+  challengeAssessment   Assessment? @relation("RecruitmentDriveJobChallenge", fields: [challengeAssessmentId], references: [id], onDelete: SetNull)
+  /// Display order on the fair page (admin or company can sort
+  /// hot jobs first). Defaults to row creation time.
+  sortOrder       Int                     @default(0)
+  attachedAt      DateTime                @default(now())
+
+  @@unique([driveId, jobId])
+  @@index([driveId, companyId])
+  @@index([companyId])
+}
+
+// ─── CompanyClaim — "I work here, prove me admin" workflow ────
+//
+// Bridges the gap between two existing onboarding paths:
+//   1. Self-create — `createCompany` makes the user the owner.
+//   2. Team invite — admin sends a TeamInvite, recipient accepts.
+//
+// Neither covers an EXISTING employee at a company that's already
+// in our DB but where they don't know who the admin is (or there
+// is no admin yet — the company was created by a third party who
+// abandoned it). Without this workflow they'd have to email
+// support; with it, they submit a claim, attach proof, and an
+// admin reviews + on approval grants them an EmployerProfile +
+// flips the Company to VERIFIED if it isn't already.
+//
+// Replaces the auto-attach path in `joinExistingCompany` (server/
+// employer/actions.ts) — that action used to grant RECRUITER role
+// on UNVERIFIED companies without proof, which let an attacker
+// create e.g. "Tata Motors" as UNVERIFIED, self-attach as RECRUITER,
+// and post jobs. Now every join goes through admin review.
+enum CompanyClaimStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  /// Claimant cancelled their own claim before admin acted.
+  WITHDRAWN
+}
+
+model CompanyClaim {
+  id             String             @id @default(cuid())
+  companyId      String
+  company        Company            @relation("CompanyClaims", fields: [companyId], references: [id], onDelete: Cascade)
+  claimantUserId String
+  claimant       User               @relation("CompanyClaimant", fields: [claimantUserId], references: [id], onDelete: Cascade)
+
+  // ─── Proof ────────────────────────────────────────────────
+  /// Optional work email (ideally on the company's domain). When the
+  /// domain matches `Company.emailDomains` the admin queue surfaces
+  /// a green check so the reviewer can fast-path obvious matches.
+  workEmail      String?
+  /// Optional public LinkedIn URL — admin reads it to corroborate
+  /// the role + tenure the claimant typed in `proofText`.
+  linkedinUrl    String?
+  /// Free-text justification ("I'm Senior Battery Engineer reporting
+  /// to Anita; my LinkedIn shows 3 years here"). 2000 char cap.
+  proofText      String             @db.Text
+  /// Role the claimant wants on approval. Defaults to RECRUITER
+  /// (no admin permissions). Admin can override on approve.
+  desiredRole    CompanyTeamRole    @default(RECRUITER)
+  /// Job title the claimant uses inside the company. Cosmetic —
+  /// shown on the team page after approval.
+  designation    String?
+
+  // ─── Review state ─────────────────────────────────────────
+  status         CompanyClaimStatus @default(PENDING)
+  reviewedAt     DateTime?
+  reviewedById   String?
+  reviewedBy     User?              @relation("CompanyClaimReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  /// Admin's free-text decision note. On REJECTED, this is sent in
+  /// the rejection email so the claimant knows what to fix; on
+  /// APPROVED it's optional and just lives in the audit trail.
+  reviewerNote   String?            @db.Text
+
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  // One open claim per (company, user). The unique implicitly
+  // covers all statuses — re-submission after a REJECTED requires
+  // admin to wipe the old row OR we can extend with a
+  // "supersededAt" pattern in v2. For now, keep it tight.
+  @@unique([companyId, claimantUserId])
+  @@index([status, createdAt])
+  @@index([claimantUserId])
+}
+
+// ─── Article CMS — curated knowledge-base content ────────────
+//
+// Distinct from `Post` (social feed, user-generated, conversational).
+// `Article` is the editorial / knowledge-base / SEO layer:
+//   • Admin-authored long-form pieces ("How a CCS connector works",
+//     "BMS architecture cheat sheet", "What's the difference between
+//     LFP and NMC batteries?").
+//   • Indexed by Google for top-of-funnel discovery — a user-generated
+//     Post will never rank for "ccs connector explainer", a curated
+//     Article can.
+//   • Categorised (battery / charging / motor / software / careers).
+//   • FTS-searchable (uses 'simple' tokeniser + unaccent, same as
+//     other searchable models — see scripts/setup-fts.sql).
+//
+// Single-author for v1 — articles attach to one User (author).
+// Multi-author / contributor support (a la Healthandmedic's
+// `articleAuthors` join) is a v2 if/when the editorial team grows.
+//
+// Lifecycle: DRAFT → PUBLISHED → ARCHIVED. PUBLISHED is the only
+// public-visible state; ARCHIVED hides from the public index but
+// keeps the URL alive for SEO / inbound link preservation.
+enum ArticleStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model ArticleCategory {
+  id          String    @id @default(cuid())
+  slug        String    @unique
+  name        String
+  description String?
+  /// Display order on the /articles index. Lower numbers float up.
+  /// Two categories with the same order tie-break by name asc.
+  sortOrder   Int       @default(100)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  articles    Article[]
+
+  @@index([sortOrder, name])
+}
+
+model Article {
+  id              String        @id @default(cuid())
+  slug            String        @unique
+  title           String
+  /// Short description used as: SEO meta description, the index-card
+  /// preview text, and the OpenGraph description. ~160 char cap so it
+  /// fits search-result snippets cleanly.
+  excerpt         String?
+  /// Long-form body. Markdown for v1 (renders via the same pipeline
+  /// as job-description bodies — already in lib/og/* helpers). HTML
+  /// stored verbatim is also fine; we don't sanitise here, the
+  /// renderer does.
+  body            String        @db.Text
+  /// Wide hero image — used both inline at the top of the article
+  /// page AND as the OG share card. 1500×500 ideal (3:1).
+  coverImageUrl   String?
+
+  // ─── Categorisation ───────────────────────────────────────
+  categoryId      String?
+  category        ArticleCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  /// Free-text tags — same conceptual shape as Post.hashtags.
+  /// Used for "related articles" + future tag-cloud surfaces.
+  tags            String[]      @default([])
+
+  // ─── Author ───────────────────────────────────────────────
+  authorId        String
+  author          User          @relation("ArticleAuthor", fields: [authorId], references: [id])
+
+  // ─── Lifecycle ────────────────────────────────────────────
+  status          ArticleStatus @default(DRAFT)
+  publishedAt     DateTime?
+  /// When set, article appears in the homepage "Featured editorial"
+  /// rail (a future surface). Admin-toggled.
+  featuredAt      DateTime?
+
+  // ─── Reader signals ───────────────────────────────────────
+  /// Pre-computed reading time (minutes). Filled at create/update
+  /// time using the body's word count ÷ 220 wpm. Avoids re-computing
+  /// on every page render.
+  readingTimeMins Int           @default(3)
+  /// Denormalised view counter — incremented inside a fire-and-forget
+  /// update on the article-detail page. Used for "popular articles"
+  /// rails.
+  viewCount       Int           @default(0)
+
+  // ─── FTS — same pattern as our other searchable models ────
+  searchTsv       Unsupported("tsvector")?
+
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([categoryId, publishedAt])
+  @@index([authorId])
+  @@index([featuredAt])
 }

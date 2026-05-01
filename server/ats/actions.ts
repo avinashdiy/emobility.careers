@@ -90,6 +90,13 @@ async function requireEmployerForApplication(applicationId: string) {
     include: {
       job: { select: { companyId: true, title: true, id: true } },
       candidate: { select: { userId: true, firstName: true, lastName: true } },
+      // Pull the fair context when the application is fair-
+      // attributed. moveStage uses this to fork the candidate
+      // notification copy ("at Pune EV Job Fair") and link the
+      // candidate to the fair recap rather than the bare
+      // /me/applications. NULL for direct (non-fair) applies —
+      // notification logic falls back to the original copy.
+      recruitmentDrive: { select: { id: true, slug: true, title: true } },
     },
   });
   if (!application) redirect("/employer");
@@ -147,13 +154,25 @@ export async function moveStage(formData: FormData) {
     }),
   ]);
 
-  // Notify candidate
+  // Notify candidate. When the application is fair-attributed we
+  // swap in fair-aware copy + link to the fair recap so the
+  // candidate's notification reads as "at the Pune EV Job Fair"
+  // rather than a generic stage change. The fair context is
+  // already loaded above; switching is a one-line ternary.
+  const fair = application.recruitmentDrive;
   await notificationsQueue.add("stage-change", {
     userId: application.candidate.userId,
     type: "application.stage_change",
-    title: stageMessage(application.job.title, toStage),
-    body: stageBody(toStage, reason),
-    link: "/me/applications",
+    title: fair
+      ? stageMessageFair(application.job.title, toStage, fair.title)
+      : stageMessage(application.job.title, toStage),
+    body: fair
+      ? stageBodyFair(toStage, reason, fair.title)
+      : stageBody(toStage, reason),
+    // Fair-attributed apps land on the fair page — feels more
+    // contextual + reinforces the platform's fair flow. Direct
+    // apps go to the per-user applications dashboard as before.
+    link: fair ? `/fairs/${fair.slug}` : "/me/applications",
     channels: ["IN_APP", "EMAIL"],
   });
 
@@ -182,6 +201,45 @@ function stageBody(stage: ApplicationStage, reason: string): string {
     return reason ? `The recruiter shared this feedback: ${reason}` : "Unfortunately you weren't selected. Keep applying — your next role is out there.";
   }
   return `Your application moved to ${stage.toLowerCase()}. Open your dashboard for details.`;
+}
+
+/**
+ * Fair-aware variants of stageMessage / stageBody. Same shape as
+ * the originals but with the fair name inlined so the candidate
+ * remembers WHERE they applied (fairs are events; the title is
+ * a strong recall cue for them, especially mid-fair when they're
+ * juggling N applications).
+ */
+function stageMessageFair(jobTitle: string, stage: ApplicationStage, fairTitle: string): string {
+  switch (stage) {
+    case "SHORTLISTED":
+      return `🎉 Shortlisted for ${jobTitle} at ${fairTitle}`;
+    case "INTERVIEW":
+      return `📞 Interview scheduled — ${jobTitle} (${fairTitle})`;
+    case "OFFER":
+      return `💼 Offer received — ${jobTitle} (${fairTitle})`;
+    case "HIRED":
+      return `🚀 You're hired! ${jobTitle} at ${fairTitle}`;
+    case "REJECTED":
+      return `Update on ${jobTitle} (${fairTitle})`;
+    default:
+      return `Update on ${jobTitle} at ${fairTitle}`;
+  }
+}
+
+function stageBodyFair(stage: ApplicationStage, reason: string, fairTitle: string): string {
+  if (stage === ApplicationStage.REJECTED) {
+    return reason
+      ? `The recruiter at ${fairTitle} shared this feedback: ${reason}`
+      : `You weren't selected for this role at ${fairTitle}. Other booths at the fair may still be reviewing — check the fair page.`;
+  }
+  if (stage === ApplicationStage.INTERVIEW) {
+    return `Your application moved to interview. Recruiter from ${fairTitle} will reach out for scheduling.`;
+  }
+  if (stage === ApplicationStage.OFFER) {
+    return `🎉 Offer extended for your ${fairTitle} application. Check your inbox for the full letter.`;
+  }
+  return `Your ${fairTitle} application moved to ${stage.toLowerCase()}. Check the fair page or your inbox.`;
 }
 
 export async function rateApplication(formData: FormData) {

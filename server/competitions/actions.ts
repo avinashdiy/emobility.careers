@@ -65,8 +65,12 @@ const CompetitionDraftSchema = z.object({
   eligibility: z.string().max(2000).optional(),
   rules: z.string().max(20000).optional(),
   isTeamBased: z.coerce.boolean().default(false),
-  minTeamSize: z.coerce.number().int().min(1).max(20).optional(),
-  maxTeamSize: z.coerce.number().int().min(1).max(20).optional(),
+  // Cap raised from 20 → 50 in 2026-05 to support 25-person eBAJA
+  // teams and similar large-format events. The Competition host
+  // tunes the actual cap per-competition; the schema's job is just
+  // to refuse absurd values.
+  minTeamSize: z.coerce.number().int().min(1).max(50).optional(),
+  maxTeamSize: z.coerce.number().int().min(1).max(50).optional(),
   registrationOpensAt: z.coerce.date().optional(),
   registrationClosesAt: z.coerce.date().optional(),
   startsAt: z.coerce.date(),
@@ -456,23 +460,64 @@ export async function registerForCompetition(_prev: FormState, formData: FormDat
   return { ok: true, registrationId: registration.id };
 }
 
-export async function acceptTeamInvite(token: string): Promise<FormState & { competitionSlug?: string }> {
+export async function acceptTeamInvite(
+  token: string,
+): Promise<FormState & { competitionSlug?: string; teamId?: string }> {
   const session = await requireUser();
   const member = await db.competitionTeamMember.findUnique({
     where: { inviteToken: token },
     include: { registration: { include: { competition: true } } },
   });
   if (!member) return { ok: false, message: "Invite not found." };
-  if (member.status === "ACCEPTED") return { ok: false, message: "Already accepted." };
-  // Match by email if user-side email = invitedEmail
-  if (!member.userId && session.user.email !== member.invitedEmail) {
+  if (member.status === "REMOVED") {
+    return { ok: false, message: "This invite was withdrawn by the captain." };
+  }
+  if (member.status === "ACCEPTED") {
+    return {
+      ok: true,
+      message: "Already accepted.",
+      competitionSlug: member.registration.competition.slug,
+      teamId: member.registrationId,
+    };
+  }
+  // Honour the 14-day expiry — the bulk-invite flow stamps this now.
+  if (member.inviteExpiresAt && member.inviteExpiresAt < new Date()) {
+    return { ok: false, message: "This invite has expired. Ask the captain to resend." };
+  }
+  // Email match — the invite was addressed to a specific person.
+  // We allow the match if EITHER (a) we already wrote userId at
+  // bulk-invite time (because that email matched an existing account)
+  // AND it's the same user, OR (b) the calling user's email equals
+  // the invitedEmail. This second branch is the "new user signed up
+  // and is now claiming the invite" path.
+  const sessionEmail = session.user.email?.toLowerCase() ?? "";
+  if (member.userId && member.userId !== session.user.id) {
+    return { ok: false, message: "This invite was issued to a different account." };
+  }
+  if (!member.userId && member.invitedEmail !== sessionEmail) {
     return { ok: false, message: "This invite was sent to a different email." };
   }
   await db.competitionTeamMember.update({
     where: { id: member.id },
     data: { userId: session.user.id, status: "ACCEPTED", acceptedAt: new Date() },
   });
-  return { ok: true, competitionSlug: member.registration.competition.slug };
+  // Notify the captain that someone joined.
+  await notificationsQueue
+    .add("competition.team-member-joined", {
+      userId: member.registration.leaderUserId,
+      type: "competition.team_member_joined",
+      title: "Someone joined your team",
+      body: `${session.user.name ?? sessionEmail} accepted your invite.`,
+      link: `/me/teams/${member.registrationId}`,
+      channels: ["IN_APP"],
+      actorId: session.user.id,
+    })
+    .catch(() => undefined);
+  return {
+    ok: true,
+    competitionSlug: member.registration.competition.slug,
+    teamId: member.registrationId,
+  };
 }
 
 const SubmissionSchema = z.object({
@@ -483,6 +528,12 @@ const SubmissionSchema = z.object({
   body: z.string().max(50_000).optional(),
   attachmentUrls: z.array(z.string().url()).max(10).default([]),
   externalUrl: z.string().url().optional().or(z.literal("")),
+  /// Optional first-class field for the working-prototype video.
+  /// Validated as a URL only — we don't gate on YouTube/Vimeo here
+  /// because hosts may want to allow self-hosted MinIO or Drive
+  /// links. The team page renderer detects YouTube/Vimeo for
+  /// inline embed and falls back to a "Watch video" link otherwise.
+  prototypeVideoUrl: z.string().url().optional().or(z.literal("")),
 });
 
 export async function submitCompetitionEntry(_prev: FormState, formData: FormData): Promise<FormState> {
@@ -495,6 +546,7 @@ export async function submitCompetitionEntry(_prev: FormState, formData: FormDat
     body: formData.get("body") || undefined,
     attachmentUrls: formData.getAll("attachmentUrls").map(String).filter(Boolean),
     externalUrl: formData.get("externalUrl") || undefined,
+    prototypeVideoUrl: formData.get("prototypeVideoUrl") || undefined,
   });
   if (!parsed.success) return { ok: false, message: "Invalid submission.", fieldErrors: zodErrorsToFieldErrors(parsed.error.flatten()) };
   const reg = await db.competitionRegistration.findFirst({
@@ -518,6 +570,7 @@ export async function submitCompetitionEntry(_prev: FormState, formData: FormDat
       body: parsed.data.body,
       attachmentUrls: parsed.data.attachmentUrls,
       externalUrl: parsed.data.externalUrl || null,
+      prototypeVideoUrl: parsed.data.prototypeVideoUrl || null,
       isLate,
     },
     update: {
@@ -526,6 +579,7 @@ export async function submitCompetitionEntry(_prev: FormState, formData: FormDat
       body: parsed.data.body,
       attachmentUrls: parsed.data.attachmentUrls,
       externalUrl: parsed.data.externalUrl || null,
+      prototypeVideoUrl: parsed.data.prototypeVideoUrl || null,
       submittedAt: new Date(),
     },
   });

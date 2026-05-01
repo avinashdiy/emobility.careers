@@ -19,6 +19,7 @@ import {
 } from "@/lib/pulse";
 import { HiringVelocityChart } from "@/components/pulse/HiringVelocityChart";
 import { WhosMovingFeed } from "@/components/pulse/WhosMovingFeed";
+import { FeaturedFairsRail } from "@/components/recruitment-drives/FeaturedFairsRail";
 import { relativeTime } from "@/lib/utils";
 import { env } from "@/lib/env";
 
@@ -104,6 +105,11 @@ export default async function PulsePage() {
         </section>
 
         <div className="container max-w-6xl space-y-8 py-10">
+          {/* ─── Featured fairs rail ─── (renders nothing when no
+              featured drives are OPEN/IN_PROGRESS, so it doesn't
+              leave a blank section between the hero and the chart) */}
+          <FeaturedFairsRail />
+
           {/* ─── Hiring velocity (30-day trend) ─── */}
           <section>
             <HiringVelocityChart data={velocity} />

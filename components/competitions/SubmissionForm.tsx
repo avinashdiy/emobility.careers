@@ -26,6 +26,7 @@ interface ExistingSubmission {
   body: string | null;
   attachmentUrls: string[];
   externalUrl: string | null;
+  prototypeVideoUrl: string | null;
 }
 
 interface Props {
@@ -82,6 +83,25 @@ export function SubmissionForm(props: Props) {
         <div>
           <Label htmlFor="body">Write-up</Label>
           <Textarea id="body" name="body" rows={10} maxLength={50_000} defaultValue={found?.body ?? ""} placeholder="Approach, architecture, results, what you'd do next…" />
+        </div>
+        <div>
+          {/* First-class field for the working-prototype video — surfaces
+              inline on the public team page when the team is published
+              (YouTube + Vimeo embed; everything else as a "Watch video"
+              link). The whiteboard flow makes this central, hence its
+              own field rather than rolling it into attachments. */}
+          <Label htmlFor="prototypeVideoUrl">Working prototype video</Label>
+          <Input
+            id="prototypeVideoUrl"
+            name="prototypeVideoUrl"
+            type="url"
+            defaultValue={found?.prototypeVideoUrl ?? ""}
+            placeholder="https://youtube.com/… or https://vimeo.com/…"
+          />
+          <p className="text-hint text-emce-text-muted">
+            YouTube and Vimeo embed inline on the team page. Drive / MinIO
+            URLs render as a &quot;Watch video&quot; link.
+          </p>
         </div>
         <div>
           <Label htmlFor="externalUrl">External link (GitHub, Figma, Drive)</Label>

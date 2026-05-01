@@ -187,19 +187,9 @@ export async function joinExistingCompany(formData: FormData) {
     redirect("/employer/onboarding?error=" + encodeURIComponent("Company not found."));
   }
 
-  // Auto-join is restricted to UNVERIFIED companies. Once a company
-  // has been admin-vetted (PENDING / VERIFIED) we refuse self-attach
-  // because it would let an attacker claim e.g. "Ola Electric" and
-  // immediately post jobs as that company. Verified companies must
-  // route through TeamInvite (the admin invites you) — handled on
-  // the existing /employer/team page.
-  if (company!.verificationStatus !== "UNVERIFIED") {
-    redirect(
-      "/employer/onboarding?error=" +
-        encodeURIComponent(
-          `${company!.name} is a verified company on eMobility Careers. Ask an existing admin there to invite you from their team page, or contact support@emobility.careers.`,
-        ),
-    );
+  // Owner edge case — they're already attached, just bounce home.
+  if (company.ownerUserId === session.user.id) {
+    redirect("/employer");
   }
 
   // Refuse to attach if the user is already on that company's roster —
@@ -209,56 +199,32 @@ export async function joinExistingCompany(formData: FormData) {
     select: { companyId: true },
   });
   if (existing) {
-    if (existing.companyId === company!.id) {
+    if (existing.companyId === company.id) {
       redirect("/employer");
     }
     redirect("/employer/onboarding?error=" + encodeURIComponent("You're already linked to a different company. Contact support to switch."));
   }
 
-  await db.$transaction(async (tx) => {
-    await tx.employerProfile.create({
-      data: {
-        userId: session.user.id,
-        companyId: company!.id,
-        designation,
-        // Joining an existing company never grants admin — only the
-        // creator (ownerUserId) has admin by default. Existing admins
-        // can promote later via the team page.
-        teamRole: CompanyTeamRole.RECRUITER,
-        isCompanyAdmin: false,
-      },
-    });
-    // Promote a CANDIDATE-role user to EMPLOYER on join (mirrors the
-    // create-new path). Existing EMPLOYERs / ADMINs are left alone.
-    if (session.user.role === "CANDIDATE") {
-      await tx.user.update({
-        where: { id: session.user.id },
-        data: { role: "EMPLOYER" },
-      });
-    }
-  });
-
-  // Refresh the JWT so subsequent /employer/* requests see the new
-  // role. See createCompany above for the rationale.
-  if (session.user.role === "CANDIDATE") {
-    await unstable_update?.({ user: { role: "EMPLOYER" } }).catch(() => undefined);
-  }
-
-  await audit({
-    actorId: session.user.id,
-    action: "employer.joined_existing_company",
-    entity: "Company",
-    entityId: company!.id,
-    meta: { designation },
-  });
-
-  // TODO Notify the company admin so they can approve / promote the
-  // joiner. Wave 6 (notifications) hooks up the queue; for now, the
-  // /employer/team page lists pending team members the admin can vet.
-
-  revalidatePath("/employer");
-  revalidatePath("/employer/team");
-  redirect("/employer");
+  // 2026-05 — joining an existing company is now ALWAYS gated on an
+  // admin-reviewed CompanyClaim, not auto-attach. Previously we
+  // allowed self-attach to UNVERIFIED companies (which let an
+  // attacker create "Tata Motors" as UNVERIFIED, self-attach, and
+  // post fake jobs). The claim flow puts every existing-company
+  // join through the same review queue at /admin/claims, regardless
+  // of the company's current verification state.
+  //
+  // The /company/[slug]/claim page is the proper UX for filing a
+  // claim with proof. The onboarding form here is a thin shortcut —
+  // when the user arrives without a workEmail / linkedin / proof
+  // text, we take them to the dedicated claim form (where they can
+  // fill all three properly) instead of half-filing a thin claim
+  // from the onboarding screen.
+  redirect(
+    `/company/${company.slug}/claim?notice=` +
+      encodeURIComponent(
+        `Tell us how to verify you at ${company.name}. Admin reviews each claim within 1–3 business days.`,
+      ),
+  );
 }
 
 const companyUpdateSchema = companySchema.omit({ designation: true }).extend({

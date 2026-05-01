@@ -18,6 +18,7 @@ import {
   type TopRoleByTier,
 } from "@/lib/salary-compass";
 import { Avatar } from "@/components/ui/avatar";
+import { FeaturedFairsRail } from "@/components/recruitment-drives/FeaturedFairsRail";
 
 /**
  * Home page — framed as a daily snapshot of the EV industry rather
@@ -206,6 +207,13 @@ export default async function HomePage() {
             ))}
           </div>
         </div>
+      </section>
+
+      {/* ─── Featured recruitment drives ─── (renders nothing
+          when no featured fairs exist, so the section quietly
+          disappears between fairs and the layout flows on). */}
+      <section className="container py-10">
+        <FeaturedFairsRail />
       </section>
 
       {/* ─── Logo wall — typography-first, "everyone is here" ─── */}

@@ -51,22 +51,21 @@ export default async function ATSPage({
   });
 
   const board: PipelineApp[] = applications.map((a) => {
-    // ATS contact-privacy gate. Every row here is an application
-    // to a job at THIS recruiter's company (auth-gated above), so
-    // the application relationship exists for every candidate on
-    // the board. We honour the candidate's chosen visibility:
-    //   • EVERYONE         → visible (rare opt-in, public profile)
-    //   • EMPLOYERS_ONLY   → visible (legitimate-need: they applied)
-    //   • CONNECTIONS      → HIDDEN (LinkedIn-strict: connection
-    //                        contact-share is for the candidate's
-    //                        social graph, not recruiters at jobs
-    //                        they applied to)
-    //   • PRIVATE          → HIDDEN (no exception for applications;
-    //                        recruiter must message in-app and let
-    //                        the candidate share contact in reply)
-    const phoneVisible =
-      a.candidate.contactVisibility === "EVERYONE" ||
-      a.candidate.contactVisibility === "EMPLOYERS_ONLY";
+    // ATS contact-privacy gate. Every row here is an application to
+    // a job at THIS recruiter's company (auth-gated above), so the
+    // application relationship — the "legitimate need" signal —
+    // exists for every candidate on this board.
+    //
+    // Updated 2026-05 to match the platform-wide policy floor: an
+    // employer with an application relationship sees the candidate's
+    // contact. The candidate's `contactVisibility` setting is no
+    // longer consulted here because applying is itself the consent
+    // signal. (Candidates who don't want their phone shared with the
+    // employer simply shouldn't apply through the platform.) The old
+    // logic that hid PRIVATE / CONNECTIONS in the ATS was a stricter
+    // posture than the user-facing privacy policy promised, so it
+    // confused recruiters into chasing contact via DMs unnecessarily.
+    const phoneVisible = true;
     return {
       id: a.id,
       stage: a.stage,

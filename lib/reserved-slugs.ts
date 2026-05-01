@@ -12,7 +12,9 @@
 export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   // Platform routes (top-level)
   "jobs", "job", "companies", "company", "c", "admin", "employer", "employers",
-  "me", "candidate", "candidates", "user", "users", "team", "pipeline",
+  "me", "candidate", "candidates", "user", "users", "team", "teams", "pipeline",
+  "fair", "fairs",
+  "article", "articles",
   "signin", "signup", "signout", "login", "logout", "register",
   "forgot-password", "reset-password", "verify-email", "verify",
   "onboarding", "invite", "invites",

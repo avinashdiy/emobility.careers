@@ -22,6 +22,10 @@ export interface EmbedDetection {
   provider: EmbedProvider;
   url: string; // canonical
   videoId?: string; // for iframe-capable providers
+  /// LinkedIn-only — the full URN that goes into the embed URL.
+  /// Example: "urn:li:ugcPost:7455501453592424448". Other providers
+  /// derive the iframe URL from `videoId` directly.
+  linkedInUrn?: string;
   iframe: boolean; // can we render an iframe?
 }
 
@@ -29,17 +33,58 @@ const RX_YT_FULL = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/
 const RX_VIMEO = /vimeo\.com\/(?:video\/)?(\d+)/;
 const RX_INSTAGRAM = /^https?:\/\/(?:www\.)?instagram\.com\/(?:p|reel|reels|tv)\/([A-Za-z0-9_-]+)/;
 const RX_LINKEDIN = /^https?:\/\/(?:www\.)?linkedin\.com\/(?:posts|feed\/update|video|pulse|embed)\//;
-// Extract the LinkedIn activity-numeric ID from any of LinkedIn's URL
-// shapes. The numeric ID is the join key for the official iframe at
-// `linkedin.com/embed/feed/update/urn:li:activity:{ID}`.
-//   • /posts/{slug}-activity-{NUMERIC}-{HASH}/
-//   • /feed/update/urn:li:activity:{NUMERIC}
-//   • /feed/update/urn:li:share:{NUMERIC}
-//   • /embed/feed/update/urn:li:activity:{NUMERIC}
-//   • /video/live/urn:li:ugcPost:{NUMERIC}
-const RX_LINKEDIN_ACTIVITY =
-  /(?:activity[:-]|share[:-]|ugcPost[:-])(\d{15,25})/i;
+// Extract the LinkedIn URN from any of LinkedIn's URL shapes. We need
+// BOTH the URN type (activity / share / ugcPost) AND the numeric ID
+// because the embed iframe URL is keyed on the FULL URN. Using the
+// wrong URN type returns LinkedIn's "Page not found" page in the
+// iframe — which is the bug this regex fix addresses.
+//
+// URL shapes we accept:
+//   • /posts/{slug}-activity-{NUMERIC}-{HASH}/         → urn:li:activity:{N}
+//   • /posts/{slug}-ugcPost-{NUMERIC}-{HASH}/          → urn:li:ugcPost:{N}
+//   • /feed/update/urn:li:activity:{NUMERIC}           → urn:li:activity:{N}
+//   • /feed/update/urn:li:share:{NUMERIC}              → urn:li:share:{N}
+//   • /feed/update/urn:li:ugcPost:{NUMERIC}            → urn:li:ugcPost:{N}
+//   • /embed/feed/update/urn:li:activity:{NUMERIC}     → urn:li:activity:{N}
+//   • /video/live/urn:li:ugcPost:{NUMERIC}             → urn:li:ugcPost:{N}
+//
+// Group 1 = URN type (case-preserved so we can map to the canonical
+// LinkedIn keyword); group 2 = numeric ID.
+const RX_LINKEDIN_URN = /(activity|share|ugcPost)[:-](\d{15,25})/i;
 const RX_TWITTER = /^https?:\/\/(?:www\.)?(?:x\.com|twitter\.com)\/[^/]+\/status\/(\d+)/;
+
+/**
+ * Normalise the URN-type token to LinkedIn's canonical keyword
+ * (case-sensitive in their URN scheme — `ugcPost` is camelCase,
+ * `activity` and `share` are lowercase). The regex matches
+ * case-insensitively to be tolerant of whatever case the URL had,
+ * but the embed URL must use the canonical form or LinkedIn 404s.
+ */
+function canonicalLinkedInUrnType(raw: string): "activity" | "share" | "ugcPost" {
+  const lower = raw.toLowerCase();
+  if (lower === "ugcpost") return "ugcPost";
+  if (lower === "share") return "share";
+  return "activity";
+}
+
+/**
+ * Pull a (urnType, numericId, fullUrn) tuple out of any LinkedIn
+ * URL we recognise. Returns null when the URL doesn't carry a URN
+ * (e.g. /pulse/ articles, profile pages without an attached post).
+ *
+ * Exported so the post-card render path (which works from a stored
+ * `embedUrl` string, not the original `EmbedDetection`) can derive
+ * the same URN without re-implementing the regex.
+ */
+export function parseLinkedInUrn(
+  url: string,
+): { urn: string; numericId: string; type: "activity" | "share" | "ugcPost" } | null {
+  const m = url.match(RX_LINKEDIN_URN);
+  if (!m) return null;
+  const type = canonicalLinkedInUrnType(m[1]);
+  const numericId = m[2];
+  return { urn: `urn:li:${type}:${numericId}`, numericId, type };
+}
 
 export function detectEmbed(input: string): EmbedDetection | null {
   const url = input.trim();
@@ -66,20 +111,21 @@ export function detectEmbed(input: string): EmbedDetection | null {
     return { provider: "INSTAGRAM", url, iframe: false };
   }
   if (RX_LINKEDIN.test(url)) {
-    // Try to extract the activity URN — when we get it, LinkedIn's
-    // public iframe endpoint will render the post inline. Without it
+    // Try to extract the URN — when we get it, LinkedIn's official
+    // iframe endpoint will render the post inline. Without it
     // (e.g. /pulse/ articles, profile slugs without an attached
     // activity), we fall back to a link card.
-    const m = url.match(RX_LINKEDIN_ACTIVITY);
-    if (m) {
-      const activityId = m[1];
+    const parsed = parseLinkedInUrn(url);
+    if (parsed) {
       return {
         provider: "LINKEDIN",
-        // Canonical form so renderers / dedup work uniformly. The
-        // original URL is fine to keep too, but normalising to the
-        // post URL avoids storing 30 variants of the same post.
-        url: `https://www.linkedin.com/feed/update/urn:li:activity:${activityId}`,
-        videoId: activityId,
+        // Canonical form so renderers / dedup work uniformly. We
+        // store the FULL URN in the path so the post-card renderer
+        // (which reads `embedUrl` only) can recover both the URN
+        // type and the numeric ID later.
+        url: `https://www.linkedin.com/feed/update/${parsed.urn}`,
+        videoId: parsed.numericId,
+        linkedInUrn: parsed.urn,
         iframe: true,
       };
     }
@@ -113,13 +159,22 @@ export function iframeFor(detection: EmbedDetection): string | null {
   if (detection.provider === "VIMEO" && detection.videoId) {
     return `https://player.vimeo.com/video/${detection.videoId}`;
   }
-  if (detection.provider === "LINKEDIN" && detection.videoId) {
+  if (detection.provider === "LINKEDIN") {
     // LinkedIn's official iframe — same one the "Embed this post"
     // button on linkedin.com produces. Renders the post body, author
-    // header, reactions, and a "view on LinkedIn" CTA. Must be at
-    // least ~504px wide; we let the parent grid clamp it so it
-    // shrinks responsively below that.
-    return `https://www.linkedin.com/embed/feed/update/urn:li:activity:${detection.videoId}`;
+    // header, reactions, and a "view on LinkedIn" CTA.
+    //
+    // Critical: the embed URL is keyed on the FULL URN (urn:li:activity,
+    // urn:li:share, or urn:li:ugcPost). Using the wrong URN type — e.g.
+    // building urn:li:activity for a URL that's actually a ugcPost —
+    // returns LinkedIn's "Page not found" page inside the iframe.
+    // Hence we prefer the precomputed `linkedInUrn`; if it's missing
+    // (legacy detection rows from before this field existed), fall
+    // back to re-parsing the canonical URL we stored.
+    const urn =
+      detection.linkedInUrn ?? parseLinkedInUrn(detection.url)?.urn;
+    if (!urn) return null;
+    return `https://www.linkedin.com/embed/feed/update/${urn}`;
   }
   return null;
 }

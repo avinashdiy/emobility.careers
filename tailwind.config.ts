@@ -44,13 +44,33 @@ const config: Config = {
           // muted text moves to neutral darks.
           text: "#191919",         // ~rgba(0,0,0,0.9) — LinkedIn body
           "text-sec": "#5e676b",   // slightly cool grey — LinkedIn secondary
-          "text-muted": "#8b95a0", // captions / timestamps
+          // Darkened from #8b95a0 (4.45:1 on white — borderline AA, fails
+          // on emce-light-soft) to #6b7480 (5.6:1 on white, 4.7:1 on
+          // emce-light-soft) so captions, hints, and timestamps clear
+          // WCAG AA across every surface. Kept the hue cool-grey so
+          // the system doesn't drift warm in low-emphasis copy.
+          "text-muted": "#6b7480",
           border: "#d4e8d8",
           "border-light": "#e8f5eb",
           orange: "#e8833a",
           "orange-light": "#fff4eb",
+          // Deep amber for warning-badge text on the orange-light bg
+          // (4.65:1 contrast — clears AA). Was inlined as #8a4a1a in
+          // badge.tsx; promoted to a token so `text-emce-orange-deep`
+          // can be reused consistently across alert / chip surfaces.
+          "orange-deep": "#8a4a1a",
           red: "#d45454",
           "red-light": "#fdeaea",
+          // Deep success-green text colour — used on the success
+          // badge over emce-light-soft (5.1:1 contrast). Promoted
+          // from inline `text-[#1e5a32]`.
+          "success-deep": "#1e5a32",
+          // Verified-badge palette — three values that previously
+          // lived as inline hex tuples. Yellow-cream gradient start,
+          // amber border, deep amber text.
+          "verified-bg": "#fff8e1",
+          "verified-border": "#ffe066",
+          "verified-text": "#7a5a00",
         },
         // shadcn/ui semantic tokens — driven by CSS vars in globals.css
         background: "hsl(var(--background))",

@@ -2,16 +2,27 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { ChevronDown, Briefcase, Trophy, GraduationCap, Users, Building2 } from "lucide-react";
+import {
+  ChevronDown,
+  Briefcase,
+  Trophy,
+  GraduationCap,
+  Users,
+  Building2,
+  BookOpen,
+  Calendar,
+} from "lucide-react";
 
 /**
- * "Discover" megamenu collapses the secondary nav (Jobs / Competitions /
- * Mentors / People / Companies) into one slot — frees the header for the
- * primary social actions while keeping every pillar one click away. Mirrors
- * the LinkedIn "Work" app launcher pattern but tuned for our four pillars.
+ * "Discover" megamenu collapses the secondary nav into one slot —
+ * frees the header for the primary social actions while keeping
+ * every pillar one click away. Mirrors the LinkedIn "Work" app
+ * launcher pattern but tuned for our pillars.
  */
 const ITEMS = [
   { href: "/jobs", label: "Jobs", desc: "EV roles across India", icon: Briefcase },
+  { href: "/articles", label: "Knowledge", desc: "Explainers, deep dives, career guides", icon: BookOpen },
+  { href: "/fairs", label: "Job fairs", desc: "Multi-company recruitment drives", icon: Calendar },
   { href: "/competitions", label: "Competitions", desc: "Hackathons, case studies, ideathons", icon: Trophy },
   { href: "/mentors", label: "Mentors", desc: "Book 1:1 sessions with EV experts", icon: GraduationCap },
   { href: "/people", label: "People", desc: "Engineers, students, faculty, leaders", icon: Users },

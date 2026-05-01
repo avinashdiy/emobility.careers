@@ -8,12 +8,14 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default: "bg-emce-light-soft text-emce-dark",
-        success: "bg-emce-light-soft text-[#1e5a32]",
-        warning: "bg-emce-orange-light text-[#8a4a1a]",
+        // Migrated from inline hex (#1e5a32) to the named token
+        // `emce-success-deep` so design tweaks happen in one place.
+        success: "bg-emce-light-soft text-emce-success-deep",
+        warning: "bg-emce-orange-light text-emce-orange-deep",
         danger: "bg-emce-red-light text-emce-red",
         outline: "border border-emce-border text-emce-text-sec",
         verified:
-          "bg-gradient-to-r from-[#fff8e1] to-emce-light-soft text-[#7a5a00] border border-[#ffe066]",
+          "bg-gradient-to-r from-emce-verified-bg to-emce-light-soft text-emce-verified-text border border-emce-verified-border",
       },
       size: {
         // Standard pill — used on profile cards, list rows, anywhere
