@@ -101,18 +101,21 @@ export async function presignPostAttachmentUpload(input: {
     };
   }
 
-  // Routing: images + videos go into the docs bucket (public), DOCs too —
-  // bucket separation isn't security-critical here since post media is
-  // intentionally public. We just put them under a `posts/` prefix so they
-  // don't collide with avatars / logos / resumes.
+  // All three attachment types — images, videos, documents — are
+  // rendered as public-URL <img>/<a href> elements in the feed and
+  // post-detail page, so they live in the public `posts` bucket.
+  // Previously routed through `docs` which is intentionally PRIVATE
+  // (Aadhar + GDPR exports live there); that caused AccessDenied on
+  // every browser fetch. The `posts/<userId>` prefix is preserved so
+  // existing PostAttachment.url rows can be migrated by string-rewrite.
   const ext = EXT_BY_MIME[parsed.data.mime] ?? "bin";
   const key = objectKey(`posts/${session.user.id}`, ext);
-  const { url } = await presignUpload("docs", key, parsed.data.mime);
+  const { url } = await presignUpload("posts", key, parsed.data.mime);
 
   return {
     ok: true,
     uploadUrl: url,
-    publicUrl: publicUrl("docs", key),
+    publicUrl: publicUrl("posts", key),
     storageKey: key,
   };
 }

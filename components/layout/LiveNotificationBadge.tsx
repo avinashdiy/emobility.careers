@@ -14,6 +14,11 @@ interface Props {
   pusherKey: string;
   pusherHost: string;
   pusherPort: number;
+  /** True in production where Caddy fronts Soketi on WSS via the
+      `realtime.` subdomain. False locally (plain ws://). Keeping
+      this in lock-step with the page protocol prevents the
+      mixed-content connect storm that hammered the prod console. */
+  pusherTls: boolean;
 }
 
 /**
@@ -34,6 +39,7 @@ export function LiveNotificationBadge({
   pusherKey,
   pusherHost,
   pusherPort,
+  pusherTls,
 }: Props) {
   const [count, setCount] = useState(initialCount);
 
@@ -46,8 +52,9 @@ export function LiveNotificationBadge({
         wsHost: pusherHost,
         wsPort: pusherPort,
         wssPort: pusherPort,
-        forceTLS: false,
-        enabledTransports: ["ws", "wss"],
+        forceTLS: pusherTls,
+        // Single-transport lock — see ChatThread for the rationale.
+        enabledTransports: pusherTls ? ["wss"] : ["ws"],
         cluster: "soketi",
         channelAuthorization: {
           endpoint: "/api/realtime/auth",
@@ -64,7 +71,7 @@ export function LiveNotificationBadge({
     return () => {
       pusher?.disconnect();
     };
-  }, [userId, pusherKey, pusherHost, pusherPort]);
+  }, [userId, pusherKey, pusherHost, pusherPort, pusherTls]);
 
   // Cross-component reset signal. The inbox's "Mark all read" button
   // dispatches `notifications:reset` on `window`, which any rendered

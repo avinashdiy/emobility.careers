@@ -13,16 +13,27 @@ import { PostCard, type FeedPostShape } from "@/components/social/PostCard";
 import { ConnectButton } from "@/components/social/ConnectButton";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
-import { getFeed, suggestConnections, getConnectionStatus, getViewerPollVotes } from "@/server/social/queries";
+import { getFeed, getForYouFeed, suggestConnections, getConnectionStatus, getViewerPollVotes } from "@/server/social/queries";
+import { getProfileViewStats } from "@/server/profile/views";
 import { isFeatureOff, FeatureOffNotice } from "@/components/layout/FeatureGate";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "Feed" };
 
-export default async function FeedPage() {
+export default async function FeedPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ tab?: string }>;
+}) {
   if (await isFeatureOff("feature.social_enabled")) return <FeatureOffNotice title="Social feed" />;
   const session = await auth();
   if (!session?.user) redirect("/signin?next=/feed");
+  const { tab } = await searchParams;
+  // Two surfaces, one URL — `?tab=for-you` switches to topic-driven
+  // posts (filtered by HashtagSubscription), default is the social-
+  // graph feed. Treat anything else as the default to avoid a 404
+  // door for typos.
+  const activeTab: "following" | "for-you" = tab === "for-you" ? "for-you" : "following";
 
   const me = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
@@ -46,30 +57,30 @@ export default async function FeedPage() {
   });
 
   const since7d = new Date(Date.now() - 7 * 24 * 3600 * 1000);
-  const since30d = new Date(Date.now() - 30 * 24 * 3600 * 1000);
 
   const [
-    posts,
+    feedResult,
     suggestions,
     weeklyPosts,
     weeklyReactions,
     weeklyComments,
-    profileViews30d,
+    profileViewStats,
     liveCompetitions,
     upcomingMentorshipSession,
     latestJobs,
   ] = await Promise.all([
-    getFeed({ viewerId: session.user.id, limit: 20 }),
+    activeTab === "for-you"
+      ? getForYouFeed({ viewerId: session.user.id, limit: 20 })
+      : getFeed({ viewerId: session.user.id, limit: 20 }).then((posts) => ({ posts, subscribedCount: -1 })),
     suggestConnections(session.user.id, 4),
     db.post.count({ where: { authorId: session.user.id, createdAt: { gte: since7d } } }),
     db.postReaction.count({ where: { post: { authorId: session.user.id }, createdAt: { gte: since7d } } }),
     db.postComment.count({ where: { post: { authorId: session.user.id }, createdAt: { gte: since7d } } }),
-    // Profile-view tracking isn't a model yet — until we add a ProfileView
-    // table, derive a soft proxy from connection requests received in 30d.
-    // (Real LinkedIn-style impression tracking is a follow-up.)
-    db.connection.count({
-      where: { recipientId: session.user.id, createdAt: { gte: since30d } },
-    }),
+    // Real LinkedIn-style "Who viewed your profile" — uses the
+    // ProfileView table now. 7-day window matches LinkedIn's free-
+    // tier surface; the /me/views detail page covers the longer
+    // history. The widget links there for the full list.
+    getProfileViewStats(session.user.id, 7),
     db.competition.findMany({
       where: { status: "LIVE", endsAt: { gte: new Date() } },
       orderBy: { endsAt: "asc" },
@@ -108,6 +119,11 @@ export default async function FeedPage() {
 
   const fullName = `${me.firstName} ${me.lastName ?? ""}`.trim();
   const totalEngagement7d = weeklyReactions + weeklyComments;
+  const posts = feedResult.posts;
+  // subscribedCount is -1 for the Following tab (we don't compute it
+  // there) and 0+ for For-You. We only use it for the empty-state
+  // "you haven't followed any topics yet" CTA.
+  const subscribedTopicCount = feedResult.subscribedCount;
   const viewerPollVotes = await getViewerPollVotes(posts, session.user.id);
 
   return (
@@ -162,13 +178,18 @@ export default async function FeedPage() {
           <Card className="p-0">
             <div className="px-3 py-2.5 text-xs">
               <Link
-                href={`/${me.slug}?tab=activity`}
+                href="/me/views"
                 className="flex items-center justify-between rounded-md px-1 py-1 hover:bg-emce-light-soft"
+                title={
+                  profileViewStats.anonymous > 0
+                    ? `${profileViewStats.identified} identified · ${profileViewStats.anonymous} anonymous`
+                    : undefined
+                }
               >
                 <span className="flex items-center gap-1.5 text-emce-text-sec">
-                  <Eye className="h-3.5 w-3.5" /> Recent connection requests
+                  <Eye className="h-3.5 w-3.5" /> Profile views (7d)
                 </span>
-                <span className="font-bold text-emce-dark">{profileViews30d}</span>
+                <span className="font-bold text-emce-dark">{profileViewStats.total}</span>
               </Link>
               <Link
                 href={`/${me.slug}?tab=activity`}
@@ -235,29 +256,80 @@ export default async function FeedPage() {
             companies={teamCompanies.map((t) => t.company)}
           />
 
-          {/* Sort tag — LinkedIn right-aligns this with a thin divider
-              underneath, not centred between two lines. */}
-          <div className="mt-2 flex items-center justify-end px-1 pb-1.5 text-xs text-emce-text-sec">
-            <span className="hidden sm:inline">Sort by:</span>
-            <button type="button" className="ml-1 inline-flex items-center gap-0.5 font-bold text-emce-text hover:text-emce-dark">
-              Top <span aria-hidden>▾</span>
-            </button>
+          {/* Tab strip — Following (graph) vs For you (topics).
+              Tabs are URL-driven so back/forward and direct links to
+              ?tab=for-you work; no client-side state needed. */}
+          <div className="mt-3 flex items-center justify-between border-b border-emce-border">
+            <div className="flex gap-1" role="tablist" aria-label="Feed view">
+              <Link
+                href="/feed"
+                role="tab"
+                aria-selected={activeTab === "following"}
+                className={`-mb-px border-b-2 px-3 py-2 text-sm font-bold transition ${
+                  activeTab === "following"
+                    ? "border-emce-dark text-emce-text"
+                    : "border-transparent text-emce-text-sec hover:text-emce-text"
+                }`}
+              >
+                Following
+              </Link>
+              <Link
+                href="/feed?tab=for-you"
+                role="tab"
+                aria-selected={activeTab === "for-you"}
+                className={`-mb-px border-b-2 px-3 py-2 text-sm font-bold transition ${
+                  activeTab === "for-you"
+                    ? "border-emce-dark text-emce-text"
+                    : "border-transparent text-emce-text-sec hover:text-emce-text"
+                }`}
+              >
+                For you
+              </Link>
+            </div>
+            <div className="hidden items-center pr-1 text-xs text-emce-text-sec sm:flex">
+              <span className="hidden sm:inline">Sort by:</span>
+              <button
+                type="button"
+                className="ml-1 inline-flex items-center gap-0.5 font-bold text-emce-text hover:text-emce-dark"
+              >
+                Top <span aria-hidden>▾</span>
+              </button>
+            </div>
           </div>
-          <div className="border-t border-emce-border" />
 
           <div className="mt-2 space-y-2">
             {posts.length === 0 ? (
-              <EmptyState
-                icon="👋"
-                title="Your feed is quiet"
-                body="Connect with people in the EV industry, follow companies, or tap a hashtag to see updates."
-                action={
-                  <div className="flex gap-2">
-                    <Button asChild size="sm"><Link href="/people">Find people →</Link></Button>
-                    <Button asChild size="sm" variant="outline"><Link href="/companies">Browse companies</Link></Button>
-                  </div>
-                }
-              />
+              activeTab === "for-you" ? (
+                <EmptyState
+                  icon="🏷️"
+                  title={subscribedTopicCount === 0 ? "Pick a few topics to fill this feed" : "Nothing recent on your topics"}
+                  body={
+                    subscribedTopicCount === 0
+                      ? "Follow #battery-engineering, #charging, or any tag that catches your eye. We'll surface posts from across the platform that mention them."
+                      : "Your topics are quiet right now. Try following more, or check back later."
+                  }
+                  action={
+                    <div className="flex gap-2">
+                      <Button asChild size="sm"><Link href="/topics">Browse topics →</Link></Button>
+                      {subscribedTopicCount > 0 && (
+                        <Button asChild size="sm" variant="outline"><Link href="/me/topics">Manage</Link></Button>
+                      )}
+                    </div>
+                  }
+                />
+              ) : (
+                <EmptyState
+                  icon="👋"
+                  title="Your feed is quiet"
+                  body="Connect with people in the EV industry, follow companies, or tap a hashtag to see updates."
+                  action={
+                    <div className="flex gap-2">
+                      <Button asChild size="sm"><Link href="/people">Find people →</Link></Button>
+                      <Button asChild size="sm" variant="outline"><Link href="/companies">Browse companies</Link></Button>
+                    </div>
+                  }
+                />
+              )
             ) : (
               posts.map((p) => {
                 const votes = p.poll ? viewerPollVotes[p.poll.id] ?? [] : [];

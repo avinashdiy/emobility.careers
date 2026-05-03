@@ -248,6 +248,44 @@ export function getPostsByHashtag(tag: string, limit = 30) {
   });
 }
 
+/**
+ * Topic-driven feed. Pulls posts whose `hashtags` array overlaps
+ * with any tag the viewer is subscribed to.
+ *
+ *   - Visibility: PUBLIC only. (CONNECTIONS posts are surfaced via
+ *     the main /feed graph; "For you" is the topic surface.)
+ *   - Backed by the GIN index on Post.hashtags (see scripts/setup-fts.sql);
+ *     the `&&` array-overlap operator is fast even at 100k+ posts.
+ *   - Returns `{ posts, subscribedCount }` so the caller can decide
+ *     whether to render an empty-state CTA pointing at /topics.
+ */
+export async function getForYouFeed({
+  viewerId,
+  cursor,
+  limit = 20,
+}: {
+  viewerId: string;
+  cursor?: string | null;
+  limit?: number;
+}) {
+  const subs = await db.hashtagSubscription.findMany({
+    where: { userId: viewerId },
+    select: { tag: true },
+  });
+  const tags = subs.map((s) => s.tag);
+  if (tags.length === 0) {
+    return { posts: [] as Awaited<ReturnType<typeof getPostsByHashtag>>, subscribedCount: 0 };
+  }
+  const posts = await db.post.findMany({
+    where: { visibility: "PUBLIC", hashtags: { hasSome: tags } },
+    orderBy: { createdAt: "desc" },
+    take: limit,
+    ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+    include: POST_INCLUDE,
+  });
+  return { posts, subscribedCount: tags.length };
+}
+
 /** Suggested people to connect with — same EV domain, not already connected. */
 export async function suggestConnections(viewerId: string, limit = 10) {
   const me = await db.candidateProfile.findUnique({

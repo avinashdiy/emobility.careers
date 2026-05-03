@@ -63,6 +63,7 @@ export default async function EmployerMessageThread({
             pusherKey={env.NEXT_PUBLIC_SOKETI_KEY}
             pusherHost={env.NEXT_PUBLIC_SOKETI_HOST}
             pusherPort={env.NEXT_PUBLIC_SOKETI_PORT}
+            pusherTls={env.NEXT_PUBLIC_SOKETI_TLS}
           />
         </div>
       </div>

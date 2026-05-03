@@ -59,6 +59,12 @@ export const buckets = {
   avatars: env.S3_BUCKET_AVATARS,
   logos: env.S3_BUCKET_LOGOS,
   docs: env.S3_BUCKET_DOCS,
+  // Public bucket for media that's rendered as <img src=...> in the
+  // browser — post attachments, event covers, etc. The `docs` bucket
+  // is intentionally PRIVATE (Aadhar uploads, GDPR exports), so post
+  // media that piggybacked on it returned AccessDenied for every
+  // anonymous read. Use `posts` for any new public media.
+  posts: env.S3_BUCKET_POSTS,
 } as const;
 
 export type BucketName = keyof typeof buckets;

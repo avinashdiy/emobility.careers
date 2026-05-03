@@ -387,7 +387,11 @@ export async function savePreferences(formData: FormData) {
   });
   await recalcCompleteness(profile.id);
   revalidatePath("/me");
-  redirect("/me");
+  // Slot the topic-pick nudge after preferences. The page itself is
+  // skippable (a "Skip" link sends straight to /me) so adding it
+  // doesn't increase abandonment risk for users who don't care about
+  // the For-you feed.
+  redirect("/onboarding/topics");
 }
 
 // ─── Profile editor: section-level mutations ───────────────

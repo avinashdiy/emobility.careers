@@ -20,6 +20,12 @@ interface Props {
   pusherKey: string;
   pusherHost: string;
   pusherPort: number;
+  /** True in production where Caddy fronts Soketi on WSS via the
+      `realtime.` subdomain. False locally where Soketi binds plain
+      ws://localhost:6001. Mismatched against the page protocol the
+      browser silently refuses the upgrade — that's how the prod
+      build ended up hammering wss://localhost:6001 forever. */
+  pusherTls: boolean;
 }
 
 export function ChatThread({
@@ -29,6 +35,7 @@ export function ChatThread({
   pusherKey,
   pusherHost,
   pusherPort,
+  pusherTls,
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [draft, setDraft] = useState("");
@@ -42,8 +49,11 @@ export function ChatThread({
         wsHost: pusherHost,
         wsPort: pusherPort,
         wssPort: pusherPort,
-        forceTLS: false,
-        enabledTransports: ["ws", "wss"],
+        forceTLS: pusherTls,
+        // Restrict to the matching transport so the lib doesn't try
+        // to upgrade plaintext on a TLS host (or vice-versa) and
+        // burn three retries before failing.
+        enabledTransports: pusherTls ? ["wss"] : ["ws"],
         cluster: "soketi",
         channelAuthorization: {
           endpoint: "/api/realtime/auth",
@@ -60,7 +70,7 @@ export function ChatThread({
     return () => {
       pusher?.disconnect();
     };
-  }, [threadId, pusherKey, pusherHost, pusherPort]);
+  }, [threadId, pusherKey, pusherHost, pusherPort, pusherTls]);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });

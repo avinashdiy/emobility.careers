@@ -21,7 +21,7 @@ export default async function ResumeUploadStep() {
   const isReupload = hasExisting && Boolean(profile?.onboardingCompletedAt);
   return (
     <Card className="p-8">
-      <Badge variant="default" className="mb-2">{isReupload ? "Update" : "Step 2 of 4"}</Badge>
+      <Badge variant="default" className="mb-2">{isReupload ? "Update" : "Step 2 of 5"}</Badge>
       <h1 className="text-2xl font-extrabold text-emce-text">
         {isReupload ? "Re-upload your resume" : "Upload your resume"}
       </h1>

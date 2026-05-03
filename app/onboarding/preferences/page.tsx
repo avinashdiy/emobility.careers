@@ -23,7 +23,7 @@ export default async function PreferencesStep() {
 
   return (
     <Card className="p-8">
-      <Badge variant="default" className="mb-2">Step 4 of 4</Badge>
+      <Badge variant="default" className="mb-2">Step 4 of 5</Badge>
       <h1 className="text-2xl font-extrabold text-emce-text">Job preferences</h1>
       <p className="mt-1 text-sm text-emce-text-sec">
         Help us match you with the right roles. You can change these anytime.

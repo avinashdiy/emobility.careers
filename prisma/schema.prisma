@@ -218,6 +218,9 @@ model User {
   companyClaimsFiled          CompanyClaim[]            @relation("CompanyClaimant")
   companyClaimsReviewed       CompanyClaim[]            @relation("CompanyClaimReviewer")
   articlesAuthored            Article[]                 @relation("ArticleAuthor")
+  hashtagSubscriptions        HashtagSubscription[]     @relation("HashtagSubscriber")
+  profileViewsReceived        ProfileView[]             @relation("ProfileViewed")
+  profileViewsMade            ProfileView[]             @relation("ProfileViewer")
 
   // TPO / placement
   cohortsCreated Cohort[]
@@ -554,6 +557,15 @@ model CandidateProfile {
   /// (opt-in) — same posture LinkedIn took before they made it the
   /// default. Toggleable from /me/preferences.
   announceJobChange Boolean @default(false)
+
+  /// LinkedIn "Profile viewing options". Default VISIBLE — the
+  /// reciprocal-visibility model (you see who views you only when
+  /// viewers also share their identity) is the strongest behavioural
+  /// loop on the LinkedIn network. Switching to ANONYMOUS makes the
+  /// viewer invisible on viewed users' /me/views pages but ALSO
+  /// hides the viewer's own list on /me/views — they trade
+  /// the data both ways. Toggleable from /me/views.
+  viewerVisibility  ViewerVisibility @default(VISIBLE)
 
   // FTS — see Skill.searchTsv comment for the pattern.
   searchTsv Unsupported("tsvector")?
@@ -4174,4 +4186,98 @@ model Article {
   @@index([categoryId, publishedAt])
   @@index([authorId])
   @@index([featuredAt])
+}
+
+// ─── HashtagSubscription — "follow this topic" ────────────────
+//
+// User-followable channels driven by the existing Post.hashtags
+// strings. Hashtags are emergent (extracted from post bodies via
+// lib/social/extract.ts) — we deliberately don't have a separate
+// `Hashtag` table. A subscription is just (userId, lowercase tag).
+//
+// The /feed "For you" tab joins on this table to surface posts
+// whose hashtags array overlaps the user's subscribed tags. See
+// server/social/queries.ts:getForYouFeed for the query shape.
+//
+// Channel-key namespace also covers Skill slugs and EVDomain slugs
+// — they're stored as hashtag strings in this table without a FK
+// (we don't enforce that "battery" exists as a Skill row before
+// you can follow it). Lets a user follow #BMS or #LFP fluidly
+// even if those slugs evolve in the Skill table later.
+model HashtagSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("HashtagSubscriber", fields: [userId], references: [id], onDelete: Cascade)
+  /// Lowercase, slugified ([a-z0-9][a-z0-9_-]{1,30}). Normalised
+  /// at write-time via lib/social/hashtag.ts:normalizeHashtag so
+  /// "Battery Engineering" and "battery-engineering" land on the
+  /// same row.
+  tag       String
+  createdAt DateTime @default(now())
+
+  @@unique([userId, tag])
+  // Per-tag subscriber count + recent-subscribers query.
+  @@index([tag, createdAt])
+  // "Tags I follow" lookup on every feed render — needs to be fast.
+  @@index([userId])
+}
+
+// ─── Profile views ────────────────────────────────────────────
+//
+// LinkedIn-style "Who viewed your profile". Each row is one viewer→
+// viewed event, written fire-and-forget from the public profile
+// page. We dedupe per (viewer, viewed) per 24h at the server-action
+// layer (cheap because of the composite index), so refreshing the
+// page or scrolling back doesn't inflate the counter.
+//
+// Privacy model:
+//   • The VIEWER's `CandidateProfile.viewerVisibility` controls
+//     whether their identity is recorded with the view. Setting it
+//     to ANONYMOUS writes a row with `viewerUserId = null` and
+//     `wasAnonymous = true` — the viewed user sees an anonymous
+//     count but no identity. Same trade-off LinkedIn made.
+//   • Logged-out viewers always count as anonymous.
+//   • Self-views (viewer == viewed) are dropped at the writer level,
+//     not stored.
+//   • Viewers can't see their OWN audit (we don't expose a "who I
+//     viewed" surface in v1) — only viewed users see their list.
+//
+// Source field is free-form ("feed", "search", "tag-page",
+// "company-page-team", "post-author") so the UI can show "viewed
+// from search" — useful for recruiters tuning their funnel later.
+enum ViewerVisibility {
+  VISIBLE   // viewer's name + headline shown to the viewed user
+  ANONYMOUS // viewed user sees "Someone in EV Engineering" — no identity
+}
+
+model ProfileView {
+  id           String   @id @default(cuid())
+  // The user whose profile was viewed.
+  viewedUserId String
+  viewedUser   User     @relation("ProfileViewed", fields: [viewedUserId], references: [id], onDelete: Cascade)
+  // The viewer. Null for logged-out OR for viewers who chose
+  // ANONYMOUS visibility — we deliberately don't store the FK so
+  // anonymity holds even against a future schema audit.
+  viewerUserId String?
+  viewerUser   User?    @relation("ProfileViewer", fields: [viewerUserId], references: [id], onDelete: SetNull)
+  /// Mirror of "viewerUserId IS NULL because we honoured anonymity"
+  /// vs "viewerUserId IS NULL because no one was logged in". Lets
+  /// the UI distinguish "Someone with a hidden identity viewed you"
+  /// from "1 unknown view (signed-out)" without an extra join.
+  wasAnonymous Boolean  @default(false)
+  /// Free-form source label ("feed", "search", "tag", "post"). Helps
+  /// the viewed user understand context ("you appeared in search").
+  source       String?
+  createdAt    DateTime @default(now())
+
+  // Recent-views feed (the home page widget + /me/views detail page).
+  // Ordered by createdAt desc with viewedUserId as the leading key.
+  @@index([viewedUserId, createdAt])
+  // 24-hour dedup query: SELECT 1 WHERE viewedUserId=? AND viewerUserId=?
+  // AND createdAt >= NOW() - INTERVAL '1 day'. This compound index
+  // turns it into a single index seek.
+  @@index([viewedUserId, viewerUserId, createdAt])
+  // Backfill / housekeeping — bulk delete views older than the
+  // retention window (90d in v1). Indexed for the cron sweep.
+  @@index([createdAt])
 }

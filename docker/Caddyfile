@@ -7,13 +7,11 @@ emobility.careers, www.emobility.careers {
         output file /var/log/caddy/access.log
     }
 
-    # WebSockets for in-app chat / ATS realtime
-    @ws {
-        path /ws/*
-    }
-    handle @ws {
-        reverse_proxy soketi:6001
-    }
+    # NOTE: realtime (Soketi) used to be matched on /ws/* here, but
+    # the Pusher protocol's WebSocket endpoint is `/app/<key>` not
+    # `/ws/...` — that block never actually fired. Realtime now
+    # lives on its own subdomain (`realtime.emobility.careers`) at
+    # the bottom of this file.
 
     # Legacy: MinIO public buckets via /static/* prefix.
     # Kept for back-compat with any URLs already in the wild that
@@ -61,5 +59,36 @@ files.emobility.careers {
     # own TTL via the signature so caching them is safe.
     header /emce-avatars/* Cache-Control "public, max-age=3600"
     header /emce-logos/*   Cache-Control "public, max-age=3600"
+    header /emce-posts/*   Cache-Control "public, max-age=3600"
     reverse_proxy minio:9000
+}
+
+# Dedicated subdomain for realtime (Soketi, Pusher-protocol). The
+# browser dials `wss://realtime.emobility.careers/app/<key>?...`,
+# Caddy upgrades the connection (no special directive needed in
+# Caddy v2 — `reverse_proxy` handles WebSocket upgrades natively),
+# Soketi handles the Pusher framing.
+#
+# Why a subdomain and not a path on the main host:
+#   • Pusher-js wants `wsHost` to be a bare hostname, not a path —
+#     the protocol's URL shape is `/app/<key>`. Sharing `/app` on
+#     the main host would collide with Next.js routing.
+#   • The TLS cert lives on its own SAN, so a future migration off
+#     Caddy doesn't have to coordinate with the main vhost.
+#
+# DNS step before this works:
+#   • Add an A or CNAME record for `realtime.emobility.careers`
+#     pointing to the same VPS as `emobility.careers`.
+#   • Caddy auto-issues a Let's Encrypt cert on first request.
+#
+# Env vars to set on the VPS (matches lib/env.ts defaults override):
+#   NEXT_PUBLIC_SOKETI_HOST=realtime.emobility.careers
+#   NEXT_PUBLIC_SOKETI_PORT=443
+#   NEXT_PUBLIC_SOKETI_TLS=true
+realtime.emobility.careers {
+    encode zstd gzip
+    log {
+        output file /var/log/caddy/realtime-access.log
+    }
+    reverse_proxy soketi:6001
 }

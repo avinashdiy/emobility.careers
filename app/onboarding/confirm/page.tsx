@@ -44,7 +44,7 @@ export default async function ConfirmStep() {
   return (
     <div className="space-y-4">
       <Card className="p-8">
-        <Badge variant="default" className="mb-2">Step 3 of 4</Badge>
+        <Badge variant="default" className="mb-2">Step 3 of 5</Badge>
         <h1 className="text-2xl font-extrabold text-emce-text">
           Here&apos;s what we extracted
         </h1>

@@ -215,6 +215,17 @@ END $$;
 CREATE INDEX IF NOT EXISTS "idx_article_search_tsv"
   ON "Article" USING GIN ("searchTsv");
 
+-- ───── Post.hashtags array GIN ─────
+-- Not a tsvector — just a plain GIN index on the existing string
+-- array column so the For-You feed's `hashtags && ARRAY[...]`
+-- containment query is fast at scale. Without this, that query
+-- falls back to a sequential scan over every Post and our 50ms
+-- feed render budget evaporates the first time the table grows
+-- past a few thousand rows. The index also speeds up trending-tag
+-- aggregation in /topics.
+CREATE INDEX IF NOT EXISTS "idx_post_hashtags_gin"
+  ON "Post" USING GIN ("hashtags");
+
 -- ──────────────────────────────────────────────────────────────────────
 -- Notes for the future
 --

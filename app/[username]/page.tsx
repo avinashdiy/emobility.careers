@@ -28,6 +28,7 @@ import { WhatsAppButton } from "@/components/whatsapp/WhatsAppButton";
 import { FollowUserButton } from "@/components/social/FollowButton";
 import { PostCard, type FeedPostShape } from "@/components/social/PostCard";
 import { getConnectionStatus, isFollowingUser } from "@/server/social/queries";
+import { trackProfileView } from "@/server/profile/views";
 import { breadcrumbJsonLd, personJsonLd as buildPersonJsonLd } from "@/lib/seo/schemas";
 import { getViewerContext, canSeeContact, canSeeResume } from "@/lib/profile-visibility";
 import { shouldSuppressExperienceYears } from "@/lib/k-anonymity";
@@ -184,6 +185,19 @@ export default async function PublicCandidateProfile({
   const isOwner = session?.user?.id === profile.userId;
   const isEmployer = session?.user?.role === "EMPLOYER" || session?.user?.role === "ADMIN";
   const totalYears = (profile.totalExperienceMonths / 12).toFixed(1);
+
+  // Fire-and-forget profile-view tracker. Skipped for the owner
+  // (their own page-loads should never inflate their count) and
+  // for the visibility-denied branches above (we returned before
+  // we ever got here). The tracker handles 24h dedup + privacy
+  // resolution itself; we don't await — render path stays cheap.
+  if (!isOwner) {
+    void trackProfileView({
+      viewedUserId: profile.userId,
+      viewerUserId: session?.user?.id ?? null,
+      source: "profile-direct",
+    });
+  }
 
   // k-anonymity gate on the precise experience-years display. Hides the
   // "12.4 yrs experience" label when the (current_company, title,

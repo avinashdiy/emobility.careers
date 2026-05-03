@@ -15,10 +15,12 @@
  *   avatars   — public-read (every user's profile photo is fetched
  *               directly from MinIO via the URL we store; no presign).
  *   logos     — public-read (company logos render the same way).
+ *   posts     — public-read (post attachments + event covers — same
+ *               <img src=...> pattern as avatars/logos).
  *   resumes   — PRIVATE (presigned URLs only — recruiters get short-
  *               lived links via the resume-download server action).
  *   docs      — PRIVATE (Aadhar uploads, identity-verification docs,
- *               mentorship ICS files — all presigned).
+ *               mentorship ICS files, GDPR exports — all presigned).
  *
  * If you change a bucket's policy after a user uploads a file to it,
  * existing files inherit the new policy automatically — there's no
@@ -162,6 +164,7 @@ async function main() {
     { name: process.env.S3_BUCKET_AVATARS ?? "emce-avatars", access: "public-read" },
     { name: process.env.S3_BUCKET_LOGOS ?? "emce-logos", access: "public-read" },
     { name: process.env.S3_BUCKET_DOCS ?? "emce-docs", access: "private" },
+    { name: process.env.S3_BUCKET_POSTS ?? "emce-posts", access: "public-read" },
   ];
 
   console.log(`[setup-buckets] target: ${endpoint}`);

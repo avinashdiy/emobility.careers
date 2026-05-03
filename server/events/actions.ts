@@ -425,13 +425,16 @@ export async function presignEventCoverUpload(input: {
   const ext = COVER_EXT_BY_MIME[parsed.data.mime] ?? "jpg";
   // Namespaced under `events/{userId}/` so admins can audit who
   // uploaded what; the public URL doesn't expose anything sensitive.
+  // Routed through the public `posts` bucket — `docs` is intentionally
+  // private (Aadhar uploads, GDPR exports) and event covers are
+  // rendered as public <img>, same access pattern as post media.
   const key = objectKey(`events/${session.user.id}`, ext);
-  const { url } = await presignUpload("docs", key, parsed.data.mime);
+  const { url } = await presignUpload("posts", key, parsed.data.mime);
 
   return {
     ok: true,
     uploadUrl: url,
-    publicUrl: publicUrl("docs", key),
+    publicUrl: publicUrl("posts", key),
     storageKey: key,
   };
 }

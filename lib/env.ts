@@ -29,6 +29,12 @@ const envSchema = z.object({
   S3_BUCKET_AVATARS: z.string().default("emce-avatars"),
   S3_BUCKET_LOGOS: z.string().default("emce-logos"),
   S3_BUCKET_DOCS: z.string().default("emce-docs"),
+  // Public bucket for post attachments + event covers + any other
+  // <img src=...>-rendered media. Split out from `docs` because docs
+  // also stores Aadhar uploads and GDPR exports — both of which MUST
+  // stay private. Mixing public and private prefixes in one bucket
+  // is fragile (one regex slip and you leak ID docs).
+  S3_BUCKET_POSTS: z.string().default("emce-posts"),
   S3_FORCE_PATH_STYLE: z.coerce.boolean().default(true),
   S3_PUBLIC_URL: z.string().url(),
 
@@ -78,6 +84,17 @@ const envSchema = z.object({
   NEXT_PUBLIC_SOKETI_HOST: z.string().default("localhost"),
   NEXT_PUBLIC_SOKETI_PORT: z.coerce.number().default(6001),
   NEXT_PUBLIC_SOKETI_KEY: z.string().default("emce_pusher_key"),
+  // TLS (WSS) toggle for the BROWSER's Pusher connection. Defaults
+  // false for local dev (Soketi runs on plain ws://localhost:6001),
+  // production sets it to "true" so the page can dial wss://
+  // realtime.emobility.careers:443 — must be true whenever the page
+  // itself loads over HTTPS, otherwise Chrome blocks the mixed
+  // ws:// upgrade. Coerced from a string because env vars are
+  // strings; "true"/"1" → true, anything else → false.
+  NEXT_PUBLIC_SOKETI_TLS: z
+    .string()
+    .default("false")
+    .transform((s) => s === "true" || s === "1"),
 
   DIYGURU_API_URL: z.string().url().default("https://campus.diyguru.com/api"),
   DIYGURU_API_KEY: z.string().optional(),
