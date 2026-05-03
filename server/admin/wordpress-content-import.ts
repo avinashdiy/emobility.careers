@@ -79,15 +79,25 @@ export async function importWordPressContentXml(
 
     const buf = Buffer.from(await file.arrayBuffer());
     const fileSha256 = crypto.createHash("sha256").update(buf).digest("hex");
-    const dupe = await db.wordPressImportBatch.findFirst({
-      where: { fileSha256 },
-      select: { id: true, createdAt: true },
-    });
-    if (dupe) {
-      return {
-        ok: false,
-        message: `This exact file has already been imported (batch ${dupe.id.slice(0, 8)} on ${dupe.createdAt.toISOString().slice(0, 10)}).`,
-      };
+
+    // Force flag — when ticked on the form, skip the SHA-256 dupe
+    // check. Used when the importer code itself has changed
+    // (sanitizer fix, render-mode change) and we want the same XML
+    // re-processed against the new pipeline. Safe because upsertPage
+    // / upsertArticle match on wpPostId and update rows in place;
+    // PUBLISHED rows keep their status.
+    const force = formData.get("force") === "on" || formData.get("force") === "true";
+    if (!force) {
+      const dupe = await db.wordPressImportBatch.findFirst({
+        where: { fileSha256 },
+        select: { id: true, createdAt: true },
+      });
+      if (dupe) {
+        return {
+          ok: false,
+          message: `This exact file has already been imported (batch ${dupe.id.slice(0, 8)} on ${dupe.createdAt.toISOString().slice(0, 10)}). Tick "Re-import even if uploaded before" if you want to re-process it through the current pipeline.`,
+        };
+      }
     }
 
     let parsed;
@@ -118,7 +128,9 @@ export async function importWordPressContentXml(
         itemsTotal: parsed.items.length,
         itemsImported: 0,
         itemsSkipped: skipped,
-        notes: `Pages: ${pages.length}, Posts: ${posts.length}, Attachments: ${attachments.length}, Other: ${skipped}.`,
+        notes:
+          `Pages: ${pages.length}, Posts: ${posts.length}, Attachments: ${attachments.length}, Other: ${skipped}.` +
+          (force ? " [forced re-import — sha256 dupe check bypassed]" : ""),
       },
     });
 

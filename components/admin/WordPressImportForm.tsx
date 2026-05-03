@@ -58,12 +58,37 @@ export function WordPressImportForm() {
             </li>
             <li>HTML is sanitised on the way in — scripts stripped, styles preserved.</li>
             <li>
-              Re-uploading the same exact file is rejected. Re-uploading a
-              re-export of the same content updates rows in place, keyed on
-              the WordPress post ID.
+              Re-imports match on the WordPress post ID — published rows keep their
+              status, drafts get refreshed in place.
             </li>
           </ul>
         </div>
+
+        {/*
+          The default behaviour rejects re-uploads of the same exact
+          file (sha256 match) to guard against accidental double-clicks.
+          Tick this when you genuinely want to re-process the same XML
+          through the current pipeline — useful after a sanitizer /
+          renderer change like the Elementor iframe fix.
+        */}
+        <label className="flex items-start gap-2 rounded-md border border-emce-border bg-white p-3 text-sm">
+          <input
+            type="checkbox"
+            name="force"
+            value="on"
+            className="mt-0.5 h-4 w-4 cursor-pointer accent-emce-dark"
+          />
+          <span>
+            <span className="block font-bold text-emce-text">
+              Re-import even if I&apos;ve uploaded this exact file before
+            </span>
+            <span className="mt-0.5 block text-hint text-emce-text-sec">
+              Use this when the importer or renderer changed and you want existing
+              pages re-processed with the new pipeline. Published pages keep their
+              status; drafts get the latest sanitised body.
+            </span>
+          </span>
+        </label>
 
         <SubmitButton size="lg">Import as drafts</SubmitButton>
       </form>
