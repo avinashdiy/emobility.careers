@@ -4306,23 +4306,45 @@ enum PageStatus {
   ARCHIVED
 }
 
+/// Render mode for CMS pages. Two strategies, picked per-page
+/// because imported WordPress / Elementor pages are usually full
+/// HTML documents (with <style> targeting body { ... !important })
+/// while hand-authored or simple-text pages are HTML fragments.
+///
+///   STANDALONE — body is a full HTML document; render in an
+///                style-isolated iframe via srcdoc. SiteHeader +
+///                SiteFooter still render around it. Default for
+///                imported pages.
+///   EMBEDDED   — body is an HTML fragment; render inline inside
+///                our chrome with auto-injected title + excerpt.
+///                Use for hand-written pages that should inherit
+///                the platform's typography.
+enum PageRenderMode {
+  STANDALONE
+  EMBEDDED
+}
+
 model Page {
-  id              String     @id @default(cuid())
-  slug            String     @unique
+  id              String         @id @default(cuid())
+  slug            String         @unique
   title           String
   /// SEO meta description + index-card preview. ~160 chars.
-  excerpt         String?    @db.Text
+  excerpt         String?        @db.Text
   /// Sanitised HTML. Stored verbatim and rendered via
   /// dangerouslySetInnerHTML — the sanitiser at write-time is the
   /// trust boundary, not the renderer.
-  body            String     @db.Text
+  body            String         @db.Text
   /// Optional hero image. Used as inline cover and as the OG card.
   coverImageUrl   String?
-  status          PageStatus @default(DRAFT)
+  status          PageStatus     @default(DRAFT)
+  /// See PageRenderMode comment. Defaults STANDALONE so freshly
+  /// imported Elementor / Gutenberg pages render in their own
+  /// style-isolated iframe out of the box.
+  renderMode      PageRenderMode @default(STANDALONE)
   publishedAt     DateTime?
   /// Per-page SEO overrides. When null, fall back to title/excerpt.
   metaTitle       String?
-  metaDescription String?    @db.Text
+  metaDescription String?        @db.Text
 
   // Provenance — link back to the WordPress import that birthed
   // this row, so admins can re-import + diff, or bulk-archive

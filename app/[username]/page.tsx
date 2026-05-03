@@ -29,6 +29,7 @@ import { FollowUserButton } from "@/components/social/FollowButton";
 import { PostCard, type FeedPostShape } from "@/components/social/PostCard";
 import { getConnectionStatus, isFollowingUser } from "@/server/social/queries";
 import { trackProfileView } from "@/server/profile/views";
+import { PageIframe } from "@/components/cms/PageIframe";
 import { breadcrumbJsonLd, personJsonLd as buildPersonJsonLd } from "@/lib/seo/schemas";
 import { getViewerContext, canSeeContact, canSeeResume } from "@/lib/profile-visibility";
 import { shouldSuppressExperienceYears } from "@/lib/k-anonymity";
@@ -70,6 +71,51 @@ export async function generateMetadata({
   if (RESERVED_SLUGS.has(username.toLowerCase())) {
     return { title: "Page not found", robots: { index: false, follow: false } };
   }
+
+  // Page-first dispatch — CMS pages live at the same flat-namespace
+  // URLs as candidate slugs (e.g. /ev-jobs-ai-tools), so try the
+  // Page table before falling through to candidate-profile lookup.
+  // Reserved slugs (above) protect against a Page slug claiming a
+  // platform route like /jobs.
+  const cmsPage = await db.page.findUnique({
+    where: { slug: username },
+    select: {
+      title: true,
+      excerpt: true,
+      coverImageUrl: true,
+      status: true,
+      metaTitle: true,
+      metaDescription: true,
+    },
+  });
+  if (cmsPage && cmsPage.status !== "DRAFT") {
+    const url = `${env.NEXT_PUBLIC_APP_URL}/${username}`;
+    const description = cmsPage.metaDescription ?? cmsPage.excerpt ?? undefined;
+    return {
+      title: cmsPage.metaTitle ?? cmsPage.title,
+      description,
+      alternates: { canonical: url },
+      openGraph: {
+        type: "article",
+        url,
+        title: cmsPage.metaTitle ?? cmsPage.title,
+        description,
+        images: cmsPage.coverImageUrl ? [cmsPage.coverImageUrl] : undefined,
+      },
+      twitter: {
+        card: cmsPage.coverImageUrl ? "summary_large_image" : "summary",
+        title: cmsPage.metaTitle ?? cmsPage.title,
+        description,
+      },
+      // ARCHIVED stays crawlable but noindex — see /p/[slug] route
+      // notes for the same reasoning.
+      robots:
+        cmsPage.status === "ARCHIVED"
+          ? { index: false, follow: true }
+          : { index: true, follow: true },
+    };
+  }
+
   const profile = await db.candidateProfile.findUnique({
     where: { slug: username },
     select: {
@@ -81,7 +127,7 @@ export async function generateMetadata({
     },
   });
   if (!profile) {
-    return { title: "Profile not found", robots: { index: false, follow: false } };
+    return { title: "Page not found", robots: { index: false, follow: false } };
   }
   if (profile.cvVisibility !== "EVERYONE") {
     return { title: "Profile not available", robots: { index: false, follow: false } };
@@ -126,6 +172,76 @@ export default async function PublicCandidateProfile({
   await searchParams;
 
   const session = await auth();
+
+  // ─── CMS Page dispatch ─────────────────────────────────────
+  // Pages share the flat top-level URL space with candidate slugs.
+  // Try the Page table first; if a published (or admin-previewable
+  // draft) page matches, render it and return. Otherwise fall
+  // through to candidate-profile lookup.
+  const cmsPage = await db.page.findUnique({ where: { slug: username } });
+  if (cmsPage) {
+    const isAdmin = session?.user?.role === "ADMIN";
+    if (cmsPage.status === "DRAFT" && !isAdmin) notFound();
+    const previewMode = cmsPage.status === "DRAFT" && isAdmin;
+
+    return (
+      <>
+        <SiteHeader />
+        {previewMode && (
+          <div className="bg-emce-orange-light py-2 text-center text-sm text-emce-text">
+            <strong>Draft preview</strong> — not visible to the public.{" "}
+            <Link href="/admin/pages" className="font-bold text-emce-dark underline">
+              Open admin →
+            </Link>
+          </div>
+        )}
+        {cmsPage.status === "ARCHIVED" && !previewMode && (
+          <div className="bg-emce-light-soft py-2 text-center text-hint text-emce-text-sec">
+            📦 This page is archived but the link stays live.
+          </div>
+        )}
+
+        {cmsPage.renderMode === "STANDALONE" ? (
+          <>
+            {/*
+              Server-rendered SEO crumb. Search engines see the
+              real title + excerpt up here even though the visible
+              content lives in the iframe (Google does index iframe
+              srcdoc content but ranks it less).
+            */}
+            <div className="sr-only">
+              <h1>{cmsPage.title}</h1>
+              {cmsPage.excerpt && <p>{cmsPage.excerpt}</p>}
+            </div>
+            <PageIframe body={cmsPage.body} title={cmsPage.title} />
+          </>
+        ) : (
+          <main className="min-h-screen bg-white">
+            {cmsPage.coverImageUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={cmsPage.coverImageUrl}
+                alt=""
+                className="aspect-[3/1] w-full object-cover"
+              />
+            ) : null}
+            <article className="container max-w-4xl py-8 md:py-12">
+              <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-emce-text md:text-4xl">
+                {cmsPage.title}
+              </h1>
+              {cmsPage.excerpt && (
+                <p className="mt-3 text-lg text-emce-text-sec">{cmsPage.excerpt}</p>
+              )}
+              <div
+                className="cms-page mt-8"
+                dangerouslySetInnerHTML={{ __html: cmsPage.body }}
+              />
+            </article>
+          </main>
+        )}
+      </>
+    );
+  }
 
   const profile = await db.candidateProfile.findUnique({
     where: { slug: username },

@@ -16,6 +16,7 @@ import {
   readingTimeMins,
   type WordPressItem,
 } from "@/lib/cms/wordpress-import";
+import { RESERVED_SLUGS } from "@/lib/reserved-slugs";
 import type { FormState } from "@/lib/form-state";
 
 /**
@@ -187,7 +188,12 @@ async function ensureUniqueSlug<T extends { id: string }>(
   finder: (slug: string) => Promise<T | null>,
   ownIdToIgnore?: string,
 ): Promise<string> {
-  let slug = desired;
+  // Reserved-slug guard. Pages share the flat top-level URL space
+  // with platform routes (`/jobs`, `/feed`, `/admin`, ...) and
+  // candidate handles. If the desired slug collides with a reserved
+  // platform route, suffix with `-page` and let the unique-search
+  // loop disambiguate from there.
+  let slug = RESERVED_SLUGS.has(desired) ? `${desired}-page` : desired;
   let n = 2;
   // Cap at 50 attempts so a misconfigured loop can't spin forever.
   while (n < 50) {
@@ -224,11 +230,18 @@ async function upsertPage(item: WordPressItem, batchId: string): Promise<void> {
   // publishedAt. (DRAFT pages get overwritten freely.)
   const preservePublished = existing?.status === "PUBLISHED";
 
+  // Pages share top-level URL space with candidate handles too —
+  // /ev-jobs-ai-tools and /avinash-singh both render through the
+  // same dispatcher in app/[username]/page.tsx. Reject slugs taken
+  // by either table.
   const slug =
     existing?.slug ?? // re-use existing slug to preserve URLs
-    (await ensureUniqueSlug(desiredSlug, (s) =>
-      db.page.findUnique({ where: { slug: s }, select: { id: true } }),
-    ));
+    (await ensureUniqueSlug(desiredSlug, async (s) => {
+      const p = await db.page.findUnique({ where: { slug: s }, select: { id: true } });
+      if (p) return p;
+      const c = await db.candidateProfile.findUnique({ where: { slug: s }, select: { id: true } });
+      return c ?? null;
+    }));
 
   await db.page.upsert({
     where: { id: existing?.id ?? "__nope__" },

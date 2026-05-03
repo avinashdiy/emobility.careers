@@ -200,74 +200,127 @@ export function parseWordPressXml(xml: string): WordPressParseResult {
 }
 
 /**
- * Strict HTML sanitiser tuned for WordPress page/post bodies.
+ * HTML sanitiser tuned for WordPress / Elementor / Gutenberg
+ * page/post bodies — INCLUDING full HTML documents.
  *
- *   • Allows the structural tags WP authors actually use (headings,
- *     lists, tables, blockquotes, figures, images, embeds).
- *   • Allows `<style>` so the scoped CSS in the AI-tool landing
- *     pages survives — without this, every page in the user's
- *     export would render as raw text.
- *   • Strips `<script>` and every event-handler attribute. Inline
- *     `<style>` content stays but is still a string, not executable.
- *   • Drops `javascript:` / `data:` URIs in href + src.
+ * Why this is so permissive:
+ *   • The exported pages are typically full standalone documents
+ *     (Elementor sections, AI-tool landing pages with scoped CSS
+ *     that targets `body { ... !important }`). Stripping `<head>`
+ *     or document wrappers would gut them.
+ *   • Page rows are written ONLY by admin-gated paths (the WP
+ *     importer + any future admin-author form). The trust
+ *     boundary is the admin role-check, not the sanitiser.
+ *   • STANDALONE pages render inside an iframe srcdoc that does
+ *     NOT get `allow-scripts`, so even if a stray `<script>`
+ *     slipped past it would be inert. Same iframe gives us style
+ *     isolation — `body { ... !important }` stays inside.
  *
- * This is the trust boundary. The DB column never holds anything
- * the sanitiser hasn't passed; the renderer can dangerouslySetInnerHTML.
+ * What we still strip:
+ *   • `<script>` and event-handler attributes (`onclick=` etc.)
+ *   • `javascript:` / `data:` URIs in href + src.
+ *
+ * What we DO keep that a stricter sanitiser would drop:
+ *   • Document shell — `<html>`, `<head>`, `<body>`, `<title>`,
+ *     `<meta>`, `<link>` (Google Fonts preconnects survive)
+ *   • Full `<style>` blocks (Elementor's identity)
+ *   • Inline SVG (Elementor / theme icons)
+ *   • Form elements (renders even if non-functional)
+ *   • Wildcard `data-*` and `aria-*` attributes — Elementor's
+ *     CSS selectors target these heavily; without them every
+ *     widget renders unstyled
  */
 export function sanitizeWordPressBody(html: string): string {
   if (!html) return "";
   return sanitizeHtml(html, {
     allowedTags: [
+      // Document shell — preserved for STANDALONE iframe rendering.
+      "html", "head", "body", "title", "meta", "link", "base",
       // Block
       "h1", "h2", "h3", "h4", "h5", "h6",
       "p", "blockquote", "pre", "code", "hr",
-      "ul", "ol", "li",
-      "table", "thead", "tbody", "tr", "th", "td", "caption", "colgroup", "col",
+      "ul", "ol", "li", "dl", "dt", "dd",
+      "table", "thead", "tbody", "tfoot", "tr", "th", "td", "caption", "colgroup", "col",
       "figure", "figcaption",
       "div", "section", "article", "header", "footer", "nav", "aside", "main",
+      "details", "summary",
       // Inline
       "a", "br", "span", "strong", "em", "b", "i", "u", "s", "small",
-      "sup", "sub", "mark", "cite", "kbd", "abbr", "time",
+      "sup", "sub", "mark", "cite", "kbd", "abbr", "time", "q", "wbr",
       // Media
-      "img", "picture", "source", "video", "audio", "iframe",
-      // Style — explicitly allowed; sanitize-html will keep its
-      // contents as inert text. The CSS still applies to the page
-      // when rendered.
+      "img", "picture", "source", "video", "audio", "iframe", "embed", "object", "param",
+      // Forms — render even without scripts.
+      "form", "label", "input", "button", "select", "option", "optgroup", "textarea", "fieldset", "legend",
+      // Style — full <style> blocks survive. Critical.
       "style",
+      // SVG — Elementor / theme icons.
+      "svg", "path", "g", "circle", "rect", "line", "polyline", "polygon",
+      "ellipse", "defs", "use", "symbol", "mask", "clipPath",
+      "linearGradient", "radialGradient", "stop", "filter", "text", "tspan",
+      "marker", "pattern", "image", "foreignObject", "desc",
     ],
     allowedAttributes: {
-      a: ["href", "name", "target", "rel", "title"],
-      img: ["src", "srcset", "sizes", "alt", "width", "height", "loading", "decoding", "class", "id", "style"],
-      picture: ["class", "id"],
+      a: ["href", "name", "target", "rel", "title", "download", "hreflang"],
+      img: ["src", "srcset", "sizes", "alt", "width", "height", "loading", "decoding", "fetchpriority"],
       source: ["src", "srcset", "type", "media", "sizes"],
-      video: ["src", "controls", "width", "height", "poster", "preload", "loop", "muted", "playsinline"],
-      audio: ["src", "controls", "preload", "loop", "muted"],
-      iframe: ["src", "width", "height", "allow", "allowfullscreen", "frameborder", "title", "loading", "referrerpolicy"],
-      "*": ["class", "id", "style", "lang", "dir", "title"],
+      video: ["src", "controls", "width", "height", "poster", "preload", "loop", "muted", "playsinline", "autoplay"],
+      audio: ["src", "controls", "preload", "loop", "muted", "autoplay"],
+      iframe: ["src", "width", "height", "allow", "allowfullscreen", "frameborder", "title", "loading", "referrerpolicy", "name", "sandbox"],
+      // Document shell — preserved verbatim so iframed pages get
+      // their canonical / charset / font preconnects.
+      meta: ["charset", "name", "content", "http-equiv", "property"],
+      link: ["rel", "href", "type", "media", "as", "crossorigin", "sizes"],
+      base: ["href", "target"],
+      html: ["lang", "dir"],
+      // Forms — structural attributes only; no JS handlers.
+      form: ["action", "method", "name", "target", "enctype", "accept-charset"],
+      input: ["type", "name", "value", "placeholder", "required", "disabled", "readonly", "checked", "min", "max", "step", "minlength", "maxlength", "pattern", "autocomplete", "list", "multiple", "size", "src", "alt", "accept", "form"],
+      button: ["type", "name", "value", "disabled", "form"],
+      select: ["name", "required", "disabled", "multiple", "size", "form"],
+      option: ["value", "selected", "disabled", "label"],
+      textarea: ["name", "rows", "cols", "placeholder", "required", "disabled", "readonly", "minlength", "maxlength", "wrap"],
+      label: ["for", "form"],
+      // SVG attributes.
+      svg: ["xmlns", "viewBox", "preserveAspectRatio", "width", "height", "fill", "stroke", "stroke-width", "version", "role", "focusable"],
+      path: ["d", "fill", "stroke", "stroke-width", "stroke-linecap", "stroke-linejoin", "fill-rule", "clip-rule", "transform", "opacity"],
+      g: ["transform", "fill", "stroke", "opacity", "mask", "clip-path"],
+      circle: ["cx", "cy", "r", "fill", "stroke", "stroke-width"],
+      rect: ["x", "y", "width", "height", "rx", "ry", "fill", "stroke", "stroke-width"],
+      line: ["x1", "y1", "x2", "y2", "stroke", "stroke-width"],
+      polyline: ["points", "fill", "stroke", "stroke-width"],
+      polygon: ["points", "fill", "stroke", "stroke-width"],
+      ellipse: ["cx", "cy", "rx", "ry", "fill", "stroke", "stroke-width"],
+      use: ["href", "x", "y", "width", "height", "transform"],
+      stop: ["offset", "stop-color", "stop-opacity"],
+      linearGradient: ["x1", "y1", "x2", "y2", "gradientUnits", "gradientTransform"],
+      radialGradient: ["cx", "cy", "r", "fx", "fy", "gradientUnits", "gradientTransform"],
+      // Wildcard — applies to every tag. The `data-*` and `aria-*`
+      // entries here are handled specially via `allowedAttributes`'
+      // wildcard semantics in sanitize-html: any attribute matching
+      // these glob patterns survives.
+      "*": [
+        "class", "id", "style", "lang", "dir", "title", "role", "tabindex",
+        "hidden", "draggable", "translate", "spellcheck",
+        // Glob patterns — sanitize-html supports `data-*` / `aria-*`
+        // wildcards and preserves any matching attribute. Critical
+        // for Elementor (data-element_type, data-id, data-widget_type)
+        // and accessibility (aria-label, aria-hidden, aria-expanded).
+        "data-*", "aria-*",
+      ],
     },
-    // Iframes: only allow embeds from a vetted host list. Everything
-    // else gets stripped. WordPress oEmbed mostly produces YouTube,
-    // Vimeo, and Twitter/X frames — that covers ~all real cases.
+    // Iframes: vetted host allowlist. Covers WordPress oEmbed
+    // (YouTube, Vimeo, Twitter/X) plus Maps.
     allowedIframeHostnames: [
-      "www.youtube.com",
-      "youtube.com",
-      "youtube-nocookie.com",
-      "www.youtube-nocookie.com",
+      "www.youtube.com", "youtube.com",
+      "youtube-nocookie.com", "www.youtube-nocookie.com",
       "player.vimeo.com",
       "platform.twitter.com",
       "www.linkedin.com",
-      "www.google.com", // Google Maps embeds
+      "www.google.com",
     ],
-    allowedSchemes: ["http", "https", "mailto", "tel"],
+    allowedSchemes: ["http", "https", "mailto", "tel", "ftp"],
     allowedSchemesAppliedToAttributes: ["href", "src", "cite"],
-    // Drop empty <p></p> blocks WP loves to insert between blocks.
     nonTextTags: ["script", "noscript", "textarea", "option"],
-    // Suppress sanitize-html's stderr warning about <style>. We DO
-    // allow it deliberately — many imported WP landing pages ship
-    // their own scoped CSS, and stripping <style> would leave them
-    // as unstyled walls of text. The trust boundary is the admin
-    // role-gate on the importer + on every other write path that
-    // touches Page.body (no public-user content lands here).
     allowVulnerableTags: true,
     transformTags: {
       // Force external links to open safely. WP's editor doesn't

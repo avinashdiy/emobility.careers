@@ -42,10 +42,15 @@ export function WordPressImportForm() {
           <strong className="block text-emce-text">What happens on submit:</strong>
           <ul className="mt-1 list-inside list-disc space-y-0.5">
             <li>
-              Pages land in the new <code>Page</code> table, surfaced at <code>/p/&lt;slug&gt;</code>.
+              Pages land in the new <code>Page</code> table, surfaced at <code>/&lt;slug&gt;</code>{" "}
+              (top-level, same as candidate handles).
             </li>
             <li>
               Posts land in the existing <code>Article</code> table, surfaced at <code>/articles/&lt;slug&gt;</code>.
+            </li>
+            <li>
+              Pages render inside a style-isolated iframe by default — Elementor / full-document
+              CSS (<code>body {`{ ... !important }`}</code>) won&apos;t bleed onto site chrome.
             </li>
             <li>
               <strong>Everything imports as DRAFT.</strong> Nothing goes live

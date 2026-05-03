@@ -58,7 +58,8 @@ export default async function AdminPagesPage({
           <div>
             <h1 className="text-dashboard text-emce-text md:text-3xl">Pages</h1>
             <p className="mt-1 text-sm text-emce-text-sec">
-              CMS pages — surfaced publicly at <code>/p/&lt;slug&gt;</code> when published.
+              CMS pages — surfaced publicly at <code>/&lt;slug&gt;</code> when published
+              (via the same dispatcher as candidate handles).
               Imported from{" "}
               <Link href="/admin/import/content" className="font-bold text-emce-dark hover:underline">
                 WordPress
@@ -108,7 +109,7 @@ export default async function AdminPagesPage({
                           {p.status}
                         </Badge>
                         <Link
-                          href={`/p/${p.slug}`}
+                          href={`/${p.slug}`}
                           target="_blank"
                           rel="noopener"
                           className="truncate font-bold text-emce-text hover:underline"
@@ -117,7 +118,7 @@ export default async function AdminPagesPage({
                         </Link>
                       </div>
                       <p className="mt-0.5 text-hint text-emce-text-sec">
-                        <code>/p/{p.slug}</code>
+                        <code>/{p.slug}</code>
                         {" · updated "}
                         {relativeTime(p.updatedAt)}
                         {p.importBatch && (
