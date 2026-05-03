@@ -221,6 +221,7 @@ model User {
   hashtagSubscriptions        HashtagSubscription[]     @relation("HashtagSubscriber")
   profileViewsReceived        ProfileView[]             @relation("ProfileViewed")
   profileViewsMade            ProfileView[]             @relation("ProfileViewer")
+  wordpressImportBatches      WordPressImportBatch[]    @relation("WordPressImporter")
 
   // TPO / placement
   cohortsCreated Cohort[]
@@ -4280,4 +4281,91 @@ model ProfileView {
   // Backfill / housekeeping — bulk delete views older than the
   // retention window (90d in v1). Indexed for the cron sweep.
   @@index([createdAt])
+}
+
+// ─── Pages (CMS) ──────────────────────────────────────────────
+//
+// Generic content-page surface — landing pages, FAQ, AI-tool
+// landing decks, founder bios. Distinct from `Article` because
+// articles assume an editorial pipeline (category, publishedAt,
+// readingTimeMins, OG share images, listing on /articles); pages
+// are evergreen, often free-form HTML, and don't appear in any
+// listing index by default.
+//
+// Body is HTML. WordPress imports come in as raw HTML and we
+// sanitise on the way in (see lib/cms/wordpress-import.ts) so we
+// can render with dangerouslySetInnerHTML safely. Pages authored
+// in-app via the admin form go through the same sanitiser.
+//
+// Slug is unique and unprefixed — the public route is /p/{slug}
+// so platform routes (e.g. /jobs, /feed) can never collide with
+// imported page slugs even if the WordPress site had a /jobs page.
+enum PageStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model Page {
+  id              String     @id @default(cuid())
+  slug            String     @unique
+  title           String
+  /// SEO meta description + index-card preview. ~160 chars.
+  excerpt         String?    @db.Text
+  /// Sanitised HTML. Stored verbatim and rendered via
+  /// dangerouslySetInnerHTML — the sanitiser at write-time is the
+  /// trust boundary, not the renderer.
+  body            String     @db.Text
+  /// Optional hero image. Used as inline cover and as the OG card.
+  coverImageUrl   String?
+  status          PageStatus @default(DRAFT)
+  publishedAt     DateTime?
+  /// Per-page SEO overrides. When null, fall back to title/excerpt.
+  metaTitle       String?
+  metaDescription String?    @db.Text
+
+  // Provenance — link back to the WordPress import that birthed
+  // this row, so admins can re-import + diff, or bulk-archive
+  // pages from a bad import without nuking hand-authored ones.
+  importBatchId   String?
+  importBatch     WordPressImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  /// Source `<wp:post_id>` from the WP XML. Lets re-imports
+  /// match-and-update by stable ID instead of slug (which a WP
+  /// admin can rename without warning). Unique per batch but not
+  /// globally unique — different WordPress sites could collide.
+  wpPostId        Int?
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  // Public listing on /admin/pages defaults to status + recency.
+  @@index([status, updatedAt])
+  // Re-import lookup — per batch we match on wpPostId.
+  @@index([importBatchId, wpPostId])
+}
+
+model WordPressImportBatch {
+  id            String   @id @default(cuid())
+  /// Filename the admin uploaded. Surface only — not unique.
+  fileName      String
+  /// SHA-256 of the uploaded XML. Lets us refuse a re-upload of
+  /// the same exact file (idempotency check) and audit which
+  /// payload produced which page set.
+  fileSha256    String
+  uploadedById  String
+  uploadedBy    User     @relation("WordPressImporter", fields: [uploadedById], references: [id])
+  /// Counts after parse.
+  itemsTotal    Int
+  itemsImported Int
+  itemsSkipped  Int
+  /// Free-form notes on what was skipped + why ("3 attachments
+  /// ignored", "1 page had empty body"). Truncated to 4KB; full
+  /// detail goes to the structured logger.
+  notes         String?  @db.Text
+
+  pages         Page[]
+
+  createdAt     DateTime @default(now())
+
+  @@index([uploadedById, createdAt])
 }
