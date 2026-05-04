@@ -4324,6 +4324,15 @@ enum PageRenderMode {
   EMBEDDED
 }
 
+/// Where this page came from. Drives admin filters + the right
+/// "edit" surface (a manual page goes to a rich editor; a WP-
+/// imported page opens its source HTML for paste-style edits).
+enum PageSourceKind {
+  MANUAL   // Hand-authored via /admin/pages/new
+  WP_PAGE  // Imported from a WP <wp:post_type>page</wp:post_type>
+  WP_POST  // Imported from a WP <wp:post_type>post</wp:post_type>
+}
+
 model Page {
   id              String         @id @default(cuid())
   slug            String         @unique
@@ -4341,6 +4350,18 @@ model Page {
   /// imported Elementor / Gutenberg pages render in their own
   /// style-isolated iframe out of the box.
   renderMode      PageRenderMode @default(STANDALONE)
+  /// Tracks where this Page row originated. Imports tag rows
+  /// WP_PAGE / WP_POST so an admin filter ("imports vs hand-written")
+  /// is one query.
+  sourceKind      PageSourceKind @default(MANUAL)
+  /// Trusted-scripts mode for AI-tool landing pages. When TRUE:
+  ///   • Sanitiser preserves <script> tags on save.
+  ///   • Iframe sandbox includes `allow-same-origin` so the page
+  ///     can fetch /api/ai/proxy as same-origin (no CORS handshake)
+  ///     and use relative URLs.
+  /// When FALSE (default): scripts are stripped; iframe stays in
+  /// strict opaque-origin sandbox. Only an ADMIN can flip this.
+  allowScripts    Boolean        @default(false)
   publishedAt     DateTime?
   /// Per-page SEO overrides. When null, fall back to title/excerpt.
   metaTitle       String?
@@ -4364,6 +4385,8 @@ model Page {
   @@index([status, updatedAt])
   // Re-import lookup — per batch we match on wpPostId.
   @@index([importBatchId, wpPostId])
+  // Admin filter ("show only WP-imported posts").
+  @@index([sourceKind, updatedAt])
 }
 
 model WordPressImportBatch {

@@ -230,8 +230,22 @@ export function parseWordPressXml(xml: string): WordPressParseResult {
  *     CSS selectors target these heavily; without them every
  *     widget renders unstyled
  */
-export function sanitizeWordPressBody(html: string): string {
+interface SanitizeOptions {
+  /// When true, preserve `<script>` tags AND their inline contents.
+  /// Use ONLY for admin-trusted pages (the AI-tool landing decks
+  /// where the inline JS calls /api/ai/proxy). Combined with
+  /// PageIframe's `allowScripts` which sets the iframe sandbox to
+  /// `allow-scripts allow-same-origin`, this gives us trusted-page
+  /// behavior without giving up iframe's style isolation.
+  allowScripts?: boolean;
+}
+
+export function sanitizeWordPressBody(
+  html: string,
+  options: SanitizeOptions = {},
+): string {
   if (!html) return "";
+  const { allowScripts = false } = options;
   return sanitizeHtml(html, {
     allowedTags: [
       // Document shell — preserved for STANDALONE iframe rendering.
@@ -258,6 +272,10 @@ export function sanitizeWordPressBody(html: string): string {
       "ellipse", "defs", "use", "symbol", "mask", "clipPath",
       "linearGradient", "radialGradient", "stop", "filter", "text", "tspan",
       "marker", "pattern", "image", "foreignObject", "desc",
+      // Optional script + noscript — only when explicitly allowed.
+      // Spread is conditional so the default behaviour (no scripts)
+      // is unchanged.
+      ...(allowScripts ? ["script", "noscript"] : []),
     ],
     allowedAttributes: {
       a: ["href", "name", "target", "rel", "title", "download", "hreflang"],
@@ -307,6 +325,16 @@ export function sanitizeWordPressBody(html: string): string {
         // and accessibility (aria-label, aria-hidden, aria-expanded).
         "data-*", "aria-*",
       ],
+      // Script attributes — only when scripts are allowed. Inline
+      // event handlers (onclick=, onload=, ...) are deliberately NOT
+      // in the wildcard allowlist above; admin-trusted tools should
+      // bind via addEventListener inside <script> blocks instead,
+      // which is the modern + auditable pattern.
+      ...(allowScripts
+        ? {
+            script: ["src", "type", "async", "defer", "crossorigin", "integrity", "nonce", "referrerpolicy"],
+          }
+        : {}),
     },
     // Iframes: vetted host allowlist. Covers WordPress oEmbed
     // (YouTube, Vimeo, Twitter/X) plus Maps.
@@ -320,7 +348,14 @@ export function sanitizeWordPressBody(html: string): string {
     ],
     allowedSchemes: ["http", "https", "mailto", "tel", "ftp"],
     allowedSchemesAppliedToAttributes: ["href", "src", "cite"],
-    nonTextTags: ["script", "noscript", "textarea", "option"],
+    // When allowScripts is OFF, treat <script> contents as discardable
+    // (default sanitize-html behaviour). When ON, we want the inner
+    // text to survive — drop `script` from the nonTextTags list so
+    // its body isn't elided.
+    nonTextTags: allowScripts
+      ? ["textarea", "option"]
+      : ["script", "noscript", "textarea", "option"],
+    // Required when allowing <style> + (optionally) <script>.
     allowVulnerableTags: true,
     transformTags: {
       // Force external links to open safely. WP's editor doesn't

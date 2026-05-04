@@ -213,7 +213,11 @@ export default async function PublicCandidateProfile({
               <h1>{cmsPage.title}</h1>
               {cmsPage.excerpt && <p>{cmsPage.excerpt}</p>}
             </div>
-            <PageIframe body={cmsPage.body} title={cmsPage.title} />
+            <PageIframe
+              body={cmsPage.body}
+              title={cmsPage.title}
+              allowScripts={cmsPage.allowScripts}
+            />
           </>
         ) : (
           <main className="min-h-screen bg-white">

@@ -255,6 +255,10 @@ async function upsertPage(item: WordPressItem, batchId: string): Promise<void> {
       return c ?? null;
     }));
 
+  // Explicit renderMode + sourceKind on EVERY write. We deliberately
+  // re-set these on update so re-importing through a fixed pipeline
+  // can repair rows that were created against an older schema (e.g.
+  // the early imports that landed before renderMode existed).
   await db.page.upsert({
     where: { id: existing?.id ?? "__nope__" },
     create: {
@@ -264,6 +268,8 @@ async function upsertPage(item: WordPressItem, batchId: string): Promise<void> {
       body: sanitized,
       coverImageUrl: item.firstImageUrl,
       status: "DRAFT",
+      renderMode: "STANDALONE",
+      sourceKind: "WP_PAGE",
       publishedAt: null,
       importBatchId: batchId,
       wpPostId: item.wpPostId || null,
@@ -273,6 +279,12 @@ async function upsertPage(item: WordPressItem, batchId: string): Promise<void> {
       excerpt: deriveExcerpt(item.bodyRaw, item.excerpt),
       body: sanitized,
       coverImageUrl: item.firstImageUrl,
+      // Force renderMode back to STANDALONE on re-import. If an
+      // admin had hand-flipped a row to EMBEDDED, that gets reset
+      // here — accept this trade-off because the common case
+      // (re-import to fix the import bug) needs it.
+      renderMode: "STANDALONE",
+      sourceKind: "WP_PAGE",
       ...(preservePublished
         ? {} // keep status + publishedAt
         : { status: "DRAFT", publishedAt: null }),

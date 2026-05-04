@@ -8,28 +8,41 @@ import { useEffect, useRef, useState } from "react";
  * frequently include `body { background: ... !important }` rules
  * that would otherwise nuke our site chrome.
  *
+ * Two trust modes:
+ *   • allowScripts=false (default) — sandbox is `allow-scripts` only.
+ *     iframe gets a unique opaque origin; can't read parent cookies
+ *     / DOM. Imported page <script> tags were stripped at the
+ *     sanitiser layer, so the only JS that runs is our height beacon.
+ *   • allowScripts=true — sandbox adds `allow-same-origin`. iframe
+ *     shares the parent's origin, which lets pasted tools call our
+ *     same-origin endpoints (`/api/ai/proxy`) without CORS, and lets
+ *     relative URLs resolve. Use ONLY for admin-trusted pages — the
+ *     iframe can read parent.document.cookie in this mode.
+ *
  * Auto-resize loop:
  *   1. We inject a tiny `<script>` into the srcdoc that reports
  *      `documentElement.scrollHeight` to the parent on load + on
  *      every ResizeObserver tick.
- *   2. The iframe gets `sandbox="allow-same-origin allow-scripts"`.
- *      `allow-scripts` is needed for the height beacon — but we do
- *      NOT add `allow-same-origin` together with `allow-scripts`
- *      from a cross-origin context (we'd break the sandbox); since
- *      srcdoc renders with the parent's origin we use `allow-scripts`
- *      alone, which gives a unique opaque origin to the iframe.
- *   3. We listen for the height postMessage and resize the iframe.
+ *   2. We listen for the height postMessage and resize the iframe.
  *
- * The injected script is the ONLY script that runs inside the
- * iframe — the sanitiser stripped every <script> from the imported
- * HTML before it ever hit the DB. So `allow-scripts` is safe here:
- * the only code in scope is ours, plus inline `style` blocks which
- * are inert anyway.
+ * Base href injection:
+ *   When the page is loaded via srcdoc, the iframe's base URL is
+ *   `about:srcdoc` and relative URLs resolve to nothing useful.
+ *   We inject `<base href="<originUrl>/">` into <head> so things
+ *   like `fetch('/api/ai/proxy')` actually hit our origin.
  */
 
 interface Props {
   body: string;
   title: string;
+  /// True for admin-trusted pages (AI tools that call our proxy).
+  /// False for "render this Elementor HTML safely in isolation".
+  allowScripts?: boolean;
+  /// Origin URL for the <base href="..."> injection. Defaults to
+  /// the runtime origin via window.location, so passing this in is
+  /// only needed when the parent isn't aware of where it lives
+  /// (e.g. SSR previews).
+  baseHref?: string;
   /// Initial height before the auto-resize loop kicks in. Picking a
   /// generous viewport-ish height avoids a flash of "tiny iframe"
   /// during first paint.
@@ -60,15 +73,28 @@ const HEIGHT_BEACON = `<script>
 })();
 </script>`;
 
-export function PageIframe({ body, title, initialHeight = 1200 }: Props) {
+export function PageIframe({
+  body,
+  title,
+  allowScripts = false,
+  baseHref,
+  initialHeight = 1200,
+}: Props) {
   const ref = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(initialHeight);
+  const [resolvedBase, setResolvedBase] = useState(baseHref ?? "");
+
+  // Resolve the base href on the client when not passed in. We
+  // can't read window.location at module-load time (RSC boundary),
+  // so this useEffect fires once after mount.
+  useEffect(() => {
+    if (!baseHref && typeof window !== "undefined") {
+      setResolvedBase(window.location.origin + "/");
+    }
+  }, [baseHref]);
 
   useEffect(() => {
     function onMessage(e: MessageEvent) {
-      // Origin check: srcdoc iframes with `allow-scripts` (no
-      // `allow-same-origin`) post from `null` origin. Anything else
-      // is unrelated traffic on the page and we ignore it.
       if (e.source !== ref.current?.contentWindow) return;
       const data = e.data as { type?: string; h?: number } | undefined;
       if (!data || data.type !== "cms-iframe-height" || typeof data.h !== "number") return;
@@ -83,31 +109,44 @@ export function PageIframe({ body, title, initialHeight = 1200 }: Props) {
     return () => window.removeEventListener("message", onMessage);
   }, []);
 
-  // Inject the height beacon at the END of the body so it runs
-  // after all the imported markup is parsed. We deliberately don't
-  // try to be smart about </body> placement — appending wins because
-  // sanitize-html's output may or may not include a literal closing
-  // body tag depending on the input.
-  const srcDoc = body + HEIGHT_BEACON;
+  // Inject <base href> at the very top of the srcdoc. This makes
+  // relative URLs (`/api/ai/proxy`, `./image.png`, etc) inside
+  // pasted tool HTML resolve to our origin even though the
+  // iframe's effective base URL is `about:srcdoc`.
+  //
+  // The HEIGHT_BEACON goes at the END so it runs after all of the
+  // pasted DOM is parsed.
+  const baseTag = resolvedBase
+    ? `<base href="${escapeHtmlAttr(resolvedBase)}">`
+    : "";
+  const srcDoc = baseTag + body + HEIGHT_BEACON;
+
+  // Sandbox flags. `allow-scripts` is always set (we need the
+  // height beacon). `allow-same-origin` is conditional on the
+  // trust toggle — see the docstring.
+  const sandboxFlags = [
+    "allow-scripts",
+    "allow-popups",
+    "allow-popups-to-escape-sandbox",
+    "allow-forms",
+    ...(allowScripts ? ["allow-same-origin"] : []),
+  ].join(" ");
 
   return (
     <iframe
       ref={ref}
       srcDoc={srcDoc}
       title={title}
-      // `allow-scripts` only — no `allow-same-origin` — gives us a
-      // unique opaque origin, so the iframe can't read parent
-      // cookies / DOM, can't make same-origin XHRs to the platform
-      // API, can't escape the sandbox. The height beacon still
-      // works because postMessage crosses origins by design.
-      sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox"
-      // Loosely permissive — forms inside imported pages can submit
-      // (e.g. a Contact form pointing at an external service) but
-      // no top-level navigation steals the user.
+      sandbox={sandboxFlags}
       referrerPolicy="no-referrer"
       loading="eager"
       className="block w-full border-0 bg-transparent"
       style={{ height: `${height}px` }}
     />
   );
+}
+
+/** Minimal HTML-attribute escape — no full HTML rendering needed. */
+function escapeHtmlAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
 }

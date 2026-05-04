@@ -8,6 +8,7 @@ import {
   Trophy, MessageSquare, Tag, Megaphone, ScrollText, BarChart3, Settings,
   School, FileText, ChevronDown, Menu, X, Download, BadgeCheck, Activity, Sparkles,
   Mail, Terminal, Hash, FileWarning, FlaskConical, CreditCard, Webhook, ShieldX,
+  Newspaper, Wand2, FileDown,
 } from "lucide-react";
 
 type Counts = {
@@ -83,6 +84,14 @@ function buildGroups(counts: Counts): Group[] {
     {
       title: "Content & Taxonomy",
       items: [
+        // CMS pages — hand-authored or WP-imported HTML, surfaced
+        // at /<slug> via the [username] dispatcher.
+        { href: "/admin/pages", label: "Pages (CMS)", icon: FileText },
+        // Editorial articles — markdown/text, surfaced at /articles/<slug>.
+        { href: "/admin/articles", label: "Articles (editorial)", icon: Newspaper },
+        // AI-tool generation guide — what to tell Claude when authoring
+        // a new tool landing page so it integrates with /api/ai/proxy.
+        { href: "/admin/pages/ai-tools-guide", label: "AI tools guide", icon: Wand2 },
         { href: "/admin/content", label: "Posts & comments", icon: MessageSquare },
         { href: "/admin/messages", label: "Messages (moderation)", icon: MessageSquare },
         { href: "/admin/skills", label: "Skills & domains", icon: Tag },
@@ -119,7 +128,12 @@ function buildGroups(counts: Counts): Group[] {
     {
       title: "System",
       items: [
-        { href: "/admin/import", label: "WordPress import", icon: Download },
+        // The legacy importer for users / companies / jobs (uses
+        // wpLegacyId columns + magic-link claim emails). Distinct
+        // from the content importer below which feeds the Page table.
+        { href: "/admin/import", label: "WP import — users & jobs", icon: Download },
+        // The content importer for WP pages + posts → Page table.
+        { href: "/admin/import/content", label: "WP import — pages & posts", icon: FileDown },
         { href: "/admin/sql", label: "SQL console", icon: Terminal },
         { href: "/admin/settings", label: "Settings", icon: Settings },
       ],
@@ -131,6 +145,16 @@ export function AdminSidebar({ pendingCounts }: { pendingCounts: Counts }) {
   const groups = buildGroups(pendingCounts);
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+
+  // Compute the deepest-matching href once. The naive
+  // "pathname.startsWith(item.href)" highlights every ancestor in
+  // the tree — so on /admin/pages/ai-tools-guide both "Pages (CMS)"
+  // and "AI tools guide" would light up. Pick the longest match
+  // and only that one wins.
+  const allHrefs = groups.flatMap((g) => g.items.map((i) => i.href));
+  const activeHref = allHrefs
+    .filter((h) => h === pathname || pathname.startsWith(h + "/") || (h === "/admin" && pathname === "/admin"))
+    .sort((a, b) => b.length - a.length)[0] ?? "";
 
   useEffect(() => { setMobileOpen(false); }, [pathname]);
   useEffect(() => {
@@ -175,7 +199,7 @@ export function AdminSidebar({ pendingCounts }: { pendingCounts: Counts }) {
           {groups.map((g, gi) => (
             <Section key={gi} title={g.title}>
               {g.items.map((item) => (
-                <NavItem key={item.href} item={item} pathname={pathname} />
+                <NavItem key={item.href} item={item} activeHref={activeHref} />
               ))}
             </Section>
           ))}
@@ -205,10 +229,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
   );
 }
 
-function NavItem({ item, pathname }: { item: Item; pathname: string }) {
-  const active = item.href === "/admin"
-    ? pathname === "/admin"
-    : pathname.startsWith(item.href);
+function NavItem({ item, activeHref }: { item: Item; activeHref: string }) {
+  // Single-source-of-truth active flag — the parent computed which
+  // href is "the deepest match" for the current pathname; we just
+  // compare. This prevents ancestor entries from also lighting up.
+  const active = item.href === activeHref;
   const Icon = item.icon ?? FileText;
   return (
     <li>

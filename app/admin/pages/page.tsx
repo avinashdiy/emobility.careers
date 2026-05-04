@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { AdminShell } from "@/components/layout/admin-shell";
+import { Button } from "@/components/ui/button";
 import {
   publishPage,
   unpublishPage,
@@ -59,13 +60,21 @@ export default async function AdminPagesPage({
             <h1 className="text-dashboard text-emce-text md:text-3xl">Pages</h1>
             <p className="mt-1 text-sm text-emce-text-sec">
               CMS pages — surfaced publicly at <code>/&lt;slug&gt;</code> when published
-              (via the same dispatcher as candidate handles).
-              Imported from{" "}
+              (via the same dispatcher as candidate handles). Author from scratch via{" "}
+              <strong>New page</strong>, or bulk-import via{" "}
               <Link href="/admin/import/content" className="font-bold text-emce-dark hover:underline">
                 WordPress
-              </Link>{" "}
-              or future hand-authored.
+              </Link>
+              .
             </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href="/admin/pages/ai-tools-guide">AI tools guide →</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/admin/pages/new">+ New page</Link>
+            </Button>
           </div>
         </header>
 
@@ -127,6 +136,12 @@ export default async function AdminPagesPage({
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-1">
+                      <Link
+                        href={`/admin/pages/${p.id}/edit`}
+                        className="rounded-md border border-emce-border bg-white px-2.5 py-1 text-xs font-bold text-emce-dark hover:bg-emce-light-soft"
+                      >
+                        Edit
+                      </Link>
                       {p.status !== "PUBLISHED" && (
                         <form action={publishPage}>
                           <input type="hidden" name="pageId" value={p.id} />
