@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { WordPressImportForm } from "@/components/admin/WordPressImportForm";
+import { OrphanArticleCleanupForm } from "@/components/admin/OrphanArticleCleanupForm";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "WordPress content import" };
@@ -22,14 +23,21 @@ export default async function WordPressContentImportPage() {
 
   // Last 20 batches with at-a-glance stats. The full audit log is
   // in /admin/audit if anyone needs the full meta blob.
-  const batches = await db.wordPressImportBatch.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 20,
-    include: {
-      uploadedBy: { select: { name: true, email: true } },
-      _count: { select: { pages: true } },
-    },
-  });
+  const [batches, orphanCount] = await Promise.all([
+    db.wordPressImportBatch.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 20,
+      include: {
+        uploadedBy: { select: { name: true, email: true } },
+        _count: { select: { pages: true } },
+      },
+    }),
+    // Articles tagged "wp-import" are orphans from the old pipeline
+    // that routed posts → Article. The new pipeline routes posts →
+    // Page; these rows now serve broken raw-HTML pages at
+    // /articles/<slug>. Surface a one-shot delete button.
+    db.article.count({ where: { tags: { has: "wp-import" } } }),
+  ]);
 
   return (
     <AdminShell>
@@ -56,6 +64,19 @@ export default async function WordPressContentImportPage() {
           </p>
           <div className="mt-4">
             <WordPressImportForm />
+          </div>
+        </Card>
+
+        <Card className="p-6">
+          <h2 className="text-section text-emce-text">Cleanup</h2>
+          <p className="mt-1 text-sm text-emce-text-sec">
+            Earlier imports routed posts into the <code>Article</code> table where the
+            renderer treats body as plain text — that&apos;s why some <code>/articles/&lt;slug&gt;</code>
+            URLs showed bare HTML. The new pipeline routes posts to <code>Page</code>;
+            after re-importing, run this to delete the leftover rows.
+          </p>
+          <div className="mt-4">
+            <OrphanArticleCleanupForm orphanCount={orphanCount} />
           </div>
         </Card>
 
@@ -107,10 +128,6 @@ export default async function WordPressContentImportPage() {
           Every imported item lands as DRAFT. Publish individually from{" "}
           <Link href="/admin/pages" className="font-bold text-emce-dark hover:underline">
             /admin/pages
-          </Link>{" "}
-          or{" "}
-          <Link href="/admin/articles" className="font-bold text-emce-dark hover:underline">
-            /admin/articles
           </Link>
           .
         </p>

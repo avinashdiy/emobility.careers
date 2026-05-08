@@ -13,7 +13,6 @@ import {
   sanitizeWordPressBody,
   fallbackSlug,
   deriveExcerpt,
-  readingTimeMins,
   type WordPressItem,
 } from "@/lib/cms/wordpress-import";
 import { RESERVED_SLUGS } from "@/lib/reserved-slugs";
@@ -139,18 +138,25 @@ export async function importWordPressContentXml(
 
     for (const item of pages) {
       try {
-        await upsertPage(item, batch.id);
+        await upsertPage(item, batch.id, "WP_PAGE");
         pagesImported += 1;
       } catch (err) {
         logger.warn({ err, slug: item.slug, wpPostId: item.wpPostId }, "[wp-import] page upsert failed");
       }
     }
+    // Posts now route to the Page table too — Article was the wrong
+    // home (its renderer treats body as plain text via
+    // whitespace-pre-line, so HTML showed up as escaped tags). Pages
+    // get the iframe renderer and live at /<slug>. The previous
+    // upsertArticle path is deleted; any wp-import-tagged Article
+    // rows from earlier runs are vacuumed in cleanupOrphanedWpArticles
+    // (see /admin/import/content).
     for (const item of posts) {
       try {
-        await upsertArticle(item, batch.id, session.user.id);
+        await upsertPage(item, batch.id, "WP_POST");
         postsImported += 1;
       } catch (err) {
-        logger.warn({ err, slug: item.slug, wpPostId: item.wpPostId }, "[wp-import] article upsert failed");
+        logger.warn({ err, slug: item.slug, wpPostId: item.wpPostId }, "[wp-import] post upsert failed");
       }
     }
 
@@ -173,7 +179,7 @@ export async function importWordPressContentXml(
     });
 
     revalidatePath("/admin/import/content");
-    revalidatePath("/admin/articles");
+    revalidatePath("/admin/pages");
     return {
       ok: true,
       batchId: batch.id,
@@ -181,7 +187,7 @@ export async function importWordPressContentXml(
       postsImported,
       attachmentsSeen: attachments.length,
       itemsSkipped: skipped,
-      message: `Imported ${pagesImported} pages and ${postsImported} posts as drafts. Review and publish from the admin sections.`,
+      message: `Imported ${pagesImported} pages and ${postsImported} posts as drafts. Both land in /admin/pages — pages and posts now share the same render path so HTML works the same way for both.`,
     };
   } catch (err) {
     if (isRouterControlError(err)) throw err;
@@ -194,6 +200,50 @@ export async function importWordPressContentXml(
 }
 
 // ─── Helpers ────────────────────────────────────────────────
+
+// ─── Orphan cleanup ─────────────────────────────────────────
+//
+// Earlier imports routed posts into the Article table — that's
+// been fixed (posts now go to Page), but the old rows linger and
+// still resolve at /articles/<slug> as broken raw-HTML pages.
+// This action vacuums every Article row tagged "wp-import" so the
+// admin can hit it once after re-importing through the new pipeline.
+
+export interface CleanupResult extends FormState {
+  deleted?: number;
+}
+
+export async function cleanupOrphanedWpArticles(
+  _prev: CleanupResult,
+  _formData: FormData,
+): Promise<CleanupResult> {
+  try {
+    const session = await requireAdminSession();
+    const result = await db.article.deleteMany({
+      where: { tags: { has: "wp-import" } },
+    });
+    await audit({
+      actorId: session.user.id,
+      action: "wp-import.orphan_articles_cleared",
+      entity: "Article",
+      meta: { deleted: result.count },
+    });
+    revalidatePath("/admin/import/content");
+    revalidatePath("/admin/articles");
+    return {
+      ok: true,
+      deleted: result.count,
+      message:
+        result.count === 0
+          ? "No orphaned WP articles to delete."
+          : `Deleted ${result.count} orphaned wp-import article${result.count === 1 ? "" : "s"}.`,
+    };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[wp-import] orphan cleanup failed");
+    return { ok: false, message: "Cleanup failed. Check server logs." };
+  }
+}
 
 async function ensureUniqueSlug<T extends { id: string }>(
   desired: string,
@@ -218,7 +268,11 @@ async function ensureUniqueSlug<T extends { id: string }>(
   return `${desired}-${crypto.randomBytes(3).toString("hex")}`;
 }
 
-async function upsertPage(item: WordPressItem, batchId: string): Promise<void> {
+async function upsertPage(
+  item: WordPressItem,
+  batchId: string,
+  sourceKind: "WP_PAGE" | "WP_POST",
+): Promise<void> {
   if (!item.title) return; // Skip empty-titled rows; nothing to render.
   const sanitized = sanitizeWordPressBody(item.bodyRaw);
   const desiredSlug = item.slug || fallbackSlug(item.title, item.wpPostId);
@@ -241,6 +295,28 @@ async function upsertPage(item: WordPressItem, batchId: string): Promise<void> {
   // page, a re-import should refresh the body but preserve status +
   // publishedAt. (DRAFT pages get overwritten freely.)
   const preservePublished = existing?.status === "PUBLISHED";
+
+  // Free the slug from any wp-import-tagged Article that's holding
+  // it. Posts used to be routed to the Article table; re-importing
+  // through the new pipeline needs to reclaim those slugs so the
+  // canonical URL stays /<slug> instead of getting suffixed to
+  // /<slug>-2. We deliberately ONLY delete Articles tagged as
+  // wp-import — never touch hand-authored editorial articles.
+  if (sourceKind === "WP_POST") {
+    await db.article
+      .deleteMany({
+        where: {
+          slug: desiredSlug,
+          tags: { has: "wp-import" },
+        },
+      })
+      .catch((err) => {
+        // Logged but non-fatal — if the delete fails (FK constraint,
+        // transient DB issue), the slug-collision check below will
+        // suffix the new Page to keep the import moving.
+        logger.warn({ err, slug: desiredSlug }, "[wp-import] orphan article deleteMany failed");
+      });
+  }
 
   // Pages share top-level URL space with candidate handles too —
   // /ev-jobs-ai-tools and /avinash-singh both render through the
@@ -269,7 +345,7 @@ async function upsertPage(item: WordPressItem, batchId: string): Promise<void> {
       coverImageUrl: item.firstImageUrl,
       status: "DRAFT",
       renderMode: "STANDALONE",
-      sourceKind: "WP_PAGE",
+      sourceKind,
       publishedAt: null,
       importBatchId: batchId,
       wpPostId: item.wpPostId || null,
@@ -284,7 +360,7 @@ async function upsertPage(item: WordPressItem, batchId: string): Promise<void> {
       // here — accept this trade-off because the common case
       // (re-import to fix the import bug) needs it.
       renderMode: "STANDALONE",
-      sourceKind: "WP_PAGE",
+      sourceKind,
       ...(preservePublished
         ? {} // keep status + publishedAt
         : { status: "DRAFT", publishedAt: null }),
@@ -292,65 +368,4 @@ async function upsertPage(item: WordPressItem, batchId: string): Promise<void> {
       wpPostId: item.wpPostId || null,
     },
   });
-}
-
-async function upsertArticle(
-  item: WordPressItem,
-  batchId: string,
-  authorId: string,
-): Promise<void> {
-  if (!item.title) return;
-  const sanitized = sanitizeWordPressBody(item.bodyRaw);
-  const desiredSlug = item.slug || fallbackSlug(item.title, item.wpPostId);
-  const excerpt = deriveExcerpt(item.bodyRaw, item.excerpt);
-
-  // Article doesn't have a wpPostId column (pre-existing model — we
-  // don't want to widen it for this one importer). Use the slug as
-  // the dedup key. Re-importing renames in WP would create a second
-  // row; that's an acceptable trade for not migrating Article.
-  const existing = await db.article.findUnique({
-    where: { slug: desiredSlug },
-    select: { id: true, slug: true, status: true },
-  });
-  const preservePublished = existing?.status === "PUBLISHED";
-
-  const slug =
-    existing?.slug ??
-    (await ensureUniqueSlug(desiredSlug, (s) =>
-      db.article.findUnique({ where: { slug: s }, select: { id: true } }),
-    ));
-
-  // Strip tags for the reading-time calculation — we don't want CSS
-  // <style> blocks counted as 4000 words of body.
-  const plain = sanitized.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
-
-  await db.article.upsert({
-    where: { id: existing?.id ?? "__nope__" },
-    create: {
-      slug,
-      title: item.title,
-      excerpt,
-      body: sanitized,
-      coverImageUrl: item.firstImageUrl,
-      status: "DRAFT",
-      publishedAt: null,
-      authorId,
-      readingTimeMins: readingTimeMins(plain),
-      // Tag every imported article so the admin can filter the
-      // /admin/articles list by `wp-import` and review them in one
-      // pass. Articles uses `tags String[]`.
-      tags: ["wp-import"],
-    },
-    update: {
-      title: item.title,
-      excerpt,
-      body: sanitized,
-      coverImageUrl: item.firstImageUrl,
-      ...(preservePublished ? {} : { status: "DRAFT", publishedAt: null }),
-      readingTimeMins: readingTimeMins(plain),
-    },
-  });
-  // Use batchId to silence "unused" until we widen Article with a
-  // batch FK. Logged so admins can grep the import audit later.
-  void batchId;
 }

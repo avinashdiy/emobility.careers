@@ -42,11 +42,10 @@ export function WordPressImportForm() {
           <strong className="block text-emce-text">What happens on submit:</strong>
           <ul className="mt-1 list-inside list-disc space-y-0.5">
             <li>
-              Pages land in the new <code>Page</code> table, surfaced at <code>/&lt;slug&gt;</code>{" "}
-              (top-level, same as candidate handles).
-            </li>
-            <li>
-              Posts land in the existing <code>Article</code> table, surfaced at <code>/articles/&lt;slug&gt;</code>.
+              <strong>Both pages and posts</strong> land in the <code>Page</code> table,
+              surfaced at <code>/&lt;slug&gt;</code> (top-level, same as candidate handles).
+              Pages and posts share the same render path — no more bare-HTML rendering at{" "}
+              <code>/articles/&lt;slug&gt;</code>.
             </li>
             <li>
               Pages render inside a style-isolated iframe by default — Elementor / full-document
@@ -54,12 +53,16 @@ export function WordPressImportForm() {
             </li>
             <li>
               <strong>Everything imports as DRAFT.</strong> Nothing goes live
-              until you click Publish in the respective admin section.
+              until you click Publish from <code>/admin/pages</code>.
             </li>
-            <li>HTML is sanitised on the way in — scripts stripped, styles preserved.</li>
+            <li>HTML is sanitised on the way in — scripts stripped (toggle{" "}
+              <strong>Allow scripts</strong> per-page later if it&apos;s an AI tool that needs them).
+            </li>
             <li>
               Re-imports match on the WordPress post ID — published rows keep their
-              status, drafts get refreshed in place.
+              status, drafts get refreshed in place. Posts move from
+              <code>/articles/&lt;slug&gt;</code> to <code>/&lt;slug&gt;</code> automatically;
+              the old URL 308-redirects so existing links keep working.
             </li>
           </ul>
         </div>
@@ -106,16 +109,11 @@ export function WordPressImportForm() {
           <p className="mt-1">{state.message}</p>
           {state.ok && (
             <div className="mt-3 flex flex-wrap gap-2">
-              {(state.pagesImported ?? 0) > 0 && (
-                <Button asChild size="sm" variant="outline">
-                  <Link href="/admin/pages">Review {state.pagesImported} pages →</Link>
-                </Button>
-              )}
-              {(state.postsImported ?? 0) > 0 && (
-                <Button asChild size="sm" variant="outline">
-                  <Link href="/admin/articles?tag=wp-import">Review {state.postsImported} posts →</Link>
-                </Button>
-              )}
+              <Button asChild size="sm" variant="outline">
+                <Link href="/admin/pages">
+                  Review {(state.pagesImported ?? 0) + (state.postsImported ?? 0)} imported items →
+                </Link>
+              </Button>
             </div>
           )}
         </div>

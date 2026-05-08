@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
@@ -84,6 +84,20 @@ export default async function ArticleDetailPage({
 }) {
   const { slug } = await params;
   const session = await auth();
+
+  // Page-first dispatch — if a CMS Page exists with this slug, the
+  // canonical URL is /<slug> not /articles/<slug>. Redirect (308)
+  // so any bookmark / share / search-engine result of the old
+  // /articles/<slug> URL keeps working and passes link equity to
+  // the new home. This handles the WP-import migration: posts
+  // used to land in Article and are now in Page.
+  const cmsPage = await db.page.findUnique({
+    where: { slug },
+    select: { id: true, status: true },
+  });
+  if (cmsPage && cmsPage.status !== "DRAFT") {
+    permanentRedirect(`/${slug}`);
+  }
 
   const article = await db.article.findUnique({
     where: { slug },

@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { logger } from "@/lib/logger";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ShareDropdown } from "@/components/social/ShareDropdown";
@@ -94,11 +95,25 @@ export default async function PublicJobDetail({
       skills: { include: { skill: true } },
     },
   });
-  if (!job) notFound();
+  if (!job) {
+    // Diagnostic log — emitted whenever a job-detail URL 404s. Lands
+    // in the pino stream so /admin/operations or `docker compose logs
+    // web` reveals the slug being missed (typically: a stale share
+    // link, a renamed-then-renamed-back row, or a job that was
+    // hard-deleted via the SQL console).
+    logger.warn({ slug }, "[job-detail] 404 — slug not found in jobPosting");
+    notFound();
+  }
   // 404 if the parent company has been admin-banned (REJECTED).
   // Mirrors the gate on /company/[slug] so deep-links from old shares
   // / search-engine cache stop resolving to the company's content.
-  if (job.company.verificationStatus === "REJECTED") notFound();
+  if (job.company.verificationStatus === "REJECTED") {
+    logger.warn(
+      { slug, jobId: job.id, companyId: job.companyId, companyName: job.company.name },
+      "[job-detail] 404 — parent company REJECTED",
+    );
+    notFound();
+  }
   // DIYGURU_ONLY listings are reserved for verified students. We 404
   // for anyone else — that's strictly more private than redirecting
   // since the URL itself doesn't leak (and admins / employers viewing
@@ -121,15 +136,25 @@ export default async function PublicJobDetail({
         });
         if (profile?.isDIYguruVerified) allow = true;
       }
+    } else {
+      // Signed-out viewer hitting a DIYGURU_ONLY job — bounce to
+      // /signin with `?next=` instead of 404. They might be a
+      // verified DIYguru student who just hasn't logged in yet,
+      // and a hard 404 would lose the click.
+      redirect(`/signin?next=${encodeURIComponent(`/job/${slug}`)}`);
     }
-    if (!allow) notFound();
+    if (!allow) {
+      logger.warn(
+        { slug, jobId: job.id, audience: job.audience, viewerRole: session?.user?.role ?? "anon" },
+        "[job-detail] 404 — DIYGURU_ONLY audience gate failed",
+      );
+      notFound();
+    }
   }
   if (job.audience === "INVITE_ONLY") {
     // INVITE_ONLY is browsable only via the application URL someone has
-    // already received (still rendered via this route). For now, mirror
-    // DIYGURU_ONLY's logic and require either an existing application
-    // or admin/employer ownership. Candidates without an application
-    // hit a 404.
+    // already received. Same allow-list shape as DIYGURU_ONLY: ADMIN /
+    // employer-of-company / candidate-with-existing-application.
     const session = await auth();
     let allow = false;
     if (session?.user) {
@@ -153,8 +178,19 @@ export default async function PublicJobDetail({
           if (app) allow = true;
         }
       }
+    } else {
+      // Same nudge — sign-in first, then re-evaluate. A user who
+      // received an invite link via email is signed-out by default
+      // until they click through.
+      redirect(`/signin?next=${encodeURIComponent(`/job/${slug}`)}`);
     }
-    if (!allow) notFound();
+    if (!allow) {
+      logger.warn(
+        { slug, jobId: job.id, audience: job.audience, viewerRole: session?.user?.role ?? "anon" },
+        "[job-detail] 404 — INVITE_ONLY audience gate failed",
+      );
+      notFound();
+    }
   }
   if (job.status !== "OPEN") {
     return (
