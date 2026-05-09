@@ -48,12 +48,38 @@ async function requireAdmin() {
 
 // ─── Job posting on behalf of a company ─────────────────────
 
+/// Best-effort URL coercion. The HTML5 `<input type="url">` accepts
+/// many shapes that fail Zod's strict `.url()`. We auto-prefix
+/// `https://` if the value looks domain-ish, trim whitespace, and
+/// only THEN validate. Same logic on the public + employer paths
+/// would be nice but out of scope for this fix — admins are the
+/// most-frequent victims since they paste from spreadsheets.
+const looseUrl = z
+  .string()
+  .trim()
+  .transform((s) => {
+    if (!s) return "";
+    if (/^https?:\/\//i.test(s)) return s;
+    // "company.com" or "www.company.com/careers" → "https://..."
+    if (/^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}/i.test(s)) return `https://${s}`;
+    return s; // pass through; .url() will reject below if still invalid
+  })
+  .pipe(z.string().url().or(z.literal("")));
+
+const looseEmail = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.string().email().or(z.literal("")));
+
 const adminJobSchema = z.object({
   // Either pick an existing company OR fill in name+type to create one.
   companyId: z.string().optional(),
   newCompanyName: z.string().max(120).optional(),
-  newCompanyWebsite: z.string().url().optional().or(z.literal("")),
-  newCompanyType: z.nativeEnum(CompanyType).optional(),
+  newCompanyWebsite: looseUrl.optional(),
+  newCompanyType: z
+    .preprocess((v) => (v === "" ? undefined : v), z.nativeEnum(CompanyType))
+    .optional(),
   newCompanyHqLocation: z.string().max(120).optional(),
 
   title: z.string().min(3).max(140),
@@ -76,23 +102,74 @@ const adminJobSchema = z.object({
 
   // External-apply URL. When set, the public job page short-circuits
   // the internal apply form and links the candidate straight out to
-  // the employer's career page. This is the right default for jobs
-  // the platform team aggregates from third-party sources.
-  applicationUrl: z.string().url().optional().or(z.literal("")),
-  applicationEmail: z.string().email().optional().or(z.literal("")),
+  // the employer's career page.
+  applicationUrl: looseUrl.optional(),
+  applicationEmail: looseEmail.optional(),
 
   evDomainSlugs: z.string().optional(),
   skillNames: z.string().optional(),
 });
 
-export async function adminCreateJob(formData: FormData) {
+export interface AdminJobFormState {
+  ok: boolean;
+  message?: string;
+  /// Per-field validation errors keyed by form field name. Surfaced
+  /// inline in the form via FieldError components so the admin can
+  /// see exactly which field rejected and why.
+  fieldErrors?: Record<string, string>;
+  /// Echo of every submitted value so the form can re-mount with the
+  /// admin's previous typing instead of nuking everything. Stored as
+  /// plain strings (FormData round-trip) so we don't have to re-type
+  /// the schema for every render.
+  prevValues?: Record<string, string>;
+}
+
+const initialAdminJobState: AdminJobFormState = { ok: false };
+
+/** Helper — turn the submitted FormData into a plain string map. */
+function snapshotForm(formData: FormData): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of formData.entries()) {
+    if (typeof v === "string") out[k] = v;
+  }
+  return out;
+}
+
+export async function adminCreateJob(
+  _prev: AdminJobFormState,
+  formData: FormData,
+): Promise<AdminJobFormState> {
   const session = await requireAdmin();
   const parsed = adminJobSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
-    logger.warn({ errors: parsed.error.flatten() }, "[adminCreateJob] validation failed");
-    redirect(
-      "/admin/jobs/new?error=" + encodeURIComponent("Please fill required fields"),
+    const flat = parsed.error.flatten();
+    const fieldErrors: Record<string, string> = {};
+    for (const [k, v] of Object.entries(flat.fieldErrors)) {
+      if (v && v[0]) fieldErrors[k] = v[0];
+    }
+    logger.warn(
+      { errors: flat },
+      "[adminCreateJob] validation failed",
     );
+    // Friendly headline message — first-failing field, plus a hint
+    // when a URL field is the culprit (most common admin mistake).
+    const firstField = Object.keys(fieldErrors)[0];
+    const hint =
+      firstField === "applicationUrl" ||
+      firstField === "newCompanyWebsite"
+        ? " (URLs need to be valid — e.g. https://company.com/careers)"
+        : firstField === "description"
+          ? " — description is required and must be at least 20 chars"
+          : "";
+    return {
+      ok: false,
+      message:
+        firstField !== undefined
+          ? `Couldn't save: "${firstField}" failed validation${hint}.`
+          : "Couldn't save. Check the highlighted fields.",
+      fieldErrors,
+      prevValues: snapshotForm(formData),
+    };
   }
   const data = parsed.data;
 
@@ -103,12 +180,16 @@ export async function adminCreateJob(formData: FormData) {
   let createdCompanyId: string | null = null;
   if (!companyId) {
     if (!data.newCompanyName || !data.newCompanyType) {
-      redirect(
-        "/admin/jobs/new?error=" +
-          encodeURIComponent(
-            "Pick an existing company or fill in name + type for a new one.",
-          ),
-      );
+      return {
+        ok: false,
+        message:
+          "Pick an existing company from the dropdown, or open the inline section and fill name + type.",
+        fieldErrors: {
+          ...(!data.newCompanyName ? { newCompanyName: "Required when creating a new company." } : {}),
+          ...(!data.newCompanyType ? { newCompanyType: "Required when creating a new company." } : {}),
+        },
+        prevValues: snapshotForm(formData),
+      };
     }
     const created = await withUniqueSlug(data.newCompanyName, (slug) =>
       db.company.create({
@@ -142,10 +223,12 @@ export async function adminCreateJob(formData: FormData) {
       select: { id: true, slug: true },
     });
     if (!exists) {
-      redirect(
-        "/admin/jobs/new?error=" +
-          encodeURIComponent("Selected company no longer exists."),
-      );
+      return {
+        ok: false,
+        message: "Selected company no longer exists. Pick another or create one inline.",
+        fieldErrors: { companyId: "Company not found in directory." },
+        prevValues: snapshotForm(formData),
+      };
     }
   }
 
@@ -154,9 +237,11 @@ export async function adminCreateJob(formData: FormData) {
     select: { slug: true, name: true },
   });
   if (!company) {
-    redirect(
-      "/admin/jobs/new?error=" + encodeURIComponent("Company resolution failed."),
-    );
+    return {
+      ok: false,
+      message: "Company resolution failed — please retry.",
+      prevValues: snapshotForm(formData),
+    };
   }
 
   const locations = data.locations
