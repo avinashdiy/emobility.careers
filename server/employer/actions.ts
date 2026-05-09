@@ -301,13 +301,52 @@ function resolveSalaryDisclosure(
   return { audience, salaryHidden: Boolean(salaryHiddenInput) };
 }
 
-export async function createJob(formData: FormData) {
+export interface CreateJobFormState {
+  ok: boolean;
+  message?: string;
+  fieldErrors?: Record<string, string>;
+  /// Round-trip of every submitted FormData entry as plain strings.
+  /// The new-job form pre-fills every input from this map on
+  /// validation failure so the recruiter doesn't lose their typing.
+  prevValues?: Record<string, string>;
+}
+
+const initialCreateJobState: CreateJobFormState = { ok: false };
+
+function snapshotJobForm(formData: FormData): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [k, v] of formData.entries()) {
+    if (typeof v === "string") out[k] = v;
+  }
+  return out;
+}
+
+export async function createJob(
+  _prev: CreateJobFormState,
+  formData: FormData,
+): Promise<CreateJobFormState> {
   const { session, employer } = await requireEmployerWithCompany();
 
   const parsed = jobSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
-    logger.warn({ errors: parsed.error.flatten() }, "[createJob] validation failed");
-    redirect("/employer/jobs/new?error=" + encodeURIComponent("Please fill required fields"));
+    const flat = parsed.error.flatten();
+    const fieldErrors: Record<string, string> = {};
+    for (const [k, v] of Object.entries(flat.fieldErrors)) {
+      if (v && v[0]) fieldErrors[k] = v[0];
+    }
+    logger.warn({ errors: flat }, "[createJob] validation failed");
+    const firstField = Object.keys(fieldErrors)[0];
+    return {
+      ok: false,
+      message:
+        firstField === "description"
+          ? "Description is required and must be at least 20 chars."
+          : firstField !== undefined
+            ? `Couldn't save: "${firstField}" failed validation. Check the highlighted field.`
+            : "Couldn't save. Check the highlighted fields.",
+      fieldErrors,
+      prevValues: snapshotJobForm(formData),
+    };
   }
   const data = parsed.data;
 

@@ -44,7 +44,7 @@ export async function searchCompanies(q: string): Promise<CompanyMatch[]> {
   const tsq = buildTsQuery(q);
   if (!tsq) return [];
   const slugCandidate = q.toLowerCase().replace(/\s+/g, "-");
-  return db.$queryRaw<CompanyMatch[]>`
+  const fts = await db.$queryRaw<CompanyMatch[]>`
     SELECT id, slug, name, "logoUrl", "hqLocation"
     FROM "Company"
     WHERE "searchTsv" @@ to_tsquery('simple', ${tsq})
@@ -53,6 +53,27 @@ export async function searchCompanies(q: string): Promise<CompanyMatch[]> {
       ts_rank("searchTsv", to_tsquery('simple', ${tsq}))
         + CASE WHEN "verificationStatus" = 'VERIFIED' THEN 0.1 ELSE 0 END
         DESC,
+      name ASC
+    LIMIT 10
+  `;
+  if (fts.length > 0) return fts;
+  // Fallback — when searchTsv is NULL on every row (typically because
+  // scripts/setup-fts.sql wasn't run after `prisma db push` on a
+  // fresh deploy), the FTS pass returns 0 results regardless of input.
+  // Drop to a plain ILIKE prefix match so the autocomplete is still
+  // usable until the FTS migration lands. The slow-path is fine for
+  // the directory-sized tables we have today (Company ≪ 10k rows).
+  // Index hint: not needed — Postgres uses the existing btree on
+  // (lower(name)) if present, otherwise a sequential scan that's
+  // sub-50ms at our scale.
+  return db.$queryRaw<CompanyMatch[]>`
+    SELECT id, slug, name, "logoUrl", "hqLocation"
+    FROM "Company"
+    WHERE "name" ILIKE ${"%" + q.trim() + "%"}
+       OR slug ILIKE ${"%" + slugCandidate + "%"}
+    ORDER BY
+      CASE WHEN lower("name") = lower(${q.trim()}) THEN 0 ELSE 1 END,
+      CASE WHEN "verificationStatus" = 'VERIFIED' THEN 0 ELSE 1 END,
       name ASC
     LIMIT 10
   `;
@@ -128,7 +149,7 @@ export async function searchInstitutions(q: string): Promise<InstitutionMatch[]>
   const tsq = buildTsQuery(q);
   if (!tsq) return [];
   const slugCandidate = q.toLowerCase().replace(/\s+/g, "-");
-  return db.$queryRaw<InstitutionMatch[]>`
+  const fts = await db.$queryRaw<InstitutionMatch[]>`
     SELECT id, slug, name, type::text, city, "logoUrl"
     FROM "Institution"
     WHERE ("searchTsv" @@ to_tsquery('simple', ${tsq})
@@ -138,6 +159,21 @@ export async function searchInstitutions(q: string): Promise<InstitutionMatch[]>
       ts_rank("searchTsv", to_tsquery('simple', ${tsq}))
         + CASE WHEN "verificationStatus" = 'VERIFIED' THEN 0.1 ELSE 0 END
         DESC,
+      name ASC
+    LIMIT 10
+  `;
+  if (fts.length > 0) return fts;
+  // ILIKE fallback — see searchCompanies for rationale. Kept in
+  // lock-step so neither entity-picker degrades silently when FTS
+  // isn't populated.
+  return db.$queryRaw<InstitutionMatch[]>`
+    SELECT id, slug, name, type::text, city, "logoUrl"
+    FROM "Institution"
+    WHERE ("name" ILIKE ${"%" + q.trim() + "%"} OR slug ILIKE ${"%" + slugCandidate + "%"})
+      AND "verificationStatus" <> 'REJECTED'
+    ORDER BY
+      CASE WHEN lower("name") = lower(${q.trim()}) THEN 0 ELSE 1 END,
+      CASE WHEN "verificationStatus" = 'VERIFIED' THEN 0 ELSE 1 END,
       name ASC
     LIMIT 10
   `;
