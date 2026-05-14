@@ -66,6 +66,12 @@ export default async function AdminJobsPage({
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant={j.status === "OPEN" ? "success" : "outline"}>{j.status}</Badge>
+                    <Link
+                      href={`/admin/jobs/${j.id}/edit`}
+                      className="inline-flex items-center rounded-md border border-emce-border bg-white px-2.5 py-1 text-xs font-bold text-emce-dark hover:bg-emce-light-soft"
+                    >
+                      Edit
+                    </Link>
                     <form action={setJobStatus}>
                       <input type="hidden" name="id" value={j.id} />
                       <input type="hidden" name="status" value={j.status === "OPEN" ? "PAUSED" : "OPEN"} />

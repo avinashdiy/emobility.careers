@@ -10,6 +10,7 @@ import { withUniqueSlug } from "@/lib/slug";
 import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { embeddingsQueue } from "@/lib/queues";
+import { sanitizeJobHtml, plainTextLength } from "@/lib/cms/job-sanitize";
 import {
   CompanyType,
   CompanyVerification,
@@ -83,6 +84,11 @@ const adminJobSchema = z.object({
   newCompanyHqLocation: z.string().max(120).optional(),
 
   title: z.string().min(3).max(140),
+  // Description is rich-text HTML coming from the RichTextEditor.
+  // The min(20) refers to HTML *length* — the plain-text length
+  // gate runs separately below so 20 chars of `<p></p>` markup
+  // doesn't pass as a real body. Both gates fire so we get a
+  // friendly per-field error.
   description: z.string().min(20),
   responsibilities: z.string().optional(),
   requirements: z.string().optional(),
@@ -173,6 +179,27 @@ export async function adminCreateJob(
   }
   const data = parsed.data;
 
+  // ── Rich-text fields: sanitise + plain-text length gate ──
+  // The four body fields come from the RichTextEditor as HTML. We
+  // sanitise to the job-content allowlist (bold/italic/lists/links
+  // — see lib/cms/job-sanitize.ts) and then verify the actual
+  // human-readable content meets the minimum length. Without the
+  // second gate a paste of `<p></p><p></p>` would slide past Zod's
+  // .min(20) on the HTML string itself.
+  const descriptionHtml = sanitizeJobHtml(data.description);
+  const responsibilitiesHtml = sanitizeJobHtml(data.responsibilities);
+  const requirementsHtml = sanitizeJobHtml(data.requirements);
+  const benefitsHtml = sanitizeJobHtml(data.benefits);
+  if (plainTextLength(descriptionHtml) < 20) {
+    return {
+      ok: false,
+      message:
+        "Description is too short. After formatting is removed, it needs at least 20 readable characters.",
+      fieldErrors: { description: "Add at least 20 characters of body text." },
+      prevValues: snapshotForm(formData),
+    };
+  }
+
   // Resolve the company first. If `companyId` is provided we use it
   // verbatim (caller picked from the dropdown). Otherwise we create a
   // brand-new company with the provided name/type.
@@ -262,10 +289,10 @@ export async function adminCreateJob(
             companyId: companyId!,
             postedById: session.user.id,
             title: data.title,
-            description: data.description,
-            responsibilities: data.responsibilities || null,
-            requirements: data.requirements || null,
-            benefits: data.benefits || null,
+            description: descriptionHtml,
+            responsibilities: responsibilitiesHtml || null,
+            requirements: requirementsHtml || null,
+            benefits: benefitsHtml || null,
             profileMode: data.profileMode,
             employmentType: data.employmentType,
             workMode: data.workMode,
@@ -363,6 +390,183 @@ export async function adminCreateJob(
       encodeURIComponent(
         `✅ Posted "${job.title}" for ${company.name}${data.publishNow ? " (live)" : " (draft)"}.`,
       ),
+  );
+}
+
+// ─── Admin: edit an existing job posting ──────────────────────
+
+/**
+ * Companion to `adminCreateJob`. Drives the /admin/jobs/[id]/edit
+ * page — same form, same shape, same useActionState contract.
+ *
+ *   • `jobId` is supplied via a hidden input in the form.
+ *   • The company is locked: changing the parent company of an
+ *     existing posting is out of scope (it'd invalidate every
+ *     existing application's audit trail).
+ *   • Status + publishedAt are NOT touched here — those live on
+ *     the job-moderation list's Pause / Close / Open controls.
+ *     Otherwise an inadvertent edit could un-publish a live job.
+ *   • Embedding refresh is fire-and-forget so a stale match-score
+ *     gets recomputed after the edit lands.
+ */
+const adminUpdateJobSchema = adminJobSchema.extend({
+  jobId: z.string().min(1),
+});
+
+export async function adminUpdateJob(
+  _prev: AdminJobFormState,
+  formData: FormData,
+): Promise<AdminJobFormState> {
+  const session = await requireAdmin();
+  const parsed = adminUpdateJobSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const flat = parsed.error.flatten();
+    const fieldErrors: Record<string, string> = {};
+    for (const [k, v] of Object.entries(flat.fieldErrors)) {
+      if (v && v[0]) fieldErrors[k] = v[0];
+    }
+    logger.warn({ errors: flat }, "[adminUpdateJob] validation failed");
+    const firstField = Object.keys(fieldErrors)[0];
+    return {
+      ok: false,
+      message:
+        firstField !== undefined
+          ? `Couldn't save: "${firstField}" failed validation.`
+          : "Couldn't save. Check the highlighted fields.",
+      fieldErrors,
+      prevValues: snapshotForm(formData),
+    };
+  }
+  const data = parsed.data;
+
+  const existing = await db.jobPosting.findUnique({
+    where: { id: data.jobId },
+    select: { id: true, slug: true, companyId: true },
+  });
+  if (!existing) {
+    return {
+      ok: false,
+      message: "That job no longer exists — refresh the moderation list.",
+      prevValues: snapshotForm(formData),
+    };
+  }
+
+  const descriptionHtml = sanitizeJobHtml(data.description);
+  const responsibilitiesHtml = sanitizeJobHtml(data.responsibilities);
+  const requirementsHtml = sanitizeJobHtml(data.requirements);
+  const benefitsHtml = sanitizeJobHtml(data.benefits);
+  if (plainTextLength(descriptionHtml) < 20) {
+    return {
+      ok: false,
+      message:
+        "Description is too short. After formatting is removed, it needs at least 20 readable characters.",
+      fieldErrors: { description: "Add at least 20 characters of body text." },
+      prevValues: snapshotForm(formData),
+    };
+  }
+
+  const locations = data.locations
+    ? data.locations.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+  const salaryHidden =
+    data.audience === JobAudience.DIYGURU_ONLY ? false : Boolean(data.salaryHidden);
+
+  await db.$transaction(async (tx) => {
+    await tx.jobPosting.update({
+      where: { id: existing.id },
+      data: {
+        title: data.title,
+        description: descriptionHtml,
+        responsibilities: responsibilitiesHtml || null,
+        requirements: requirementsHtml || null,
+        benefits: benefitsHtml || null,
+        profileMode: data.profileMode,
+        employmentType: data.employmentType,
+        workMode: data.workMode,
+        seniorityLevel: data.seniorityLevel,
+        locations,
+        experienceMin: data.experienceMin ?? null,
+        experienceMax: data.experienceMax ?? null,
+        salaryMin: data.salaryMin ? new Prisma.Decimal(data.salaryMin) : null,
+        salaryMax: data.salaryMax ? new Prisma.Decimal(data.salaryMax) : null,
+        salaryHidden,
+        audience: data.audience,
+        applicationUrl: data.applicationUrl || null,
+        applicationEmail: data.applicationEmail || null,
+        // Status / publishedAt deliberately NOT changed here — see fn docstring.
+      },
+    });
+
+    // Tags get the simple replace-the-set treatment. Cheaper to
+    // delete + re-insert than diff each side; the join tables are
+    // small per-job.
+    if (data.evDomainSlugs !== undefined) {
+      await tx.jobEVDomain.deleteMany({ where: { jobId: existing.id } });
+      const slugs = (data.evDomainSlugs ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (slugs.length > 0) {
+        const domains = await tx.eVDomain.findMany({
+          where: { slug: { in: slugs } },
+          select: { id: true },
+        });
+        if (domains.length > 0) {
+          await tx.jobEVDomain.createMany({
+            data: domains.map((d) => ({ jobId: existing.id, evDomainId: d.id })),
+            skipDuplicates: true,
+          });
+        }
+      }
+    }
+    if (data.skillNames !== undefined) {
+      await tx.jobSkill.deleteMany({ where: { jobId: existing.id } });
+      const names = (data.skillNames ?? "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (names.length > 0) {
+        const skills = await Promise.all(
+          names.map((name) => {
+            const slug = name
+              .toLowerCase()
+              .replace(/[^a-z0-9]+/g, "-")
+              .replace(/^-+|-+$/g, "");
+            return tx.skill.upsert({
+              where: { slug },
+              create: { slug, name, category: "Imported" },
+              update: {},
+              select: { id: true },
+            });
+          }),
+        );
+        await tx.jobSkill.createMany({
+          data: skills.map((s) => ({ jobId: existing.id, skillId: s.id, required: true })),
+          skipDuplicates: true,
+        });
+      }
+    }
+  }, { timeout: 15_000 });
+
+  await audit({
+    actorId: session.user.id,
+    action: "job.admin_edited",
+    entity: "JobPosting",
+    entityId: existing.id,
+  });
+
+  // Refresh the job's embedding so match-score reflects the new
+  // body. Fire-and-forget — a failed enqueue just means stale
+  // scores until the next nightly refresh.
+  void embeddingsQueue.add("job", { kind: "job", jobId: existing.id }).catch(() => {});
+
+  revalidatePath("/admin/jobs");
+  revalidatePath(`/admin/jobs/${existing.id}/edit`);
+  revalidatePath("/jobs");
+  revalidatePath(`/job/${existing.slug}`);
+  redirect(
+    "/admin/jobs?notice=" +
+      encodeURIComponent(`✅ Updated "${data.title}".`),
   );
 }
 

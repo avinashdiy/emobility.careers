@@ -337,26 +337,48 @@ export default async function PublicJobDetail({
 
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <div className="space-y-4 lg:col-span-2">
+          {/*
+            Job body fields land in the DB as sanitised HTML
+            (RichTextEditor on the create / edit forms, sanitiseJobHtml
+            on the server). The trust boundary is the WRITE path —
+            here we only need to render. `prose` gives us the typography
+            ramp (h2/h3 sizing, list indentation, link colour) for free.
+            Old plain-text rows still render correctly because the prose
+            wrapper handles linebreaks via the inherited `whitespace`
+            classes; sanitiseJobHtml is a no-op on inputs without tags.
+          */}
           <Card className="p-6">
             <h2 className="text-section text-emce-text">About the role</h2>
-            <p className="mt-2 whitespace-pre-line text-body text-emce-text-sec">{job.description}</p>
+            <div
+              className="prose prose-sm mt-2 max-w-none text-body text-emce-text-sec prose-headings:text-emce-text"
+              dangerouslySetInnerHTML={{ __html: htmlOrFallback(job.description) }}
+            />
           </Card>
           {job.responsibilities && (
             <Card className="p-6">
               <h2 className="text-section text-emce-text">Responsibilities</h2>
-              <p className="mt-2 whitespace-pre-line text-body text-emce-text-sec">{job.responsibilities}</p>
+              <div
+                className="prose prose-sm mt-2 max-w-none text-body text-emce-text-sec prose-headings:text-emce-text"
+                dangerouslySetInnerHTML={{ __html: htmlOrFallback(job.responsibilities) }}
+              />
             </Card>
           )}
           {job.requirements && (
             <Card className="p-6">
               <h2 className="text-section text-emce-text">Requirements</h2>
-              <p className="mt-2 whitespace-pre-line text-body text-emce-text-sec">{job.requirements}</p>
+              <div
+                className="prose prose-sm mt-2 max-w-none text-body text-emce-text-sec prose-headings:text-emce-text"
+                dangerouslySetInnerHTML={{ __html: htmlOrFallback(job.requirements) }}
+              />
             </Card>
           )}
           {job.benefits && (
             <Card className="p-6">
               <h2 className="text-section text-emce-text">Benefits</h2>
-              <p className="mt-2 whitespace-pre-line text-body text-emce-text-sec">{job.benefits}</p>
+              <div
+                className="prose prose-sm mt-2 max-w-none text-body text-emce-text-sec prose-headings:text-emce-text"
+                dangerouslySetInnerHTML={{ __html: htmlOrFallback(job.benefits) }}
+              />
             </Card>
           )}
         </div>
@@ -513,4 +535,27 @@ export default async function PublicJobDetail({
       </div>
     </div>
   );
+}
+
+/**
+ * Job-body fields now land in the DB as sanitised HTML (post-2026-05
+ * — RichTextEditor + lib/cms/job-sanitize.ts on the write path).
+ * Rows created before that switch are plain text with `\n`-only
+ * separators. Detect "has tags" by a cheap regex check; for the
+ * plain-text path we escape + wrap so `whitespace-pre-line`
+ * styling kicks in inside the prose container.
+ */
+function htmlOrFallback(body: string | null | undefined): string {
+  if (!body) return "";
+  // If the string already looks like HTML (contains a tag), trust
+  // the sanitiser-blessed write-path output and pass through.
+  if (/<[a-z][^>]*>/i.test(body)) return body;
+  // Legacy plain-text body: HTML-escape + wrap in a <p> with
+  // line-break preservation so the visual layout matches.
+  const escaped = body
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  return `<p style="white-space:pre-line">${escaped}</p>`;
 }

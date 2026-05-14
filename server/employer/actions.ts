@@ -10,6 +10,7 @@ import { withUniqueSlug } from "@/lib/slug";
 import { embeddingsQueue, notificationsQueue } from "@/lib/queues";
 import { logger } from "@/lib/logger";
 import { isRouterControlError } from "@/lib/server-action-errors";
+import { sanitizeJobHtml, plainTextLength } from "@/lib/cms/job-sanitize";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import {
@@ -350,6 +351,22 @@ export async function createJob(
   }
   const data = parsed.data;
 
+  // ── Rich-text fields: sanitise + plain-text length gate ──
+  // Same shape as adminCreateJob — see lib/cms/job-sanitize.ts.
+  const descriptionHtml = sanitizeJobHtml(data.description);
+  const responsibilitiesHtml = sanitizeJobHtml(data.responsibilities);
+  const requirementsHtml = sanitizeJobHtml(data.requirements);
+  const benefitsHtml = sanitizeJobHtml(data.benefits);
+  if (plainTextLength(descriptionHtml) < 20) {
+    return {
+      ok: false,
+      message:
+        "Description is too short. After formatting is removed, it needs at least 20 readable characters.",
+      fieldErrors: { description: "Add at least 20 characters of body text." },
+      prevValues: snapshotJobForm(formData),
+    };
+  }
+
   const locations = data.locations
     ? data.locations.split(",").map((s) => s.trim()).filter(Boolean)
     : [];
@@ -364,10 +381,10 @@ export async function createJob(
             companyId: employer.companyId,
             postedById: session.user.id,
             title: data.title,
-            description: data.description,
-            responsibilities: data.responsibilities || null,
-            requirements: data.requirements || null,
-            benefits: data.benefits || null,
+            description: descriptionHtml,
+            responsibilities: responsibilitiesHtml || null,
+            requirements: requirementsHtml || null,
+            benefits: benefitsHtml || null,
             profileMode: data.profileMode,
             employmentType: data.employmentType,
             workMode: data.workMode,

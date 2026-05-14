@@ -4,11 +4,12 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/select";
 import { FieldError } from "@/components/ui/field-error";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import {
   adminCreateJob,
+  adminUpdateJob,
   type AdminJobFormState,
 } from "@/server/admin/recruiting-actions";
 
@@ -26,9 +27,40 @@ interface DomainOption {
   name: string;
 }
 
+interface ExistingJob {
+  id: string;
+  companyId: string;
+  title: string;
+  description: string;
+  responsibilities: string | null;
+  requirements: string | null;
+  benefits: string | null;
+  profileMode: string;
+  employmentType: string;
+  workMode: string;
+  seniorityLevel: string;
+  locations: string[];
+  audience: string;
+  experienceMin: number | null;
+  experienceMax: number | null;
+  salaryMin: string | null; // Decimal serialised
+  salaryMax: string | null;
+  salaryHidden: boolean;
+  applicationUrl: string | null;
+  applicationEmail: string | null;
+  evDomainSlugs: string[];
+  skillNames: string[];
+}
+
 interface Props {
   companies: CompanyOption[];
   evDomains: DomainOption[];
+  /// When present, the form is in EDIT mode — uses `adminUpdateJob`
+  /// instead of `adminCreateJob` and prefills every field from the
+  /// existing record. The companyId field is hidden + locked in
+  /// this mode (changing the parent company of an existing job is
+  /// out of scope).
+  existingJob?: ExistingJob;
 }
 
 /**
@@ -40,10 +72,24 @@ interface Props {
  * which is the round-trip of FormData entries from the previous
  * submit attempt. Field errors are rendered inline next to each
  * input via `<FieldError>`.
+ *
+ * Edit mode (existingJob set):
+ *   - Action switches to adminUpdateJob; hidden jobId carries id
+ *   - prevValues fall back to the existing record's values, so
+ *     first render shows the saved state
+ *   - Submit buttons change from "Publish now / Save as draft" to
+ *     "Save changes" (publish state is controlled separately
+ *     via the moderation list's Pause / Close buttons)
  */
-export function AdminJobForm({ companies, evDomains }: Props) {
-  const [state, formAction] = useActionState(adminCreateJob, INITIAL);
-  const v = state.prevValues ?? {};
+export function AdminJobForm({ companies, evDomains, existingJob }: Props) {
+  const isEdit = !!existingJob;
+  const action = isEdit ? adminUpdateJob : adminCreateJob;
+  const [state, formAction] = useActionState(action, INITIAL);
+  // Combined fallback order: prevValues (from a failed submit) →
+  // existingJob (edit mode) → defaults. Keeps the form-recovery
+  // path correct even on edit pages.
+  const fromJob = existingJob ? jobToFormMap(existingJob) : {};
+  const v: Record<string, string> = { ...fromJob, ...(state.prevValues ?? {}) };
   const e = state.fieldErrors ?? {};
 
   return (
@@ -58,6 +104,9 @@ export function AdminJobForm({ companies, evDomains }: Props) {
       )}
 
       <form action={formAction} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {isEdit && existingJob && (
+          <input type="hidden" name="jobId" value={existingJob.id} />
+        )}
         {/* ── Company picker ──────────────────────────── */}
         <div className="sm:col-span-2">
           <Label htmlFor="companyId">Company (existing)</Label>
@@ -335,50 +384,53 @@ export function AdminJobForm({ companies, evDomains }: Props) {
           <FieldError error={e.applicationEmail} />
         </div>
 
-        {/* ── JD content ──────────────────────────────── */}
+        {/* ── JD content (rich text — bold, italic, lists, links, copy-paste) ── */}
         <div className="sm:col-span-2">
           <Label htmlFor="description">
             Description{" "}
             <span className="text-hint font-normal text-emce-text-sec">
-              (min 20 chars — required)
+              (min 20 chars — required; bold / italic / lists supported)
             </span>
           </Label>
-          <Textarea
+          <RichTextEditor
             id="description"
             name="description"
-            required
-            minLength={20}
-            rows={6}
             defaultValue={v.description ?? ""}
-            aria-invalid={!!e.description}
+            placeholder="Describe the role, your team, and what success looks like."
+            minHeight={180}
+            required
+            ariaInvalid={!!e.description}
           />
           <FieldError error={e.description} />
         </div>
         <div className="sm:col-span-2">
           <Label htmlFor="responsibilities">Responsibilities</Label>
-          <Textarea
+          <RichTextEditor
             id="responsibilities"
             name="responsibilities"
-            rows={5}
             defaultValue={v.responsibilities ?? ""}
+            placeholder="• Own end-to-end design of …&#10;• Collaborate with …"
+            minHeight={150}
           />
         </div>
         <div className="sm:col-span-2">
           <Label htmlFor="requirements">Requirements</Label>
-          <Textarea
+          <RichTextEditor
             id="requirements"
             name="requirements"
-            rows={5}
             defaultValue={v.requirements ?? ""}
+            placeholder="• 3+ years in …&#10;• Hands-on with …"
+            minHeight={150}
           />
         </div>
         <div className="sm:col-span-2">
           <Label htmlFor="benefits">Benefits</Label>
-          <Textarea
+          <RichTextEditor
             id="benefits"
             name="benefits"
-            rows={3}
             defaultValue={v.benefits ?? ""}
+            placeholder="ESOPs, learning budget, hybrid …"
+            minHeight={100}
           />
         </div>
 
@@ -407,14 +459,55 @@ export function AdminJobForm({ companies, evDomains }: Props) {
 
         {/* ── Submit ──────────────────────────────────── */}
         <div className="sm:col-span-2 mt-2 flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <Button type="submit" name="publishNow" value="true" size="lg" className="w-full sm:w-auto">
-            Publish now
-          </Button>
-          <Button type="submit" variant="outline" size="lg" className="w-full sm:w-auto">
-            Save as draft
-          </Button>
+          {isEdit ? (
+            <Button type="submit" size="lg" className="w-full sm:w-auto">
+              Save changes
+            </Button>
+          ) : (
+            <>
+              <Button type="submit" name="publishNow" value="true" size="lg" className="w-full sm:w-auto">
+                Publish now
+              </Button>
+              <Button type="submit" variant="outline" size="lg" className="w-full sm:w-auto">
+                Save as draft
+              </Button>
+            </>
+          )}
         </div>
       </form>
     </>
   );
+}
+
+/**
+ * Project an existing JobPosting record onto the FormData-shaped
+ * string map that `prevValues` uses. Drives initial render of the
+ * edit page. The shape mirrors the field names on the form
+ * exactly so a single `v.<name>` lookup works for both create-mode
+ * (state.prevValues) and edit-mode (this map).
+ */
+function jobToFormMap(job: ExistingJob): Record<string, string> {
+  return {
+    companyId: job.companyId,
+    title: job.title,
+    description: job.description ?? "",
+    responsibilities: job.responsibilities ?? "",
+    requirements: job.requirements ?? "",
+    benefits: job.benefits ?? "",
+    profileMode: job.profileMode,
+    employmentType: job.employmentType,
+    workMode: job.workMode,
+    seniorityLevel: job.seniorityLevel,
+    locations: job.locations.join(", "),
+    audience: job.audience,
+    experienceMin: job.experienceMin?.toString() ?? "",
+    experienceMax: job.experienceMax?.toString() ?? "",
+    salaryMin: job.salaryMin ?? "",
+    salaryMax: job.salaryMax ?? "",
+    salaryHidden: job.salaryHidden ? "true" : "",
+    applicationUrl: job.applicationUrl ?? "",
+    applicationEmail: job.applicationEmail ?? "",
+    evDomainSlugs: job.evDomainSlugs.join(", "),
+    skillNames: job.skillNames.join(", "),
+  };
 }

@@ -4,9 +4,9 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/select";
 import { FieldError } from "@/components/ui/field-error";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { JDAssistant } from "@/components/jobs/JDAssistant";
 import {
   createJob,
@@ -234,48 +234,47 @@ export function EmployerJobForm({ evDomains }: Props) {
           <Label htmlFor="description">
             Description{" "}
             <span className="text-hint font-normal text-emce-text-sec">
-              (min 20 chars — required)
+              (min 20 chars — required; bold / italic / lists supported)
             </span>
           </Label>
-          <Textarea
+          <RichTextEditor
             id="description"
             name="description"
-            rows={6}
-            required
-            minLength={20}
             defaultValue={v.description ?? ""}
             placeholder="Describe the role, your team, and what success looks like."
-            aria-invalid={!!e.description}
+            minHeight={180}
+            required
+            ariaInvalid={!!e.description}
           />
           <FieldError error={e.description} />
         </div>
         <div className="sm:col-span-2">
           <Label htmlFor="responsibilities">Responsibilities</Label>
-          <Textarea
+          <RichTextEditor
             id="responsibilities"
             name="responsibilities"
-            rows={4}
             defaultValue={v.responsibilities ?? ""}
             placeholder="• ..."
+            minHeight={140}
           />
         </div>
         <div className="sm:col-span-2">
           <Label htmlFor="requirements">Requirements</Label>
-          <Textarea
+          <RichTextEditor
             id="requirements"
             name="requirements"
-            rows={4}
             defaultValue={v.requirements ?? ""}
             placeholder="• ..."
+            minHeight={140}
           />
         </div>
         <div className="sm:col-span-2">
           <Label htmlFor="benefits">Benefits</Label>
-          <Textarea
+          <RichTextEditor
             id="benefits"
             name="benefits"
-            rows={3}
             defaultValue={v.benefits ?? ""}
+            minHeight={100}
           />
         </div>
 
