@@ -176,6 +176,17 @@ export async function moveStage(formData: FormData) {
     channels: ["IN_APP", "EMAIL"],
   });
 
+  // Wave C #23 — fire STAGE_CHANGED automations. Best-effort.
+  try {
+    const { evaluateAutomations } = await import("@/server/automations/engine");
+    await evaluateAutomations({
+      applicationId: id,
+      trigger: "STAGE_CHANGED",
+      fromStage: application.stage,
+      toStage,
+    });
+  } catch {/* engine logs its own errors */}
+
   revalidatePath(`/employer/jobs/${application.job.id}/ats`);
   revalidatePath(`/employer/applications/${id}`);
 }

@@ -203,6 +203,19 @@ export async function applyToJob(formData: FormData) {
     groupKey: `application.received:${jobId}`,
   });
 
+  // Wave C #23 — fire automation rules. Best-effort: an automation
+  // failure must NOT block the candidate's apply. Engine logs its own
+  // errors per-rule.
+  try {
+    const { evaluateAutomations } = await import("@/server/automations/engine");
+    await evaluateAutomations({
+      applicationId: application.id,
+      trigger: "APPLICATION_RECEIVED",
+    });
+  } catch (err) {
+    logger.warn({ err, applicationId: application.id }, "[applyToJob] automation evaluation failed");
+  }
+
   revalidatePath("/me/applications");
   redirect("/me/applications?notice=" + encodeURIComponent("Application submitted"));
 }
