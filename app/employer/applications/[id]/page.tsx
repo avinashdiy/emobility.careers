@@ -8,6 +8,8 @@ import { Button } from "@/components/ui/button";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Badge } from "@/components/ui/badge";
+// Wave B #17 — AI applicant summary
+import { ensureApplicationSummary, refreshApplicationSummary } from "@/server/ai-summary/actions";
 import { Avatar } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/select";
@@ -101,6 +103,20 @@ export default async function ApplicationDetail({
   const c = application.candidate;
   const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ");
   const resumeHref = c.resumeUrl ? await getResumeDownloadUrl({ applicationId: application.id }) : null;
+
+  // Wave B #17 — lazy-generate the AI applicant summary the first
+  // time a recruiter opens the application. Bounded latency via
+  // gpt-4o-mini; we await inline (the page is server-rendered
+  // anyway). Subsequent opens hit the cached row.
+  let aiSummary = application.aiSummary;
+  let aiSummaryAt = application.aiSummaryAt;
+  if (!aiSummary) {
+    const r = await ensureApplicationSummary(application.id);
+    if (r.summary) {
+      aiSummary = r.summary;
+      aiSummaryAt = new Date();
+    }
+  }
 
   const jobAssessments = await db.assessment.findMany({
     where: { jobId: application.job.id },
@@ -303,6 +319,31 @@ export default async function ApplicationDetail({
               )}
             </div>
           </div>
+
+          {/* Wave B #17 — AI applicant summary. Lazily generated on
+              first open; recruiter can refresh after a stage change
+              or once the candidate's profile shows new content. */}
+          {aiSummary && (
+            <div className="mt-4 rounded-md border border-emce-mid/40 bg-emce-light-soft/40 p-3">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emce-mid-muted">
+                  ✨ AI summary
+                  {aiSummaryAt && (
+                    <span className="ml-2 font-normal normal-case text-emce-text-muted">
+                      {relativeTime(aiSummaryAt)}
+                    </span>
+                  )}
+                </p>
+                <form action={refreshApplicationSummary}>
+                  <input type="hidden" name="applicationId" value={application.id} />
+                  <SubmitButton variant="ghost" size="sm" pendingLabel="…">
+                    Refresh
+                  </SubmitButton>
+                </form>
+              </div>
+              <p className="mt-2 text-body text-emce-text">{aiSummary}</p>
+            </div>
+          )}
 
           {/*
             Contact row — unconditional. The candidate has applied to
