@@ -10,6 +10,7 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { getMentorBySlug, getMentorSlots } from "@/server/mentorship/queries";
 import { BookingDialog } from "@/components/mentorship/BookingDialog";
 import { PriceLabel } from "@/components/mentorship/PriceLabel";
+import { htmlOrFallback } from "@/lib/cms/job-sanitize";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -72,7 +73,10 @@ export default async function MentorPublicPage({ params }: { params: Promise<{ s
 
             <Card>
               <h2 className="text-section text-emce-text">About</h2>
-              <p className="mt-2 whitespace-pre-line text-sm text-emce-text">{mentor.bio}</p>
+              <div
+                className="prose prose-sm mt-2 max-w-none text-sm text-emce-text"
+                dangerouslySetInnerHTML={{ __html: htmlOrFallback(mentor.bio) }}
+              />
               {mentor.languages.length > 0 && (
                 <p className="mt-3 text-sm text-emce-text-sec">
                   <strong className="text-emce-text">Languages:</strong> {mentor.languages.join(", ")}

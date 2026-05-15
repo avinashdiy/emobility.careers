@@ -11,6 +11,7 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { notificationsQueue } from "@/lib/queues";
 import { objectKey, presignUpload, publicUrl } from "@/lib/storage";
 import { EventType, EventStatus } from "@prisma/client";
+import { plainTextLength, sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
 import type { FormState } from "@/lib/form-state";
 
 // ─── Auth helpers ────────────────────────────────────────────
@@ -52,7 +53,9 @@ async function requireUser() {
 const EventSchema = z.object({
   id: z.string().optional(),
   title: z.string().trim().min(5).max(160),
-  description: z.string().trim().min(20).max(20_000),
+  // Description is now HTML from the rich-text editor. The 20-char
+  // readable-text floor is enforced after sanitise via plainTextLength.
+  description: z.string().min(1, "Description is required.").max(40_000),
   eventType: z.nativeEnum(EventType),
   status: z.nativeEnum(EventStatus).default(EventStatus.DRAFT),
   // ISO datetime strings; `datetime-local` inputs send "YYYY-MM-DDTHH:mm".
@@ -94,6 +97,12 @@ export async function saveEvent(formData: FormData): Promise<FormState> {
     };
   }
   const data = parsed.data;
+
+  const descriptionHtml = sanitizeRichTextHtml(data.description);
+  if (plainTextLength(descriptionHtml) < 20) {
+    return { ok: false, message: "Description should be at least 20 characters of readable text." };
+  }
+  data.description = descriptionHtml;
 
   // Sanity: end after start, registration deadline before start
   if (data.endsAt && data.endsAt < data.startsAt) {

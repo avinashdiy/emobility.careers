@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { htmlOrFallback } from "@/lib/cms/job-sanitize";
 import { logger } from "@/lib/logger";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -537,25 +538,7 @@ export default async function PublicJobDetail({
   );
 }
 
-/**
- * Job-body fields now land in the DB as sanitised HTML (post-2026-05
- * — RichTextEditor + lib/cms/job-sanitize.ts on the write path).
- * Rows created before that switch are plain text with `\n`-only
- * separators. Detect "has tags" by a cheap regex check; for the
- * plain-text path we escape + wrap so `whitespace-pre-line`
- * styling kicks in inside the prose container.
- */
-function htmlOrFallback(body: string | null | undefined): string {
-  if (!body) return "";
-  // If the string already looks like HTML (contains a tag), trust
-  // the sanitiser-blessed write-path output and pass through.
-  if (/<[a-z][^>]*>/i.test(body)) return body;
-  // Legacy plain-text body: HTML-escape + wrap in a <p> with
-  // line-break preservation so the visual layout matches.
-  const escaped = body
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-  return `<p style="white-space:pre-line">${escaped}</p>`;
-}
+// The htmlOrFallback helper used to be inlined here. Moved to
+// `@/lib/cms/job-sanitize` so every rich-text surface (articles,
+// mentor bios, competitions, events, fairs) can share one
+// implementation. Imported at the top of this file.

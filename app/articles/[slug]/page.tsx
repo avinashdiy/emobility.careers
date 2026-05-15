@@ -11,6 +11,7 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { env } from "@/lib/env";
 import { relativeTime } from "@/lib/utils";
+import { htmlOrFallback } from "@/lib/cms/job-sanitize";
 
 export const dynamic = "force-dynamic";
 
@@ -276,14 +277,17 @@ export default async function ArticleDetailPage({
             />
           </div>
 
-          {/* Body — preserves linebreaks; Markdown rendering can be
-              swapped in here when the editor moves beyond plain
-              text. The `prose` typography plugin gives us
-              article-grade reading typography (drop caps, h2 sizing,
-              link colour, blockquote indent) for free. */}
-          <div className="prose prose-emce mt-8 max-w-none whitespace-pre-line text-body text-emce-text">
-            {article.body}
-          </div>
+          {/* Body — authored via the rich-text editor (post 2026-05)
+              and stored as sanitised HTML. Legacy rows authored with
+              the previous plain-text textarea pass through
+              `htmlOrFallback` which preserves `\n` line breaks.
+              The `prose` typography plugin gives article-grade
+              reading typography (drop caps, h2 sizing, link colour,
+              blockquote indent) for free. */}
+          <div
+            className="prose prose-emce mt-8 max-w-none text-body text-emce-text"
+            dangerouslySetInnerHTML={{ __html: htmlOrFallback(article.body) }}
+          />
 
           {/* Tags */}
           {article.tags.length > 0 && (

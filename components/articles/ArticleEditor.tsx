@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { NativeSelect } from "@/components/ui/select";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Alert } from "@/components/ui/alert";
@@ -177,20 +178,17 @@ export function ArticleEditor({
           <Label htmlFor="body" required>
             Body
           </Label>
-          <Textarea
+          <RichTextEditor
             id="body"
             name="body"
-            rows={20}
-            required
-            minLength={100}
             defaultValue={initial?.body ?? ""}
-            placeholder={`Open with the hook — what does this answer that nobody else explains well?\n\nThen the meat: structure, diagrams (paste image URLs inline as Markdown ![](url)), worked examples.\n\nClose with takeaways + a call-to-action (apply for relevant jobs / explore companies).`}
-            className="font-mono text-sm"
+            placeholder="Open with the hook — what does this answer that nobody else explains well? Then the meat: structure, worked examples. Close with takeaways."
+            required
+            minHeight={420}
           />
           <p className="mt-1 text-hint text-emce-text-muted">
-            Plain text or Markdown. Reading time auto-computed at save
-            (~220 wpm). Body is rendered via the `prose` typography
-            plugin on the public page.
+            Reading time auto-computed at save (~220 wpm). Use headings to
+            break up long sections. Links open in a new tab.
           </p>
         </div>
 

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { FieldError } from "@/components/ui/field-error";
 import { createCompetitionDraft, updateCompetitionDraft } from "@/server/competitions/actions";
@@ -93,7 +94,15 @@ export function CompetitionDraftForm({ hostCompanyId, initial, evDomains }: Prop
         </div>
         <div>
           <Label htmlFor="description">Description</Label>
-          <Textarea id="description" name="description" required minLength={50} maxLength={20000} rows={6} defaultValue={initial?.description ?? ""} aria-invalid={!!state.fieldErrors?.description} />
+          <RichTextEditor
+            id="description"
+            name="description"
+            defaultValue={initial?.description ?? ""}
+            placeholder="What's the challenge? Who's it for? What's at stake?"
+            required
+            minHeight={220}
+            ariaInvalid={!!state.fieldErrors?.description}
+          />
           <FieldError error={state.fieldErrors?.description} />
         </div>
         <div>
@@ -107,15 +116,19 @@ export function CompetitionDraftForm({ hostCompanyId, initial, evDomains }: Prop
           </NativeSelect>
         </div>
 
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div>
-            <Label htmlFor="eligibility">Eligibility (optional)</Label>
-            <Textarea id="eligibility" name="eligibility" rows={3} maxLength={2000} defaultValue={initial?.eligibility ?? ""} />
-          </div>
-          <div>
-            <Label htmlFor="rules">Rules (optional)</Label>
-            <Textarea id="rules" name="rules" rows={3} maxLength={20000} defaultValue={initial?.rules ?? ""} />
-          </div>
+        <div>
+          <Label htmlFor="eligibility">Eligibility (optional)</Label>
+          <Textarea id="eligibility" name="eligibility" rows={3} maxLength={2000} defaultValue={initial?.eligibility ?? ""} placeholder="Who can participate? Year of study, prior experience, etc." />
+        </div>
+        <div>
+          <Label htmlFor="rules">Rules (optional)</Label>
+          <RichTextEditor
+            id="rules"
+            name="rules"
+            defaultValue={initial?.rules ?? ""}
+            placeholder="Submission format, deadlines, judging criteria, code of conduct…"
+            minHeight={180}
+          />
         </div>
 
         <div className="rounded-emce border border-emce-border p-3">

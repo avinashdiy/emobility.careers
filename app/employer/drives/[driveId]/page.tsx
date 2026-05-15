@@ -8,8 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/select";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import {
   updateDrive,
@@ -230,12 +230,12 @@ export default async function EditDrivePage({
             </div>
             <div className="sm:col-span-2">
               <Label htmlFor="description">Description</Label>
-              <Textarea
+              <RichTextEditor
                 id="description"
                 name="description"
-                rows={6}
-                maxLength={8000}
                 defaultValue={drive.description ?? ""}
+                placeholder="Schedule, expectations, what to bring, dress code, etc."
+                minHeight={200}
               />
             </div>
             <div className="sm:col-span-2">

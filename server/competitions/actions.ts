@@ -12,6 +12,7 @@ import { withUniqueSlug } from "@/lib/slug";
 import { notificationsQueue } from "@/lib/queues";
 import { sendMail } from "@/lib/mail";
 import { env } from "@/lib/env";
+import { plainTextLength, sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
 import type { FormState } from "@/lib/form-state";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { logger } from "@/lib/logger";
@@ -58,12 +59,15 @@ const CompetitionDraftSchema = z.object({
   hostCompanyId: z.string().min(1),
   title: z.string().min(8).max(160),
   tagline: z.string().max(200).optional(),
-  description: z.string().min(50).max(20000),
+  // Description + rules are now HTML from the rich-text editor.
+  // Zod can't measure readable-char length on raw HTML — see the
+  // sanitise + plainTextLength check after parse.
+  description: z.string().min(1, "Description is required.").max(40000),
   type: z.enum(["HACKATHON", "CASE_STUDY", "QUIZ", "DESIGN_CHALLENGE", "INNOVATION", "INTERNSHIP_HUNT", "IDEATHON", "RESEARCH"]),
   evDomainSlugs: z.array(z.string()).max(10).default([]),
   bannerImageUrl: z.string().url().optional().or(z.literal("")),
   eligibility: z.string().max(2000).optional(),
-  rules: z.string().max(20000).optional(),
+  rules: z.string().max(40000).optional(),
   isTeamBased: z.coerce.boolean().default(false),
   // Cap raised from 20 → 50 in 2026-05 to support 25-person eBAJA
   // teams and similar large-format events. The Competition host
@@ -107,6 +111,15 @@ export async function createCompetitionDraft(_prev: FormState & { id?: string },
     return { ok: false, message: "Please fix the errors below.", fieldErrors: zodErrorsToFieldErrors(parsed.error.flatten()) };
   }
   await assertHostsCompany(session.user.id, parsed.data.hostCompanyId);
+  const descriptionHtml = sanitizeRichTextHtml(parsed.data.description);
+  if (plainTextLength(descriptionHtml) < 50) {
+    return {
+      ok: false,
+      message: "Description should be at least 50 characters of readable text.",
+      fieldErrors: { description: "Tell participants what this competition is about." },
+    };
+  }
+  const rulesHtml = parsed.data.rules ? sanitizeRichTextHtml(parsed.data.rules) : undefined;
   if (parsed.data.endsAt <= parsed.data.startsAt) {
     return { ok: false, message: "End must be after start." };
   }
@@ -120,12 +133,12 @@ export async function createCompetitionDraft(_prev: FormState & { id?: string },
         slug,
         title: parsed.data.title,
         tagline: parsed.data.tagline,
-        description: parsed.data.description,
+        description: descriptionHtml,
         type: parsed.data.type,
         evDomainSlugs: parsed.data.evDomainSlugs,
         bannerImageUrl: parsed.data.bannerImageUrl || null,
         eligibility: parsed.data.eligibility,
-        rules: parsed.data.rules,
+        rules: rulesHtml,
         isTeamBased: parsed.data.isTeamBased,
         minTeamSize: parsed.data.isTeamBased ? parsed.data.minTeamSize ?? 1 : null,
         maxTeamSize: parsed.data.isTeamBased ? parsed.data.maxTeamSize ?? 4 : null,
@@ -177,17 +190,26 @@ export async function updateCompetitionDraft(id: string, _prev: FormState, formD
     prizeCurrency: formData.get("prizeCurrency") || "INR",
   });
   if (!parsed.success) return { ok: false, message: "Invalid input.", fieldErrors: zodErrorsToFieldErrors(parsed.error.flatten()) };
+  const descriptionHtml = sanitizeRichTextHtml(parsed.data.description);
+  if (plainTextLength(descriptionHtml) < 50) {
+    return {
+      ok: false,
+      message: "Description should be at least 50 characters of readable text.",
+      fieldErrors: { description: "Tell participants what this competition is about." },
+    };
+  }
+  const rulesHtml = parsed.data.rules ? sanitizeRichTextHtml(parsed.data.rules) : undefined;
   await db.competition.update({
     where: { id },
     data: {
       title: parsed.data.title,
       tagline: parsed.data.tagline,
-      description: parsed.data.description,
+      description: descriptionHtml,
       type: parsed.data.type,
       evDomainSlugs: parsed.data.evDomainSlugs,
       bannerImageUrl: parsed.data.bannerImageUrl || null,
       eligibility: parsed.data.eligibility,
-      rules: parsed.data.rules,
+      rules: rulesHtml,
       isTeamBased: parsed.data.isTeamBased,
       minTeamSize: parsed.data.isTeamBased ? parsed.data.minTeamSize ?? 1 : null,
       maxTeamSize: parsed.data.isTeamBased ? parsed.data.maxTeamSize ?? 4 : null,

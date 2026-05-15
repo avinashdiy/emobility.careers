@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import { PageHeader, SectionTitle } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -112,8 +112,13 @@ export default async function CampusDrivesPage({
               <Input id="bannerImageUrl" name="bannerImageUrl" type="url" placeholder="https://…" />
             </div>
             <div className="sm:col-span-2">
-              <Label htmlFor="description">Description (markdown-friendly)</Label>
-              <Textarea id="description" name="description" rows={5} maxLength={8000} />
+              <Label htmlFor="description">Description</Label>
+              <RichTextEditor
+                id="description"
+                name="description"
+                placeholder="Schedule, expectations, what to bring, dress code, etc."
+                minHeight={180}
+              />
             </div>
             <div className="sm:col-span-2">
               <Button type="submit">Create drive</Button>

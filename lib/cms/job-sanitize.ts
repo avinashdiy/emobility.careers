@@ -84,3 +84,47 @@ export function plainTextLength(html: string | null | undefined): number {
     .replace(/\s+/g, " ")
     .trim().length;
 }
+
+/**
+ * Render-time helper for any field that USED TO BE plain text and
+ * is now stored as sanitised HTML.
+ *
+ *   • Post-2026-05: write paths run user input through the
+ *     RichTextEditor + `sanitizeRichTextHtml`, so the column holds
+ *     HTML. Pass-through.
+ *   • Legacy rows (jobs, articles, mentor bios, competition
+ *     descriptions) still hold plain text with `\n` separators.
+ *     We HTML-escape + wrap them in a `<p>` with
+ *     `white-space:pre-line` so paragraphs render the same as
+ *     they did before the migration.
+ *
+ * Returns a string that the caller should drop into
+ * `dangerouslySetInnerHTML`. The HTML branch is already sanitiser-
+ * blessed at write time, so this helper does NOT re-sanitise.
+ *
+ * Always pair with a `prose` wrapper on the parent so headings /
+ * lists / blockquotes pick up the typography ramp.
+ */
+export function htmlOrFallback(body: string | null | undefined): string {
+  if (!body) return "";
+  // Looks like HTML (contains any tag) → trust the write-path
+  // sanitiser and pass through.
+  if (/<[a-z][^>]*>/i.test(body)) return body;
+  // Legacy plain text — escape, then wrap.
+  const escaped = body
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+  return `<p style="white-space:pre-line">${escaped}</p>`;
+}
+
+/**
+ * Alias of `sanitizeJobHtml` for non-job rich-text surfaces
+ * (articles, mentor bios, competition descriptions, events,
+ * fairs). The allowlist is identical because the same toolbar
+ * (bold / italic / h2-3 / lists / links) drives every editor.
+ * If a future surface needs a wider / narrower allowlist, fork
+ * this helper rather than relaxing the job version.
+ */
+export const sanitizeRichTextHtml = sanitizeJobHtml;

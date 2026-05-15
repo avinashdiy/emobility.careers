@@ -13,6 +13,7 @@ import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { VenueMap } from "@/components/recruitment-drives/VenueMap";
 import { env } from "@/lib/env";
 import { formatSalaryRange } from "@/lib/utils";
+import { htmlOrFallback } from "@/lib/cms/job-sanitize";
 
 export const dynamic = "force-dynamic";
 
@@ -223,9 +224,10 @@ export default async function FairLandingPage({
           {drive.description && (
             <Card className="p-6">
               <h2 className="text-section text-emce-text">About this drive</h2>
-              <p className="mt-3 whitespace-pre-line text-body text-emce-text-sec">
-                {drive.description}
-              </p>
+              <div
+                className="prose prose-sm mt-3 max-w-none text-body text-emce-text-sec"
+                dangerouslySetInnerHTML={{ __html: htmlOrFallback(drive.description) }}
+              />
             </Card>
           )}
 

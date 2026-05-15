@@ -3,9 +3,9 @@
 import { useActionState } from "react";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { FieldError } from "@/components/ui/field-error";
 import { upsertMentorProfile } from "@/server/mentorship/actions";
@@ -59,16 +59,14 @@ export function MentorProfileForm({ initial, evDomains }: Props) {
         </div>
         <div>
           <Label htmlFor="bio">Bio</Label>
-          <Textarea
+          <RichTextEditor
             id="bio"
             name="bio"
             defaultValue={initial.bio ?? ""}
-            rows={5}
-            minLength={50}
-            maxLength={4000}
-            required
             placeholder="What you've built. What kind of mentees you'd love to help."
-            aria-invalid={!!state.fieldErrors?.bio}
+            required
+            minHeight={200}
+            ariaInvalid={!!state.fieldErrors?.bio}
           />
           <FieldError error={state.fieldErrors?.bio} />
         </div>

@@ -10,6 +10,7 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { getCompetitionBySlug, getMyRegistration } from "@/server/competitions/queries";
 import { formatMinor } from "@/components/mentorship/PriceLabel";
 import { breadcrumbJsonLd, competitionEventJsonLd } from "@/lib/seo/schemas";
+import { htmlOrFallback } from "@/lib/cms/job-sanitize";
 
 export async function generateMetadata({ params }: { params: Promise<{ slug: string }> }) {
   const { slug } = await params;
@@ -81,7 +82,10 @@ export default async function CompetitionDetailPage({ params }: { params: Promis
 
             <Card>
               <h2 className="text-section text-emce-text">About</h2>
-              <p className="mt-2 whitespace-pre-line text-sm text-emce-text">{c.description}</p>
+              <div
+                className="prose prose-sm mt-2 max-w-none text-sm text-emce-text"
+                dangerouslySetInnerHTML={{ __html: htmlOrFallback(c.description) }}
+              />
             </Card>
 
             {c.eligibility && (
@@ -94,7 +98,10 @@ export default async function CompetitionDetailPage({ params }: { params: Promis
             {c.rules && (
               <Card>
                 <h2 className="text-section text-emce-text">Rules</h2>
-                <p className="mt-2 whitespace-pre-line text-sm text-emce-text">{c.rules}</p>
+                <div
+                  className="prose prose-sm mt-2 max-w-none text-sm text-emce-text"
+                  dangerouslySetInnerHTML={{ __html: htmlOrFallback(c.rules) }}
+                />
               </Card>
             )}
 

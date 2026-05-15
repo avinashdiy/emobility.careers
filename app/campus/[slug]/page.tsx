@@ -9,6 +9,7 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import type { Metadata } from "next";
 import { env } from "@/lib/env";
+import { htmlOrFallback } from "@/lib/cms/job-sanitize";
 
 export async function generateMetadata({
   params,
@@ -29,10 +30,17 @@ export async function generateMetadata({
   const dateStr = drive.driveDate.toLocaleDateString("en-IN", {
     day: "numeric", month: "short", year: "numeric",
   });
+  // Strip HTML before slicing so meta-description / OG cards don't
+  // leak `<p>` / `<strong>` markup from the rich-text body.
+  const plainDescription = drive.description
+    ?.replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   return {
     title: `${drive.title} — ${drive.institution} · ${drive.company.name}`,
     description:
-      drive.description?.slice(0, 200) ??
+      plainDescription?.slice(0, 200) ??
       `Campus drive at ${drive.institution}${drive.city ? `, ${drive.city}` : ""} on ${dateStr}.`,
     alternates: { canonical: `${env.NEXT_PUBLIC_APP_URL}/campus/${slug}` },
   };
@@ -172,9 +180,10 @@ export default async function DriveLandingPage({
           {drive.description && (
             <Card>
               <h2 className="text-section text-emce-text">About this drive</h2>
-              <div className="mt-3 whitespace-pre-line text-body text-emce-text">
-                {drive.description}
-              </div>
+              <div
+                className="prose prose-sm mt-3 max-w-none text-body text-emce-text"
+                dangerouslySetInnerHTML={{ __html: htmlOrFallback(drive.description) }}
+              />
             </Card>
           )}
 

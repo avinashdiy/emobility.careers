@@ -9,6 +9,7 @@ import { withUniqueSlug } from "@/lib/slug";
 import { audit } from "@/lib/audit";
 import { env } from "@/lib/env";
 import { CampusDriveStatus } from "@prisma/client";
+import { sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
 
 /**
  * Campus drive CRUD. Drives are owned by Companies — same authorization
@@ -61,7 +62,9 @@ const createSchema = z.object({
   contactName: z.string().max(120).optional(),
   contactEmail: z.string().email().optional().or(z.literal("")),
   contactPhone: z.string().max(40).optional(),
-  description: z.string().max(8000).optional(),
+  // Description is HTML from the rich-text editor — allowlist sanitiser
+  // runs after parse. Ceiling raised from 8k → 40k to fit the markup.
+  description: z.string().max(40_000).optional(),
   bannerImageUrl: z.string().url().optional().or(z.literal("")),
   maxCandidates: z.coerce.number().int().min(0).max(10000).optional(),
 });
@@ -104,7 +107,7 @@ export async function createDrive(formData: FormData) {
           contactName: data.contactName || null,
           contactEmail: data.contactEmail || null,
           contactPhone: data.contactPhone || null,
-          description: data.description || null,
+          description: data.description ? sanitizeRichTextHtml(data.description) || null : null,
           bannerImageUrl: data.bannerImageUrl || null,
           maxCandidates: data.maxCandidates ?? null,
           // Auto-fill landingPageUrl from the slug. Recruiters can override
@@ -164,7 +167,7 @@ export async function updateDrive(formData: FormData) {
       contactName: data.contactName || null,
       contactEmail: data.contactEmail || null,
       contactPhone: data.contactPhone || null,
-      description: data.description || null,
+      description: data.description ? sanitizeRichTextHtml(data.description) || null : null,
       bannerImageUrl: data.bannerImageUrl || null,
       maxCandidates: data.maxCandidates ?? null,
       landingPageUrl: finalLandingUrl,

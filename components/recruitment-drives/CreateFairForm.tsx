@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { SubmitButton } from "@/components/ui/submit-button";
 import {
   createRecruitmentDrive,
@@ -76,12 +76,11 @@ export function CreateFairForm() {
           </div>
           <div>
             <Label htmlFor="description">About this fair</Label>
-            <Textarea
+            <RichTextEditor
               id="description"
               name="description"
-              rows={5}
-              maxLength={20000}
               placeholder="What candidates can expect — keynotes, on-site interviews, networking, prize draws."
+              minHeight={180}
             />
           </div>
 

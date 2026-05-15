@@ -6,9 +6,9 @@ import { ImageIcon, X } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import {
   saveEvent,
   cancelEvent,
@@ -136,19 +136,14 @@ export function EventEditor({ event }: { event?: EventForEdit }) {
 
         <div>
           <Label htmlFor="description">Description</Label>
-          <Textarea
+          <RichTextEditor
             id="description"
             name="description"
-            required
-            minLength={20}
-            maxLength={20_000}
-            rows={6}
             defaultValue={event?.description ?? ""}
             placeholder="What you'll cover, who should attend, what attendees will walk away with."
+            required
+            minHeight={220}
           />
-          <p className="mt-1 text-hint text-emce-text-muted">
-            Markdown isn&apos;t parsed yet — plain text only.
-          </p>
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">

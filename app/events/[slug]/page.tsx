@@ -18,6 +18,7 @@ import {
 } from "@/server/events/actions";
 import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { env } from "@/lib/env";
+import { htmlOrFallback } from "@/lib/cms/job-sanitize";
 
 export async function generateMetadata({
   params,
@@ -38,9 +39,18 @@ export async function generateMetadata({
   if (!event || event.status === "DRAFT") {
     return { title: "Event", robots: { index: false, follow: false } };
   }
+  // Strip HTML tags before slicing — descriptions are now rich text,
+  // so `<p>` / `<strong>` / `<a>` would otherwise leak into the
+  // meta-description tag and OG / Twitter cards.
+  const metaDescription = event.description
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 200);
   return {
     title: `${event.title} — ${event.company.name}`,
-    description: event.description.slice(0, 200),
+    description: metaDescription,
     openGraph: { images: event.coverImageUrl ? [{ url: event.coverImageUrl }] : undefined },
     alternates: { canonical: `${env.NEXT_PUBLIC_APP_URL}/events/${slug}` },
   };
@@ -188,7 +198,12 @@ export default async function EventDetailPage({
             <ShareDropdown
               url={`${env.NEXT_PUBLIC_APP_URL}/events/${event.slug}`}
               title={`${event.title} — ${event.company.name}`}
-              description={event.description.slice(0, 200)}
+              description={event.description
+                .replace(/<[^>]+>/g, " ")
+                .replace(/&nbsp;/g, " ")
+                .replace(/\s+/g, " ")
+                .trim()
+                .slice(0, 200)}
               label="Share event"
             />
           </div>
@@ -249,9 +264,10 @@ export default async function EventDetailPage({
 
         <Card className="mt-3">
           <h2 className="text-section text-emce-text">About this event</h2>
-          <div className="mt-3 whitespace-pre-line text-body text-emce-text-sec">
-            {event.description}
-          </div>
+          <div
+            className="prose prose-sm mt-3 max-w-none text-body text-emce-text-sec"
+            dangerouslySetInnerHTML={{ __html: htmlOrFallback(event.description) }}
+          />
         </Card>
 
         {/* Registration block */}

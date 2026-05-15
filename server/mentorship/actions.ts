@@ -9,6 +9,7 @@ import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { notificationsQueue } from "@/lib/queues";
+import { plainTextLength, sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
 import {
   createRazorpayOrder,
   verifyCheckoutSignature,
@@ -30,7 +31,11 @@ async function requireUser() {
 
 const MentorProfileSchema = z.object({
   headline: z.string().min(8).max(140),
-  bio: z.string().min(50).max(4000),
+  // Bio comes from the rich-text editor as HTML now. The Zod gate
+  // only enforces presence + a generous markup ceiling; the real
+  // "≥ 50 readable chars" floor runs on the sanitised plain-text
+  // length below.
+  bio: z.string().min(1, "Bio is required.").max(8000),
   expertiseTags: z.array(z.string().min(1).max(30)).max(20).default([]),
   evDomainSlugs: z.array(z.string().min(1)).max(10).default([]),
   languages: z.array(z.string().min(2).max(8)).max(10).default([]),
@@ -66,6 +71,14 @@ export async function upsertMentorProfile(_prev: FormState, formData: FormData):
   if (!parsed.success) {
     return { ok: false, message: "Please fix the errors below.", fieldErrors: zodErrorsToFieldErrors(parsed.error.flatten()) };
   }
+  const bioHtml = sanitizeRichTextHtml(parsed.data.bio);
+  if (plainTextLength(bioHtml) < 50) {
+    return {
+      ok: false,
+      message: "Bio should be at least 50 characters of readable text.",
+      fieldErrors: { bio: "Tell us a bit more about your background." },
+    };
+  }
   if (!parsed.data.acceptingFree && !parsed.data.acceptingPaid) {
     return { ok: false, message: "Pick at least one of free or paid sessions." };
   }
@@ -73,10 +86,11 @@ export async function upsertMentorProfile(_prev: FormState, formData: FormData):
     return { ok: false, message: "Set a non-zero price for paid sessions." };
   }
 
+  const profileData = { ...parsed.data, bio: bioHtml };
   await db.mentorProfile.upsert({
     where: { userId },
-    create: { userId, ...parsed.data },
-    update: parsed.data,
+    create: { userId, ...profileData },
+    update: profileData,
   });
   revalidatePath("/me/mentor");
   return { ok: true, message: "Saved." };

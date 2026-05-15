@@ -13,6 +13,7 @@ import { withUniqueSlug } from "@/lib/slug";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { notificationsQueue } from "@/lib/queues";
 import { s3, buckets, publicUrl, objectKey } from "@/lib/storage";
+import { sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
 import type { FormState } from "@/lib/form-state";
 
 /**
@@ -91,7 +92,10 @@ const latLngField = z
 const CreateDriveSchema = z.object({
   title: z.string().trim().min(4).max(160),
   tagline: z.string().trim().max(200).optional().or(z.literal("")),
-  description: z.string().trim().max(20_000).optional().or(z.literal("")),
+  // Description is now HTML from the rich-text editor. Allowlist
+  // sanitiser runs after parse; we leave the field optional + bump
+  // the max to accommodate the extra markup overhead.
+  description: z.string().max(40_000).optional().or(z.literal("")),
   city: z.string().trim().min(2).max(120),
   state: z.string().trim().max(120).optional().or(z.literal("")),
   country: z.string().trim().min(2).max(2).default("IN"),
@@ -141,6 +145,9 @@ export async function createRecruitmentDrive(
     if (parsed.data.endsAt < parsed.data.startsAt) {
       return { ok: false, message: "End date can't be before start date." };
     }
+    const descriptionHtml = parsed.data.description
+      ? sanitizeRichTextHtml(parsed.data.description)
+      : "";
 
     const drive = await withUniqueSlug(parsed.data.title, async (slug) =>
       db.recruitmentDrive.create({
@@ -148,7 +155,7 @@ export async function createRecruitmentDrive(
           slug,
           title: parsed.data.title,
           tagline: parsed.data.tagline || null,
-          description: parsed.data.description || null,
+          description: descriptionHtml || null,
           city: parsed.data.city,
           state: parsed.data.state || null,
           country: parsed.data.country,
@@ -219,13 +226,16 @@ export async function updateRecruitmentDrive(
     if (parsed.data.endsAt < parsed.data.startsAt) {
       return { ok: false, message: "End date can't be before start date." };
     }
+    const descriptionHtml = parsed.data.description
+      ? sanitizeRichTextHtml(parsed.data.description)
+      : "";
 
     const drive = await db.recruitmentDrive.update({
       where: { id: parsed.data.driveId },
       data: {
         title: parsed.data.title,
         tagline: parsed.data.tagline || null,
-        description: parsed.data.description || null,
+        description: descriptionHtml || null,
         city: parsed.data.city,
         state: parsed.data.state || null,
         country: parsed.data.country,

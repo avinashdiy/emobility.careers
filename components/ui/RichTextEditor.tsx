@@ -122,6 +122,22 @@ export function RichTextEditor({
           "prose prose-sm max-w-none focus:outline-none px-3 py-2.5 text-body text-emce-text",
         style: `min-height: ${minHeight}px`,
       },
+      // Word / Google Docs paste brings in `style="…"`, `class="…"`,
+      // and Office's `mso-*` markers that the server-side sanitiser
+      // strips on save. Stripping them here too means what the
+      // recruiter sees in the editor matches what gets saved — no
+      // "lost colour / font" surprise after publish.
+      transformPastedHTML(html) {
+        return html
+          // Drop MS Office conditional wrappers / namespace pollution
+          .replace(/<!--\[if[^\]]*\][\s\S]*?<!\[endif\]-->/gi, "")
+          .replace(/<\/?o:p\b[^>]*>/gi, "")
+          .replace(/<\/?v:[^>]+>/gi, "")
+          // Strip inline style + class attributes — the toolbar
+          // covers everything we want to keep semantically.
+          .replace(/\s(?:style|class|id|lang|dir)="[^"]*"/gi, "")
+          .replace(/\s(?:style|class|id|lang|dir)='[^']*'/gi, "");
+      },
     },
     onUpdate({ editor: e }) {
       const html = e.getHTML();

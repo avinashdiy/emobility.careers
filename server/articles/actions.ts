@@ -9,6 +9,10 @@ import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { withUniqueSlug } from "@/lib/slug";
 import { isRouterControlError } from "@/lib/server-action-errors";
+import {
+  plainTextLength,
+  sanitizeRichTextHtml,
+} from "@/lib/cms/job-sanitize";
 import type { FormState } from "@/lib/form-state";
 
 /**
@@ -36,9 +40,15 @@ async function requireAdmin() {
 /**
  * Reading-time estimate. Standard ~220 wpm for an engaged reader.
  * Floor at 1 min so even tiny snippets aren't reported as 0.
+ *
+ * Strips HTML tags first so that a body authored in the rich-text
+ * editor (lots of `<p>`/`<strong>`/`<a>` markup) reports the same
+ * minutes-to-read as the equivalent plain text — otherwise the
+ * editor switch silently doubled the count for the same content.
  */
 function estimateReadingTime(body: string): number {
-  const words = body.trim().split(/\s+/).filter(Boolean).length;
+  const text = body.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ");
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.round(words / 220));
 }
 
@@ -47,13 +57,20 @@ function estimateReadingTime(body: string): number {
 const ArticleSchema = z.object({
   title: z.string().trim().min(8).max(200),
   excerpt: z.string().trim().max(280).optional().or(z.literal("")),
-  body: z.string().trim().min(100, "Article body should be at least 100 characters."),
+  // Body now comes from the rich-text editor as HTML. Zod can't
+  // measure readable-character length on raw HTML (a `<p>` wrapper
+  // alone is 7 chars of markup), so we only enforce non-empty here
+  // and apply the real "≥ 100 readable chars" gate AFTER sanitise
+  // using `plainTextLength`.
+  body: z.string().min(1, "Article body is required."),
   coverImageUrl: z.string().url().optional().or(z.literal("")),
   categoryId: z.string().optional().or(z.literal("")),
   authorId: z.string().optional().or(z.literal("")),
   /// Comma- or newline-separated. We split + trim + dedupe + limit.
   tagsRaw: z.string().max(500).optional().or(z.literal("")),
 });
+
+const ARTICLE_BODY_MIN_READABLE = 100;
 
 function parseTags(raw: string | undefined): string[] {
   if (!raw) return [];
@@ -95,6 +112,14 @@ export async function createArticle(
       };
     }
 
+    const bodyHtml = sanitizeRichTextHtml(parsed.data.body);
+    if (plainTextLength(bodyHtml) < ARTICLE_BODY_MIN_READABLE) {
+      return {
+        ok: false,
+        message: `Article body should be at least ${ARTICLE_BODY_MIN_READABLE} characters of readable text.`,
+      };
+    }
+
     // Validate optional FK references upfront so the create doesn't
     // fail with an opaque Prisma error message.
     if (parsed.data.categoryId) {
@@ -118,14 +143,14 @@ export async function createArticle(
           slug,
           title: parsed.data.title,
           excerpt: parsed.data.excerpt || null,
-          body: parsed.data.body,
+          body: bodyHtml,
           coverImageUrl: parsed.data.coverImageUrl || null,
           categoryId: parsed.data.categoryId || null,
           // Default the author to the creating admin if they didn't
           // pick one — saves a click in the common case.
           authorId: parsed.data.authorId || session.user.id,
           tags: parseTags(parsed.data.tagsRaw ?? ""),
-          readingTimeMins: estimateReadingTime(parsed.data.body),
+          readingTimeMins: estimateReadingTime(bodyHtml),
           // Created as DRAFT; admin publishes via setArticleStatus.
           status: "DRAFT",
         },
@@ -178,6 +203,14 @@ export async function updateArticle(
       };
     }
 
+    const bodyHtml = sanitizeRichTextHtml(parsed.data.body);
+    if (plainTextLength(bodyHtml) < ARTICLE_BODY_MIN_READABLE) {
+      return {
+        ok: false,
+        message: `Article body should be at least ${ARTICLE_BODY_MIN_READABLE} characters of readable text.`,
+      };
+    }
+
     if (parsed.data.categoryId) {
       const cat = await db.articleCategory.findUnique({
         where: { id: parsed.data.categoryId },
@@ -198,13 +231,13 @@ export async function updateArticle(
       data: {
         title: parsed.data.title,
         excerpt: parsed.data.excerpt || null,
-        body: parsed.data.body,
+        body: bodyHtml,
         coverImageUrl: parsed.data.coverImageUrl || null,
         categoryId: parsed.data.categoryId || null,
         // Keep the existing author if the form didn't override.
         ...(parsed.data.authorId ? { authorId: parsed.data.authorId } : {}),
         tags: parseTags(parsed.data.tagsRaw ?? ""),
-        readingTimeMins: estimateReadingTime(parsed.data.body),
+        readingTimeMins: estimateReadingTime(bodyHtml),
       },
     });
 
