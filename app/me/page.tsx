@@ -10,11 +10,13 @@ import { Avatar } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { GradientHero } from "@/components/ui/gradient-hero";
 import { StatTile } from "@/components/ui/stat-tile";
+import { WhatsAppShareCard } from "@/components/profile/WhatsAppShareCard";
+import { env } from "@/lib/env";
 import { VerifyEmailBanner } from "@/components/auth/VerifyEmailBanner";
 import { ProfileCompletenessCard } from "@/components/profile/ProfileCompletenessCard";
 import { ProductTour } from "@/components/onboarding/ProductTour";
 import { ApplicationTracker } from "@/components/candidate/ApplicationTracker";
-import { evaluateProfile } from "@/lib/profile-completeness";
+import { evaluateProfile, COMPLETENESS_THRESHOLDS } from "@/lib/profile-completeness";
 import { getCandidateApplicationStats } from "@/lib/applications-stats";
 import { relativeTime } from "@/lib/utils";
 
@@ -46,7 +48,13 @@ export default async function MeDashboard() {
   const profileInclude = {
     _count: { select: { applications: true, savedJobs: true, experiences: true, education: true } },
     evDomains: { include: { evDomain: true } },
-    skills: { select: { skillId: true } },
+    // Wave A #4 — share card pulls skill names (cap at 4 by ordering).
+    // Bumping the join shape: previously selected only skillId for
+    // completeness math; now we also need `skill.name` for the
+    // WhatsApp blurb. The extra select is a single JOIN row per skill;
+    // adding it once at the dashboard layer is cheaper than a separate
+    // round-trip in the share card.
+    skills: { include: { skill: { select: { name: true } } } },
     experiences: { select: { id: true } },
     education: { select: { id: true } },
     certifications: { select: { id: true } },
@@ -390,6 +398,23 @@ export default async function MeDashboard() {
           </div>
 
           <aside className="space-y-6">
+            {/* Wave A #4 — WhatsApp share card. Renders only when the
+                candidate's profile has enough content to share (50%
+                completeness). Below that, sharing is mostly noise
+                because the public page will be empty. */}
+            {completeness.pct >= COMPLETENESS_THRESHOLDS.EXPLORE && (
+              <WhatsAppShareCard
+                profileUrl={`${env.NEXT_PUBLIC_APP_URL}/${profile.slug}`}
+                fullName={fullName}
+                headline={profile.headline}
+                isDIYguruVerified={profile.isDIYguruVerified}
+                isIDVerified={profile.idVerificationStatus === "VERIFIED"}
+                topSkills={profile.skills.map((s) => s.skill.name).slice(0, 4)}
+                yearsExperience={Math.round(profile.totalExperienceMonths / 12)}
+                evDomain={profile.evDomains[0]?.evDomain.name ?? null}
+              />
+            )}
+
             {/* Upcoming events */}
             {(upcomingInterview || upcomingMentorshipSession) && (
               <Card>

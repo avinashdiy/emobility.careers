@@ -41,6 +41,11 @@ interface FeedAuthor {
     idVerificationStatus?: "NONE" | "PENDING" | "VERIFIED" | "REJECTED";
     // ISO alpha-2 country code → flag emoji beside the name.
     country?: string | null;
+    // Wave A #1 — Avatar ring chips. Optional so existing data loads
+    // (older feed-post fetches that don't `select` these fields)
+    // degrade gracefully to "no ring" rather than crashing.
+    openToWork?: boolean;
+    hiringNow?: boolean;
   } | null;
 }
 
@@ -151,7 +156,17 @@ export function PostCard({
       {/* Header */}
       <div className="flex items-start gap-3">
         <Link href={headerSlug}>
-          <Avatar src={avatar} name={headerName} size="md" />
+          <Avatar
+            src={avatar}
+            name={headerName}
+            size="md"
+            // Wave A #1 — render the LinkedIn-style ring + chip on
+            // every feed post. Company posts don't carry a candidate
+            // profile, so the props default to undefined which the
+            // Avatar treats as "no ring".
+            openToWork={!isCompanyPost && c?.openToWork && !c?.hiringNow}
+            hiring={!isCompanyPost && c?.hiringNow}
+          />
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">

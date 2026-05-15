@@ -35,6 +35,9 @@ const POST_INCLUDE = {
           idVerificationStatus: true,
           country: true,
           personType: true,
+          // Wave A #1 — Open-to-Work / Hiring-now ring on the post avatar.
+          openToWork: true,
+          hiringNow: true,
         },
       },
     },

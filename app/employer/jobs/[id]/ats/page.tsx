@@ -45,6 +45,9 @@ export default async function ATSPage({
           isDIYguruVerified: true,
           phone: true,
           contactVisibility: true,
+          // Wave A #1 — Open-to-Work / Hiring ring in the ATS card.
+          openToWork: true,
+          hiringNow: true,
           user: { select: { phone: true } },
         },
       },
@@ -83,6 +86,8 @@ export default async function ATSPage({
         profilePhotoUrl: a.candidate.profilePhotoUrl,
         isDIYguruVerified: a.candidate.isDIYguruVerified,
         phone: phoneVisible ? a.candidate.phone ?? a.candidate.user.phone ?? null : null,
+        openToWork: a.candidate.openToWork,
+        hiringNow: a.candidate.hiringNow,
       },
     };
   });

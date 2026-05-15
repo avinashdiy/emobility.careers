@@ -13,6 +13,7 @@ import {
 } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { percentileBadge } from "@/lib/applications-percentile";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
@@ -96,6 +97,13 @@ export interface TrackerApplication {
   appliedAt: string; // ISO
   matchScore: number | null;
   privateNote: string | null;
+  /**
+   * Wave A #3 — Top Applicant percentile rank, 0..1 with 0 being the
+   * best. Null when the job has too few applicants to bucket
+   * meaningfully (< 5 peers). The card derives the badge label +
+   * tone via `percentileBadge()`.
+   */
+  topPercentile?: number | null;
   job: {
     id: string;
     slug: string;
@@ -129,6 +137,9 @@ interface BoardCard {
   companyLogoUrl: string | null;
   appliedAtMs: number | null; // null for saved-only entries
   matchScore: number | null;
+  /// Wave A #3 — Top Applicant percentile (0..1, lower = better).
+  /// Surfaces a "Top X%" badge on the card. Null = suppress.
+  topPercentile: number | null;
   privateNote: string | null;
   stage?: string;
 }
@@ -158,6 +169,7 @@ export function JobTrackerBoard({
       companyLogoUrl: s.job.company.logoUrl,
       appliedAtMs: null,
       matchScore: null,
+      topPercentile: null,
       privateNote: null,
     }));
     const fromApps: BoardCard[] = applications.map((a) => ({
@@ -172,6 +184,7 @@ export function JobTrackerBoard({
       companyLogoUrl: a.job.company.logoUrl,
       appliedAtMs: new Date(a.appliedAt).getTime(),
       matchScore: a.matchScore,
+      topPercentile: a.topPercentile ?? null,
       privateNote: a.privateNote,
       stage: a.stage,
     }));
@@ -423,6 +436,18 @@ function CardItem({
               {Math.round(card.matchScore * 100)}% match
             </Badge>
           )}
+          {/* Wave A #3 — Top Applicant badge. Renders only when the
+              job has enough peer applications to be meaningful (the
+              compute helper returns null for low-peer jobs). */}
+          {(() => {
+            const badge = percentileBadge(card.topPercentile ?? null);
+            if (!badge) return null;
+            return (
+              <Badge variant={badge.tone} size="sm">
+                ✨ {badge.label}
+              </Badge>
+            );
+          })()}
           {days != null && (
             <span className="text-hint text-emce-text-muted">
               {days === 0 ? "today" : days === 1 ? "1 day ago" : `${days}d ago`}

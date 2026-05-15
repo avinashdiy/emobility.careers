@@ -62,6 +62,11 @@ export interface PipelineApp {
         without a phone instead of hiding them, so the recruiter can see
         which candidates fell through. */
     phone: string | null;
+    // Wave A #1 — Open-to-Work / Hiring-now ring on the ATS card.
+    // Recruiter triaging candidates sees the green ring at a glance
+    // and prioritises active candidates without clicking through.
+    openToWork?: boolean;
+    hiringNow?: boolean;
   };
 }
 
@@ -246,7 +251,13 @@ function Card({ app, jobId, selected, onToggle }: { app: PipelineApp; jobId: str
           onChange={() => onToggle(app.id)}
           aria-label="Select"
         />
-        <Avatar src={app.candidate.profilePhotoUrl} name={fullName} size="sm" />
+        <Avatar
+          src={app.candidate.profilePhotoUrl}
+          name={fullName}
+          size="sm"
+          openToWork={app.candidate.openToWork && !app.candidate.hiringNow}
+          hiring={app.candidate.hiringNow}
+        />
         <div className="min-w-0 flex-1">
           <Link
             href={`/employer/applications/${app.id}`}

@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
 import { getCandidateApplicationStats } from "@/lib/applications-stats";
+import { getApplicationPercentiles } from "@/lib/applications-percentile";
 import { ApplicationTracker } from "@/components/candidate/ApplicationTracker";
 import {
   JobTrackerBoard,
@@ -114,11 +115,19 @@ export default async function MyApplications({
     if (!noteByApp.has(n.applicationId)) noteByApp.set(n.applicationId, n.body);
   }
 
+  // Wave A #3 — Top Applicant percentile. One SQL round-trip for every
+  // application the candidate has on the page. The map returns null
+  // for low-peer jobs; the card UI suppresses the badge in that case.
+  const percentiles = await getApplicationPercentiles(
+    applications.map((a) => ({ applicationId: a.id, jobId: a.job.id })),
+  );
+
   const kanbanApps: TrackerApplication[] = applications.map((a) => ({
     id: a.id,
     stage: a.stage,
     appliedAt: a.appliedAt.toISOString(),
     matchScore: a.matchScore,
+    topPercentile: percentiles.get(a.id) ?? null,
     privateNote: noteByApp.get(a.id) ?? null,
     job: {
       id: a.job.id,
