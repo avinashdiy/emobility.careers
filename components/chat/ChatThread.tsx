@@ -5,6 +5,7 @@ import PusherClient from "pusher-js";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { sendMessage } from "@/server/messaging/actions";
+import { draftInMail } from "@/server/messaging/draft";
 
 export interface ChatMessage {
   id: string;
@@ -45,6 +46,13 @@ export function ChatThread({
   const [messages, setMessages] = useState<ChatMessage[]>(initialMessages);
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
+  // Wave B #18 — AI-draft button state. `drafting` shows the spinner
+  // on the button; `draftError` surfaces a 1-line error when the
+  // server action returns ok=false (rate-limit, missing application,
+  // OpenAI flake) so the recruiter knows to write it themselves
+  // rather than wonder why nothing happened.
+  const [drafting, setDrafting] = useState(false);
+  const [draftError, setDraftError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -159,12 +167,50 @@ export function ChatThread({
           name="body"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          rows={2}
+          rows={3}
           placeholder="Type a message..."
           required
           maxLength={4000}
         />
-        <div className="mt-2 flex justify-end">
+        {draftError && (
+          <p className="mt-1 text-hint text-emce-red-deep">⚠ {draftError}</p>
+        )}
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+          {/* Wave B #18 — AI draft button. Replaces the textarea
+              contents (after a confirm if the recruiter already
+              started typing) with a personalised first-touch the
+              recruiter can review + tweak. Server action infers
+              role + company + candidate from the threadId. */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={drafting || sending}
+            onClick={async () => {
+              if (draft.trim().length > 0) {
+                const ok = window.confirm("Replace your current draft with an AI-generated message?");
+                if (!ok) return;
+              }
+              setDrafting(true);
+              setDraftError(null);
+              try {
+                const fd = new FormData();
+                fd.append("threadId", threadId);
+                const res = await draftInMail(fd);
+                if (res.ok && res.body) {
+                  setDraft(res.body);
+                } else {
+                  setDraftError(res.error ?? "Couldn't draft — try again.");
+                }
+              } catch {
+                setDraftError("Couldn't draft — try again.");
+              } finally {
+                setDrafting(false);
+              }
+            }}
+          >
+            {drafting ? "Drafting…" : "✨ Draft with AI"}
+          </Button>
           <Button type="submit" disabled={!draft.trim() || sending}>
             {sending ? "Sending…" : "Send"}
           </Button>
