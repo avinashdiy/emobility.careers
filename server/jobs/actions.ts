@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { isRouterControlError } from "@/lib/server-action-errors";
+import { logger } from "@/lib/logger";
 import { COMPLETENESS_THRESHOLDS } from "@/lib/profile-completeness";
 import { ApplicationSource, ApplicationStage } from "@prisma/client";
 
@@ -19,9 +21,43 @@ export async function applyToJob(formData: FormData) {
     redirect("/403");
   }
 
-  await rateLimitOrThrow(`apply:${session.user.id}`, "apply");
+  // Recover the candidate's intended target before any throwable work
+  // runs so the catch path below can land them somewhere sensible
+  // (the originating /jobs/[id] page) instead of a generic 500.
+  const jobIdRaw = formData.get("jobId");
+  const fallbackHref =
+    typeof jobIdRaw === "string" && jobIdRaw.length > 0
+      ? `/jobs/${jobIdRaw}`
+      : "/jobs";
 
-  const jobId = z.string().parse(formData.get("jobId"));
+  try {
+    // `rateLimitOrThrow` raises a plain Error with `code: "RATE_LIMITED"`
+    // when the limiter rejects. Without this catch the candidate would
+    // see the global error page when they accidentally double-click
+    // "Apply" or apply to >30 jobs in an hour — both common.
+    await rateLimitOrThrow(`apply:${session.user.id}`, "apply");
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    const retryAfter = (err as { retryAfter?: number }).retryAfter;
+    redirect(
+      `${fallbackHref}?error=` +
+        encodeURIComponent(
+          retryAfter
+            ? `You're applying very quickly — try again in ${retryAfter}s.`
+            : "Too many applications too fast — try again in a minute.",
+        ),
+    );
+  }
+
+  const jobIdParsed = z.string().min(1).safeParse(jobIdRaw);
+  if (!jobIdParsed.success) {
+    logger.warn(
+      { userId: session.user.id, raw: jobIdRaw },
+      "[applyToJob] missing/invalid jobId on submit",
+    );
+    redirect("/jobs?error=" + encodeURIComponent("Something went wrong picking that job — try again."));
+  }
+  const jobId = jobIdParsed.data;
   const coverLetter = String(formData.get("coverLetter") ?? "").slice(0, 4000);
   // Optional fair attribution. When the candidate landed on the
   // job from a /fairs/[slug] page, the page passes the drive id
@@ -174,13 +210,19 @@ export async function applyToJob(formData: FormData) {
 export async function withdrawApplication(formData: FormData) {
   const session = await auth();
   if (!session?.user) redirect("/signin");
-  const id = z.string().parse(formData.get("id"));
+  const idParsed = z.string().min(1).safeParse(formData.get("id"));
+  if (!idParsed.success) {
+    redirect(
+      "/me/applications?error=" +
+        encodeURIComponent("Couldn't find that application — refresh and try again."),
+    );
+  }
   const profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
   });
   if (!profile) redirect("/onboarding");
   await db.application.updateMany({
-    where: { id, candidateId: profile.id },
+    where: { id: idParsed.data, candidateId: profile.id },
     data: {
       withdrawnAt: new Date(),
       stage: ApplicationStage.WITHDRAWN,
@@ -193,12 +235,23 @@ export async function withdrawApplication(formData: FormData) {
 export async function saveJob(formData: FormData) {
   const session = await auth();
   if (!session?.user) redirect("/signin");
-  await rateLimitOrThrow(`save:${session.user.id}`, "saveItem");
+  try {
+    await rateLimitOrThrow(`save:${session.user.id}`, "saveItem");
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    redirect(
+      "/jobs?error=" + encodeURIComponent("You're saving items very fast — slow down and try again."),
+    );
+  }
   const profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
   });
   if (!profile) redirect("/onboarding");
-  const jobId = z.string().parse(formData.get("jobId"));
+  const jobIdParsed = z.string().min(1).safeParse(formData.get("jobId"));
+  if (!jobIdParsed.success) {
+    redirect("/jobs?error=" + encodeURIComponent("Couldn't find that job."));
+  }
+  const jobId = jobIdParsed.data;
   const job = await db.jobPosting.findUnique({
     where: { id: jobId },
     select: { slug: true },
@@ -223,7 +276,9 @@ export async function unsaveJob(formData: FormData) {
     where: { userId: session.user.id },
   });
   if (!profile) redirect("/onboarding");
-  const jobId = z.string().parse(formData.get("jobId"));
+  const jobIdParsed = z.string().min(1).safeParse(formData.get("jobId"));
+  if (!jobIdParsed.success) return;
+  const jobId = jobIdParsed.data;
   const job = await db.jobPosting.findUnique({
     where: { id: jobId },
     select: { slug: true },

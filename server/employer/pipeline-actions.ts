@@ -30,11 +30,14 @@ export async function createStage(formData: FormData) {
   const { employer } = await requireCompanyAdmin();
   const parsed = stageSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
+    const firstError =
+      Object.values(parsed.error.flatten().fieldErrors).flat()[0] ??
+      "Invalid stage details.";
     logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[employer-pipeline] Zod validation failed — bare form action returns void; user sees no feedback.",
+      { companyId: employer.companyId, fieldErrors: parsed.error.flatten().fieldErrors },
+      "[createStage] validation failed",
     );
-    return;
+    redirect("/employer/pipeline?error=" + encodeURIComponent(firstError));
   }
 
   const stage = await db.customPipelineStage.create({
@@ -59,19 +62,21 @@ export async function createStage(formData: FormData) {
 
 export async function deleteStage(formData: FormData) {
   const { employer } = await requireCompanyAdmin();
-  const id = z.string().parse(formData.get("id"));
+  const idParsed = z.string().min(1).safeParse(formData.get("id"));
+  if (!idParsed.success) return;
   await db.customPipelineStage.deleteMany({
-    where: { id, companyId: employer.companyId },
+    where: { id: idParsed.data, companyId: employer.companyId },
   });
   revalidatePath("/employer/pipeline");
 }
 
 export async function toggleStageActive(formData: FormData) {
   const { employer } = await requireCompanyAdmin();
-  const id = z.string().parse(formData.get("id"));
+  const idParsed = z.string().min(1).safeParse(formData.get("id"));
+  if (!idParsed.success) return;
   const isActive = formData.get("isActive") === "true";
   await db.customPipelineStage.updateMany({
-    where: { id, companyId: employer.companyId },
+    where: { id: idParsed.data, companyId: employer.companyId },
     data: { isActive },
   });
   revalidatePath("/employer/pipeline");

@@ -156,8 +156,8 @@ export async function assignAssessment(formData: FormData) {
     });
   }
 
-  const { notificationsQueue } = await import("@/lib/queues");
-  await notificationsQueue.add("assessment-assigned", {
+  const { dispatchNotification } = await import("@/lib/notifications/dispatch");
+  await dispatchNotification({
     userId: application.candidate.user.id,
     type: "application.assessment_assigned",
     title: `Assessment for ${application.job.title}`,
@@ -213,13 +213,21 @@ export async function submitAssessment(formData: FormData) {
   });
   if (!profile) redirect("/onboarding");
 
+  const attemptIdRaw = formData.get("attemptId");
   const parsed = submitSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[assessments] Zod validation failed — bare form action returns void; user sees no feedback.",
+      { userId: session.user.id, fieldErrors: parsed.error.flatten().fieldErrors },
+      "[submitAssessment] validation failed",
     );
-    return;
+    const back =
+      typeof attemptIdRaw === "string" && attemptIdRaw
+        ? `/me/assessments/${attemptIdRaw}`
+        : "/me/assessments";
+    redirect(
+      `${back}?error=` +
+        encodeURIComponent("Couldn't submit your answers — please try again."),
+    );
   }
 
   const attempt = await db.assessmentAttempt.findUnique({
@@ -228,7 +236,23 @@ export async function submitAssessment(formData: FormData) {
   });
   if (!attempt || attempt.candidateId !== profile.id) redirect("/403");
 
-  const answers = JSON.parse(parsed.data.answersJson) as Record<number, number>;
+  // The hidden field is built by the client from a serialised state.
+  // A corrupt payload would otherwise throw a JSON.parse SyntaxError
+  // and bubble to the 500 page instead of giving the candidate a
+  // chance to retry.
+  let answers: Record<number, number>;
+  try {
+    answers = JSON.parse(parsed.data.answersJson) as Record<number, number>;
+  } catch (err) {
+    logger.warn(
+      { err, attemptId: parsed.data.attemptId, userId: session.user.id },
+      "[submitAssessment] answers JSON parse failed",
+    );
+    redirect(
+      `/me/assessments/${parsed.data.attemptId}?error=` +
+        encodeURIComponent("Couldn't read your answers — refresh and try again."),
+    );
+  }
 
   // Auto-grade MCQ
   let score = 0;

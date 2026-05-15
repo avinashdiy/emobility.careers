@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 
 /**
  * Fan out notifications to every candidate whose JobAlert matches a
@@ -93,7 +93,7 @@ export async function matchAndNotifyJobAlerts(jobId: string): Promise<{
   for (const alert of matched) {
     const ch = alert.channels.length > 0 ? alert.channels : ["IN_APP", "EMAIL"];
     try {
-      await notificationsQueue.add("job-alert-match", {
+      await dispatchNotification({
         userId: alert.candidate.userId,
         type: "job.alert_match",
         title: `New match for "${alert.query}"`,

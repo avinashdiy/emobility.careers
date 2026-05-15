@@ -40,10 +40,12 @@ export async function setViewerVisibility(formData: FormData): Promise<void> {
     });
     if (!parsed.success) {
       logger.warn(
-        { fieldErrors: parsed.error.flatten().fieldErrors },
-        "[profile-view] Zod validation failed — bare form action returns void; user sees no feedback.",
+        { userId: session.user.id, fieldErrors: parsed.error.flatten().fieldErrors },
+        "[setViewerVisibility] validation failed",
       );
-      return;
+      redirect(
+        "/me/views?error=" + encodeURIComponent("Couldn't update — try again."),
+      );
     }
 
     await db.candidateProfile.update({
@@ -62,5 +64,6 @@ export async function setViewerVisibility(formData: FormData): Promise<void> {
   } catch (err) {
     if (isRouterControlError(err)) throw err;
     logger.error({ err }, "[profile-views] visibility toggle failed");
+    redirect("/me/views?error=" + encodeURIComponent("Couldn't update — try again."));
   }
 }

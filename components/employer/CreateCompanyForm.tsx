@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
-import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -151,7 +151,9 @@ export function CreateCompanyForm({ initialName = "" }: Props) {
         </div>
 
         <div className="sm:col-span-2 flex justify-end pt-2">
-          <Button type="submit" size="lg">Create company →</Button>
+          <SubmitButton size="lg" pendingLabel="Creating…">
+            Create company →
+          </SubmitButton>
         </div>
       </form>
     </>

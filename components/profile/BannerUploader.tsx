@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { toast } from "sonner";
 import { uploadBanner, removeBanner } from "@/server/candidates/actions";
 
 /**
@@ -16,6 +17,7 @@ import { uploadBanner, removeBanner } from "@/server/candidates/actions";
  */
 export function BannerUploader({ hasBanner }: { hasBanner: boolean }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState<"upload" | "remove" | null>(null);
 
   return (
@@ -26,8 +28,13 @@ export function BannerUploader({ hasBanner }: { hasBanner: boolean }) {
           setBusy("upload");
           try {
             await uploadBanner(fd);
+            toast.success("Cover photo updated.");
+          } catch (err) {
+            toast.error(err instanceof Error ? err.message : "Couldn't upload that cover.");
           } finally {
             setBusy(null);
+            // Reset so picking the same file after a failure still fires.
+            if (fileInputRef.current) fileInputRef.current.value = "";
           }
         }}
         encType="multipart/form-data"
@@ -35,6 +42,7 @@ export function BannerUploader({ hasBanner }: { hasBanner: boolean }) {
         <label className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-emce-darkest shadow-sm backdrop-blur transition hover:bg-white">
           {busy === "upload" ? "Uploading…" : hasBanner ? "Change cover" : "Add cover photo"}
           <input
+            ref={fileInputRef}
             type="file"
             name="banner"
             accept="image/*"
@@ -50,6 +58,9 @@ export function BannerUploader({ hasBanner }: { hasBanner: boolean }) {
             setBusy("remove");
             try {
               await removeBanner();
+              toast.success("Cover photo removed.");
+            } catch (err) {
+              toast.error(err instanceof Error ? err.message : "Couldn't remove the cover.");
             } finally {
               setBusy(null);
             }

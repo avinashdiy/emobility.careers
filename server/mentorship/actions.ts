@@ -8,7 +8,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { plainTextLength, sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
 import {
   createRazorpayOrder,
@@ -330,7 +330,7 @@ export async function createMentorshipBooking(_prev: BookingResult, formData: Fo
 
   if (isFree) {
     // Notify mentor immediately for free bookings.
-    await notificationsQueue.add("mentorship.free-booking", {
+    await dispatchNotification({
       userId: mentor.userId,
       type: "mentorship.booking-confirmed",
       title: "New free mentorship session booked",
@@ -436,7 +436,7 @@ export async function confirmMentorshipPayment(_prev: FormState, formData: FormD
       razorpayPaymentId: parsed.data.razorpayPaymentId,
     },
   });
-  await notificationsQueue.add("mentorship.paid-booking", {
+  await dispatchNotification({
     userId: sessionRow.mentor.userId,
     type: "mentorship.booking-confirmed",
     title: "New paid mentorship session booked",
@@ -524,7 +524,7 @@ export async function setSessionMeetingUrl(sessionId: string, url: string): Prom
   const valid = z.string().url().safeParse(url);
   if (!valid.success) return { ok: false, message: "Provide a valid URL." };
   await db.mentorshipSession.update({ where: { id: sessionId }, data: { meetingUrl: url } });
-  await notificationsQueue.add("mentorship.meeting-url", {
+  await dispatchNotification({
     userId: row.menteeUserId,
     type: "mentorship.meeting-url",
     title: "Meeting link added to your mentorship session",
@@ -556,7 +556,7 @@ export async function markSessionCompleted(sessionId: string, notes: string | nu
       },
     }),
   ]);
-  await notificationsQueue.add("mentorship.completed", {
+  await dispatchNotification({
     userId: row.menteeUserId,
     type: "mentorship.session-complete",
     title: "Mentorship session marked complete",
@@ -599,7 +599,7 @@ export async function cancelSession(sessionId: string, reason: string): Promise<
           : undefined,
     },
   });
-  await notificationsQueue.add("mentorship.cancelled", {
+  await dispatchNotification({
     userId: isMentor ? row.menteeUserId : row.mentor.userId,
     type: "mentorship.cancelled",
     title: "Mentorship session cancelled",
@@ -697,7 +697,7 @@ export async function approveMentorKyc(mentorId: string): Promise<FormState> {
     },
   });
   await audit({ actorId: session.user.id, action: "mentor.kyc.approve", entity: "MentorProfile", entityId: mentorId });
-  await notificationsQueue.add("mentor.kyc.approved", {
+  await dispatchNotification({
     userId: profile.userId,
     type: "mentor.kyc.approved",
     title: "You're approved as a mentor",
@@ -724,7 +724,7 @@ export async function rejectMentorKyc(mentorId: string, note: string): Promise<F
     },
   });
   await audit({ actorId: session.user.id, action: "mentor.kyc.reject", entity: "MentorProfile", entityId: mentorId, meta: { note } });
-  await notificationsQueue.add("mentor.kyc.rejected", {
+  await dispatchNotification({
     userId: profile.userId,
     type: "mentor.kyc.rejected",
     title: "Mentor application needs changes",

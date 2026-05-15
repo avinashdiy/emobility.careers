@@ -110,6 +110,8 @@ function UploadSlot({
             } else {
               setError(r.message ?? "Couldn't upload that image.");
             }
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Upload failed.");
           } finally {
             setBusy(false);
           }

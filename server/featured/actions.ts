@@ -6,7 +6,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { startOfThisWeekIST } from "./week";
 import { optionalUrl } from "@/lib/forms/zod-url";
 import { logger } from "@/lib/logger";
@@ -85,7 +85,7 @@ export async function featureCandidate(formData: FormData) {
   // Send the candidate an in-app notification so they can crow about it
   // on their own social feeds — every featured candidate is a potential
   // ambassador.
-  await notificationsQueue.add("featured", {
+  await dispatchNotification({
     userId: candidate.userId,
     type: "profile.featured",
     title: "✨ You're featured this week",

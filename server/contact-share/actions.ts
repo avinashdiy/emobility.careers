@@ -10,7 +10,7 @@ import { logger } from "@/lib/logger";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { pgRateLimit } from "@/lib/rate-limit-pg";
 import { isRouterControlError } from "@/lib/server-action-errors";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 
 /**
  * Recruiter → candidate "share your contact?" flow. The complement
@@ -200,7 +200,7 @@ export async function requestContactShare(input: {
       });
       const recruiterName = recruiter?.name ?? recruiter?.email ?? "A recruiter";
       const companyName = recruiter?.employerProfile?.company.name;
-      await notificationsQueue.add("contact-share.requested", {
+      await dispatchNotification({
         userId: parsed.data.targetUserId,
         type: "contact_share.requested",
         title: companyName
@@ -285,7 +285,7 @@ export async function grantContactShare(
       const candidateName = candidate
         ? `${candidate.firstName} ${candidate.lastName ?? ""}`.trim()
         : "A candidate";
-      await notificationsQueue.add("contact-share.granted", {
+      await dispatchNotification({
         userId: row.requesterUserId,
         type: "contact_share.granted",
         title: `${candidateName} shared their contact`,
@@ -361,7 +361,7 @@ export async function denyContactShare(input: {
     // Quietly notify the recruiter so they stop wondering. Less
     // emphatic than the GRANTED message — IN_APP only, no email.
     try {
-      await notificationsQueue.add("contact-share.denied", {
+      await dispatchNotification({
         userId: row.requesterUserId,
         type: "contact_share.denied",
         title: "Contact request declined",

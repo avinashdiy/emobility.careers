@@ -11,7 +11,7 @@ import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { withUniqueSlug } from "@/lib/slug";
 import { isRouterControlError } from "@/lib/server-action-errors";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { s3, buckets, publicUrl, objectKey } from "@/lib/storage";
 import { sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
 import type { FormState } from "@/lib/form-state";
@@ -402,17 +402,15 @@ export async function inviteCompanyToDrive(formData: FormData): Promise<FormStat
     // the company because that gets spammy quickly — the owner can
     // forward / loop in their team via the in-app inbox.
     if (company.ownerUserId) {
-      await notificationsQueue
-        .add("recruitment-drive.invited", {
-          userId: company.ownerUserId,
-          type: "recruitment_drive.invited",
-          title: `Invited to ${drive.title}`,
-          body: `${company.name} is invited to the recruitment drive. Confirm participation to set up your booth.`,
-          link: `/employer/fairs`,
-          channels: ["IN_APP", "EMAIL"],
-          actorId: session.user.id,
-        })
-        .catch(() => undefined);
+      await dispatchNotification({
+        userId: company.ownerUserId,
+        type: "recruitment_drive.invited",
+        title: `Invited to ${drive.title}`,
+        body: `${company.name} is invited to the recruitment drive. Confirm participation to set up your booth.`,
+        link: `/employer/fairs`,
+        channels: ["IN_APP", "EMAIL"],
+        actorId: session.user.id,
+      }).catch(() => undefined);
     }
 
     await audit({

@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { audit } from "@/lib/audit";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import type { StrikeReason, AccountState } from "@prisma/client";
 
 /**
@@ -167,7 +167,7 @@ export async function issueStrike(input: IssueStrikeInput): Promise<IssueStrikeR
       SUSPENDED: `Your account is suspended for ${SUSPENSION_DAYS} days`,
       BANNED: `Your account has been banned`,
     };
-    await notificationsQueue.add("strike-notify", {
+    await dispatchNotification({
       userId: target.id,
       type: `moderation.${newState.toLowerCase()}`,
       title: titleByState[newState],

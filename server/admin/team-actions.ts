@@ -6,7 +6,7 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { CompanyTeamRole } from "@prisma/client";
 import { logger } from "@/lib/logger";
 
@@ -23,16 +23,14 @@ async function notify(opts: {
   body: string;
   link?: string;
 }): Promise<void> {
-  await notificationsQueue
-    .add(opts.type, {
-      userId: opts.userId,
-      type: opts.type,
-      title: opts.title,
-      body: opts.body,
-      link: opts.link,
-      channels: ["IN_APP", "EMAIL"],
-    })
-    .catch(() => undefined);
+  await dispatchNotification({
+    userId: opts.userId,
+    type: opts.type,
+    title: opts.title,
+    body: opts.body,
+    link: opts.link,
+    channels: ["IN_APP", "EMAIL"],
+  }).catch(() => undefined);
 }
 
 /**

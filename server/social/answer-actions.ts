@@ -9,7 +9,7 @@ import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { requireEmailVerified, EmailNotVerifiedError } from "@/lib/anti-spam";
 import { extractHashtags, extractMentions } from "@/lib/social/extract";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { logger } from "@/lib/logger";
 import type { FormState } from "@/lib/form-state";
@@ -147,18 +147,16 @@ export async function submitAnswerWithState(formData: FormData): Promise<FormSta
 
   for (const userId of recipients) {
     const isAuthor = userId === post.authorId;
-    await notificationsQueue
-      .add(isAuthor ? "answer-on-question" : "answer-mention", {
-        userId,
-        type: isAuthor ? "social.answer" : "social.mention",
-        title: isAuthor
-          ? "New answer to your question"
-          : "You were mentioned in an answer",
-        body: parsed.data.body.slice(0, 140),
-        link: `/posts/${post.id}#answer-${answer.id}`,
-        channels: ["IN_APP", "EMAIL"],
-      })
-      .catch(() => undefined);
+    await dispatchNotification({
+      userId,
+      type: isAuthor ? "social.answer" : "social.mention",
+      title: isAuthor
+        ? "New answer to your question"
+        : "You were mentioned in an answer",
+      body: parsed.data.body.slice(0, 140),
+      link: `/posts/${post.id}#answer-${answer.id}`,
+      channels: ["IN_APP", "EMAIL"],
+    }).catch(() => undefined);
   }
 
   revalidatePath(`/posts/${post.id}`);
@@ -282,24 +280,41 @@ export async function toggleAnswerHelpfulWithState(formData: FormData): Promise<
 //
 // React's form action prop in a server component expects
 // Promise<void>. The *WithState versions above return FormState for
-// useActionState callers; these thin wrappers swallow the return so
-// the same action can be used either way. Errors fall back to a
-// silent no-op for now — HTML validation catches most user errors;
-// edge cases (self-answer, deleted post) are rare. Surface them via
-// useActionState if richer feedback is needed later.
+// useActionState callers; these thin wrappers translate validation
+// failures into a redirect-with-error so the user gets feedback even
+// when the form is wired directly. Posts that no longer exist or
+// permission errors land back on the originating post page with a
+// short notice in the URL.
+
+function answerErrorRedirect(formData: FormData, message: string): never {
+  const postIdRaw = formData.get("postId");
+  const back =
+    typeof postIdRaw === "string" && postIdRaw.length > 0
+      ? `/posts/${postIdRaw}`
+      : "/feed";
+  redirect(`${back}?error=` + encodeURIComponent(message));
+}
 
 export async function submitAnswer(formData: FormData): Promise<void> {
-  await submitAnswerWithState(formData);
+  const r = await submitAnswerWithState(formData);
+  if (!r.ok) answerErrorRedirect(formData, r.message ?? "Couldn't post your answer.");
 }
 
 export async function editAnswer(formData: FormData): Promise<void> {
-  await editAnswerWithState(formData);
+  const r = await editAnswerWithState(formData);
+  if (!r.ok) answerErrorRedirect(formData, r.message ?? "Couldn't update your answer.");
 }
 
 export async function deleteAnswer(formData: FormData): Promise<void> {
-  await deleteAnswerWithState(formData);
+  const r = await deleteAnswerWithState(formData);
+  if (!r.ok) answerErrorRedirect(formData, r.message ?? "Couldn't delete your answer.");
 }
 
 export async function toggleAnswerHelpful(formData: FormData): Promise<void> {
-  await toggleAnswerHelpfulWithState(formData);
+  const r = await toggleAnswerHelpfulWithState(formData);
+  if (!r.ok) {
+    // Helpful-toggle is fire-and-forget on every Q&A card; a redirect
+    // would jar the scroll position. Quietly log instead of bouncing.
+    logger.warn({ message: r.message }, "[toggleAnswerHelpful] failed silently");
+  }
 }

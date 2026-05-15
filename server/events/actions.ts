@@ -8,7 +8,7 @@ import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { withUniqueSlug } from "@/lib/slug";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { objectKey, presignUpload, publicUrl } from "@/lib/storage";
 import { EventType, EventStatus } from "@prisma/client";
 import { plainTextLength, sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
@@ -248,16 +248,14 @@ export async function cancelEvent(formData: FormData): Promise<FormState> {
     select: { userId: true },
   });
   for (const r of registrations) {
-    await notificationsQueue
-      .add("event-cancelled", {
-        userId: r.userId,
-        type: "event.cancelled",
-        title: `Event cancelled: ${event.title}`,
-        body: `${event.company.name} has cancelled this event. Check the page for any rescheduled dates.`,
-        link: `/events/${event.slug}`,
-        channels: ["IN_APP", "EMAIL"],
-      })
-      .catch(() => undefined);
+    await dispatchNotification({
+      userId: r.userId,
+      type: "event.cancelled",
+      title: `Event cancelled: ${event.title}`,
+      body: `${event.company.name} has cancelled this event. Check the page for any rescheduled dates.`,
+      link: `/events/${event.slug}`,
+      channels: ["IN_APP", "EMAIL"],
+    }).catch(() => undefined);
   }
 
   revalidatePath("/events");

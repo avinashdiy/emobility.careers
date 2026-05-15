@@ -2,8 +2,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { setProfileMode } from "@/server/candidates/actions";
+import { ProfileModeForm } from "@/components/onboarding/ProfileModeForm";
 
 export const metadata = { title: "Welcome — Pick your profile mode" };
 
@@ -80,33 +79,7 @@ export default async function OnboardingHome() {
         Let&apos;s set up your profile in 4 quick steps. First — what kind of role are you in today?
       </p>
 
-      <form action={setProfileMode} className="mt-6 space-y-3">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          {MODES.map((m) => (
-            <label key={m.value} className="cursor-pointer">
-              <input
-                type="radio"
-                name="profileMode"
-                value={m.value}
-                defaultChecked={profile.profileMode === m.value}
-                className="peer sr-only"
-                required
-              />
-              <div className="flex h-full gap-3 rounded-lg border-2 border-emce-border bg-white p-4 transition peer-checked:border-emce-dark peer-checked:bg-emce-light-sog">
-                <div className="text-3xl">{m.emoji}</div>
-                <div>
-                  <div className="font-bold text-emce-text">{m.title}</div>
-                  <div className="text-hint text-emce-text-sec">{m.description}</div>
-                </div>
-              </div>
-            </label>
-          ))}
-        </div>
-
-        <div className="flex justify-end pt-4">
-          <Button type="submit" size="lg">Continue →</Button>
-        </div>
-      </form>
+      <ProfileModeForm modes={MODES} defaultValue={profile.profileMode} />
     </Card>
   );
 }

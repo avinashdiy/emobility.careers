@@ -6,10 +6,11 @@ import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { realtime, channels, events } from "@/lib/realtime";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { requireEmailVerified, EmailNotVerifiedError } from "@/lib/anti-spam";
 import { logger } from "@/lib/logger";
+import { isRouterControlError } from "@/lib/server-action-errors";
 
 async function ensureThreadAccess(threadId: string, userId: string, role: string) {
   const thread = await db.messageThread.findUnique({
@@ -140,14 +141,42 @@ export async function sendMessage(formData: FormData) {
     if (e instanceof EmailNotVerifiedError) redirect("/verify-email?required=1");
     throw e;
   }
-  await rateLimitOrThrow(`message:${session.user.id}`, "message");
+
+  // Resolve the thread early so the error redirects below can land
+  // the sender back on the right thread URL instead of a generic page.
+  const threadIdRaw = formData.get("threadId");
+  const threadHref =
+    typeof threadIdRaw === "string" && threadIdRaw.length > 0
+      ? (session.user.role === "CANDIDATE"
+          ? `/me/messages/${threadIdRaw}`
+          : `/employer/messages/${threadIdRaw}`)
+      : (session.user.role === "CANDIDATE" ? "/me/messages" : "/employer/messages");
+
+  try {
+    await rateLimitOrThrow(`message:${session.user.id}`, "message");
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    const retryAfter = (err as { retryAfter?: number }).retryAfter;
+    redirect(
+      `${threadHref}?error=` +
+        encodeURIComponent(
+          retryAfter
+            ? `Slow down — try again in ${retryAfter}s.`
+            : "You're sending messages very fast. Try again in a minute.",
+        ),
+    );
+  }
+
   const parsed = sendSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
+    const firstError =
+      Object.values(parsed.error.flatten().fieldErrors).flat()[0] ??
+      "Message couldn't be sent — check the length and try again.";
     logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[messaging] Zod validation failed — bare form action returns void; user sees no feedback.",
+      { userId: session.user.id, fieldErrors: parsed.error.flatten().fieldErrors },
+      "[sendMessage] validation failed",
     );
-    return;
+    redirect(`${threadHref}?error=` + encodeURIComponent(firstError));
   }
 
   const thread = await ensureThreadAccess(parsed.data.threadId, session.user.id, session.user.role);
@@ -187,7 +216,7 @@ export async function sendMessage(formData: FormData) {
       ? thread.employerUserId
       : null;
   if (recipientUserId) {
-    await notificationsQueue.add("message", {
+    await dispatchNotification({
       userId: recipientUserId,
       type: "message.new",
       title: "New message",
@@ -341,16 +370,14 @@ export async function sharePostViaMessage(input: {
 
     // Notify the recipient. Best-effort — a queue outage shouldn't
     // roll back the message itself, which has already been written.
-    await notificationsQueue
-      .add("post-shared", {
-        userId: recipientId,
-        type: "message.received",
-        title: "A connection shared a post with you",
-        body: parsed.data.note ? parsed.data.note.slice(0, 140) : linkBody.slice(0, 140),
-        link: `/me/messages/${threadId}`,
-        channels: ["IN_APP", "EMAIL"],
-      })
-      .catch(() => undefined);
+    await dispatchNotification({
+      userId: recipientId,
+      type: "message.received",
+      title: "A connection shared a post with you",
+      body: parsed.data.note ? parsed.data.note.slice(0, 140) : linkBody.slice(0, 140),
+      link: `/me/messages/${threadId}`,
+      channels: ["IN_APP", "EMAIL"],
+    }).catch(() => undefined);
   }
 
   return { ok: true, sent };

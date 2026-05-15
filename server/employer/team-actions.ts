@@ -10,6 +10,7 @@ import { sendMail } from "@/lib/mail";
 import { env } from "@/lib/env";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
+import { isRouterControlError } from "@/lib/server-action-errors";
 import { CompanyTeamRole } from "@prisma/client";
 
 async function requireCompanyAdmin() {
@@ -31,14 +32,25 @@ const inviteSchema = z.object({
 
 export async function inviteTeammate(formData: FormData) {
   const { session, employer } = await requireCompanyAdmin();
-  await rateLimitOrThrow(`invite:${session.user.id}`, "invite");
+  try {
+    await rateLimitOrThrow(`invite:${session.user.id}`, "invite");
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    redirect(
+      "/employer/team?error=" +
+        encodeURIComponent("You're inviting people very fast — try again in a minute."),
+    );
+  }
   const parsed = inviteSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
+    const firstError =
+      Object.values(parsed.error.flatten().fieldErrors).flat()[0] ??
+      "Invalid email or role.";
     logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[employer-team] Zod validation failed — bare form action returns void; user sees no feedback.",
+      { userId: session.user.id, fieldErrors: parsed.error.flatten().fieldErrors },
+      "[inviteTeammate] validation failed",
     );
-    return;
+    redirect("/employer/team?error=" + encodeURIComponent(firstError));
   }
 
   const token = crypto.randomBytes(24).toString("hex");
@@ -89,9 +101,10 @@ export async function inviteTeammate(formData: FormData) {
 
 export async function revokeInvite(formData: FormData) {
   const { employer } = await requireCompanyAdmin();
-  const id = z.string().parse(formData.get("id"));
+  const idParsed = z.string().min(1).safeParse(formData.get("id"));
+  if (!idParsed.success) return;
   await db.teamInvite.deleteMany({
-    where: { id, companyId: employer.companyId, acceptedAt: null },
+    where: { id: idParsed.data, companyId: employer.companyId, acceptedAt: null },
   });
   revalidatePath("/employer/team");
 }
@@ -101,7 +114,9 @@ export async function acceptInvite(formData: FormData) {
   if (!session?.user) {
     redirect("/signin?next=" + encodeURIComponent("/invite/" + formData.get("token")));
   }
-  const token = z.string().parse(formData.get("token"));
+  const tokenParsed = z.string().min(1).safeParse(formData.get("token"));
+  if (!tokenParsed.success) redirect("/?error=invite-not-found");
+  const token = tokenParsed.data;
   const invite = await db.teamInvite.findUnique({
     where: { token },
     include: { company: true },
@@ -156,7 +171,9 @@ export async function acceptInvite(formData: FormData) {
 
 export async function removeTeammate(formData: FormData) {
   const { employer } = await requireCompanyAdmin();
-  const userId = z.string().parse(formData.get("userId"));
+  const userIdParsed = z.string().min(1).safeParse(formData.get("userId"));
+  if (!userIdParsed.success) return;
+  const userId = userIdParsed.data;
   // Don't allow removing yourself or the company owner
   if (userId === employer.userId) return;
   // Refuse to remove the company owner — Company.ownerUserId would

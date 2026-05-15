@@ -7,6 +7,7 @@ import { htmlOrFallback, stripHtml } from "@/lib/cms/job-sanitize";
 import { logger } from "@/lib/logger";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/components/ui/submit-button";
 import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -488,7 +489,9 @@ export default async function PublicJobDetail({
                     placeholder="Optional cover letter / why you're a great fit"
                     maxLength={4000}
                   />
-                  <Button type="submit" className="w-full" size="lg">Apply now →</Button>
+                  <SubmitButton className="w-full" size="lg" pendingLabel="Submitting…">
+                    Apply now →
+                  </SubmitButton>
                 </form>
               )
             ) : (

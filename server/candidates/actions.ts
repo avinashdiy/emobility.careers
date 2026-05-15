@@ -9,7 +9,8 @@ import { auth } from "@/lib/auth";
 import { objectKey, presignUpload, presignDownload, buckets, s3, publicUrl } from "@/lib/storage";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import sharp from "sharp";
-import { resumeParseQueue, embeddingsQueue, resumeDraftQueue, notificationsQueue } from "@/lib/queues";
+import { resumeParseQueue, embeddingsQueue, resumeDraftQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { parseResume } from "@/lib/ai/resume-parser";
 import { logger } from "@/lib/logger";
 import { isRouterControlError } from "@/lib/server-action-errors";
@@ -68,22 +69,41 @@ async function enqueueResumeDraft(candidateId: string) {
 
 // ─── Onboarding step 1: profile mode ───────────────────────
 
-export async function setProfileMode(formData: FormData) {
-  const { profile } = await requireCandidate();
-  const mode = formData.get("profileMode");
-  const parsed = z.nativeEnum(ProfileMode).safeParse(mode);
-  if (!parsed.success) {
-    logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
-    );
-    return;
-  }
+export async function setProfileMode(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const { profile } = await requireCandidate();
+    const mode = formData.get("profileMode");
+    const parsed = z.nativeEnum(ProfileMode).safeParse(mode);
+    if (!parsed.success) {
+      logger.warn(
+        { userId: profile.userId, fieldErrors: parsed.error.flatten().fieldErrors },
+        "[setProfileMode] validation failed",
+      );
+      return {
+        ok: false,
+        message: "Please pick a profile mode to continue.",
+        fieldErrors: { profileMode: "Pick one of the four options below." },
+        prevValues: snapshotFormData(formData),
+      };
+    }
 
-  await db.candidateProfile.update({
-    where: { id: profile.id },
-    data: { profileMode: parsed.data },
-  });
+    await db.candidateProfile.update({
+      where: { id: profile.id },
+      data: { profileMode: parsed.data },
+    });
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[setProfileMode] unexpected failure");
+    return {
+      ok: false,
+      message: "Couldn't save — try again in a moment.",
+    };
+  }
+  // `redirect` throws an internal Next.js signal; calling it outside the
+  // try/catch above keeps that signal from being swallowed.
   redirect("/onboarding/resume");
 }
 
@@ -366,40 +386,62 @@ const preferencesSchema = z.object({
   openToWork: z.coerce.boolean().optional(),
 });
 
-export async function savePreferences(formData: FormData) {
-  const { profile } = await requireCandidate();
-  const parsed = preferencesSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    logger.warn({ errors: parsed.error.flatten() }, "[preferences] validation failed");
-    return;
+export async function savePreferences(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const { profile } = await requireCandidate();
+    const parsed = preferencesSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      const fieldErrors = zodErrorsToFieldErrors(parsed.error.flatten());
+      logger.warn(
+        { userId: profile.userId, fieldErrors },
+        "[savePreferences] validation failed",
+      );
+      return {
+        ok: false,
+        message: "Please fix the highlighted fields.",
+        fieldErrors,
+        prevValues: snapshotFormData(formData),
+      };
+    }
+    const { preferredCities, country, city, location: rawLocation, ...rest } = parsed.data;
+    // Derive a `location` display string from city + country if the
+    // candidate provided both, but don't clobber a non-empty manual
+    // value they typed in. This keeps the existing free-text location
+    // search working while letting new signups skip typing it twice.
+    const normalizedCountry = (country ?? "").toUpperCase() || null;
+    const normalizedCity = city?.trim() || null;
+    const derivedLocation =
+      normalizedCity && normalizedCountry
+        ? `${normalizedCity}, ${normalizedCountry}`
+        : null;
+    const finalLocation = (rawLocation && rawLocation.trim()) || derivedLocation;
+    await db.candidateProfile.update({
+      where: { id: profile.id },
+      data: {
+        ...rest,
+        country: normalizedCountry,
+        city: normalizedCity,
+        location: finalLocation,
+        preferredCities: preferredCities
+          ? preferredCities.split(",").map((s) => s.trim()).filter(Boolean)
+          : [],
+        onboardingCompletedAt: new Date(),
+      },
+    });
+    await recalcCompleteness(profile.id);
+    revalidatePath("/me");
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[savePreferences] unexpected failure");
+    return {
+      ok: false,
+      message: "Couldn't save preferences — try again in a moment.",
+      prevValues: snapshotFormData(formData),
+    };
   }
-  const { preferredCities, country, city, location: rawLocation, ...rest } = parsed.data;
-  // Derive a `location` display string from city + country if the
-  // candidate provided both, but don't clobber a non-empty manual
-  // value they typed in. This keeps the existing free-text location
-  // search working while letting new signups skip typing it twice.
-  const normalizedCountry = (country ?? "").toUpperCase() || null;
-  const normalizedCity = city?.trim() || null;
-  const derivedLocation =
-    normalizedCity && normalizedCountry
-      ? `${normalizedCity}, ${normalizedCountry}`
-      : null;
-  const finalLocation = (rawLocation && rawLocation.trim()) || derivedLocation;
-  await db.candidateProfile.update({
-    where: { id: profile.id },
-    data: {
-      ...rest,
-      country: normalizedCountry,
-      city: normalizedCity,
-      location: finalLocation,
-      preferredCities: preferredCities
-        ? preferredCities.split(",").map((s) => s.trim()).filter(Boolean)
-        : [],
-      onboardingCompletedAt: new Date(),
-    },
-  });
-  await recalcCompleteness(profile.id);
-  revalidatePath("/me");
   // Slot the topic-pick nudge after preferences. The page itself is
   // skippable (a "Skip" link sends straight to /me) so adding it
   // doesn't increase abandonment risk for users who don't care about
@@ -1054,8 +1096,18 @@ export async function writeRecommendation(formData: FormData) {
     where: { slug: toUserSlug },
     select: { userId: true, slug: true },
   });
-  if (!toProfile) return;
-  if (toProfile.userId === session.user.id) return; // no self-recs
+  if (!toProfile) {
+    redirect(
+      `/${toUserSlug}?error=` +
+        encodeURIComponent("That profile no longer exists — refresh the page."),
+    );
+  }
+  if (toProfile.userId === session.user.id) {
+    redirect(
+      `/${toUserSlug}?error=` +
+        encodeURIComponent("You can't write a recommendation for yourself."),
+    );
+  }
   await db.recommendation.upsert({
     where: { fromUserId_toUserId: { fromUserId: session.user.id, toUserId: toProfile.userId } },
     create: {
@@ -1085,16 +1137,14 @@ export async function writeRecommendation(formData: FormData) {
   const fromName = fromCandidate
     ? `${fromCandidate.firstName} ${fromCandidate.lastName ?? ""}`.trim()
     : "Someone you know";
-  await notificationsQueue
-    .add("recommendation-received", {
-      userId: toProfile.userId,
-      type: "recommendation.received",
-      title: `${fromName} wrote you a recommendation`,
-      body: `"${body.trim().slice(0, 140)}${body.trim().length > 140 ? "…" : ""}" — approve it from your profile to make it visible.`,
-      link: "/me/profile#recommendations",
-      channels: ["IN_APP", "EMAIL"],
-    })
-    .catch(() => undefined);
+  await dispatchNotification({
+    userId: toProfile.userId,
+    type: "recommendation.received",
+    title: `${fromName} wrote you a recommendation`,
+    body: `"${body.trim().slice(0, 140)}${body.trim().length > 140 ? "…" : ""}" — approve it from your profile to make it visible.`,
+    link: "/me/profile#recommendations",
+    channels: ["IN_APP", "EMAIL"],
+  }).catch(() => undefined);
 
   revalidatePath(`/${toProfile.slug}`);
   redirect(
@@ -1339,11 +1389,14 @@ export async function addSkillToProfile(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = skillAddSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
+    const firstError =
+      Object.values(parsed.error.flatten().fieldErrors).flat()[0] ??
+      "Couldn't add that skill — check the name and try again.";
     logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
+      { userId: profile.userId, fieldErrors: parsed.error.flatten().fieldErrors },
+      "[addSkillToProfile] validation failed",
     );
-    return;
+    redirect("/me/profile?error=" + encodeURIComponent(firstError));
   }
   const slug = parsed.data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const skill = await db.skill.upsert({
@@ -1467,16 +1520,14 @@ export async function toggleSkillEndorsement(formData: FormData) {
           ? `${giver.firstName} ${giver.lastName ?? ""}`.trim()
           : "Someone you know";
         const skillName = skill?.name ?? "a skill";
-        await notificationsQueue
-          .add("skill-endorsed", {
-            userId: target.userId,
-            type: "skill.endorsed",
-            title: `${giverName} endorsed you for ${skillName}`,
-            body: `View your profile to see the updated endorsement count.`,
-            link: `/${target.slug}`,
-            channels: ["IN_APP", "EMAIL"],
-          })
-          .catch(() => undefined);
+        await dispatchNotification({
+          userId: target.userId,
+          type: "skill.endorsed",
+          title: `${giverName} endorsed you for ${skillName}`,
+          body: `View your profile to see the updated endorsement count.`,
+          link: `/${target.slug}`,
+          channels: ["IN_APP", "EMAIL"],
+        }).catch(() => undefined);
       } catch (err) {
         logger.warn({ err, slug: target.slug, skillId }, "endorsement notification fanout failed");
       }

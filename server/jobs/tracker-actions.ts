@@ -41,10 +41,13 @@ export async function saveTrackerNote(formData: FormData): Promise<void> {
     const parsed = schema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) {
       logger.warn(
-        { fieldErrors: parsed.error.flatten().fieldErrors },
-        "[jobs-tracker] Zod validation failed — bare form action returns void; user sees no feedback.",
+        { userId: session.user.id, fieldErrors: parsed.error.flatten().fieldErrors },
+        "[saveTrackerNote] validation failed",
       );
-      return;
+      redirect(
+        "/me/applications?error=" +
+          encodeURIComponent("Note couldn't be saved — keep it under 2000 characters."),
+      );
     }
 
     // Verify ownership — the application must belong to the calling
@@ -116,9 +119,10 @@ export async function dropFromSaved(formData: FormData): Promise<void> {
       select: { id: true },
     });
     if (!profile) redirect("/onboarding");
-    const jobId = z.string().parse(formData.get("jobId"));
+    const jobIdParsed = z.string().min(1).safeParse(formData.get("jobId"));
+    if (!jobIdParsed.success) return;
     await db.savedJob.deleteMany({
-      where: { candidateId: profile.id, jobId },
+      where: { candidateId: profile.id, jobId: jobIdParsed.data },
     });
     revalidatePath("/me/applications");
     revalidatePath("/me/saved");

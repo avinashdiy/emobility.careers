@@ -9,7 +9,7 @@ import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { withUniqueSlug } from "@/lib/slug";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { sendMail } from "@/lib/mail";
 import { env } from "@/lib/env";
 import { plainTextLength, sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
@@ -388,7 +388,7 @@ export async function inviteJudge(_prev: FormState, formData: FormData): Promise
     create: { competitionId, judgeUserId: user.id },
     update: {},
   });
-  await notificationsQueue.add("competition.judge-invited", {
+  await dispatchNotification({
     userId: user.id,
     type: "competition.judge-invited",
     title: "You've been invited to judge a competition",
@@ -525,17 +525,15 @@ export async function acceptTeamInvite(
     data: { userId: session.user.id, status: "ACCEPTED", acceptedAt: new Date() },
   });
   // Notify the captain that someone joined.
-  await notificationsQueue
-    .add("competition.team-member-joined", {
-      userId: member.registration.leaderUserId,
-      type: "competition.team_member_joined",
-      title: "Someone joined your team",
-      body: `${session.user.name ?? sessionEmail} accepted your invite.`,
-      link: `/me/teams/${member.registrationId}`,
-      channels: ["IN_APP"],
-      actorId: session.user.id,
-    })
-    .catch(() => undefined);
+  await dispatchNotification({
+    userId: member.registration.leaderUserId,
+    type: "competition.team_member_joined",
+    title: "Someone joined your team",
+    body: `${session.user.name ?? sessionEmail} accepted your invite.`,
+    link: `/me/teams/${member.registrationId}`,
+    channels: ["IN_APP"],
+    actorId: session.user.id,
+  }).catch(() => undefined);
   return {
     ok: true,
     competitionSlug: member.registration.competition.slug,
@@ -732,7 +730,7 @@ export async function announceResults(competitionId: string): Promise<FormState>
       });
     }
     // Notify the team leader
-    await notificationsQueue.add("competition.result", {
+    await dispatchNotification({
       userId: reg.leaderUserId,
       type: "competition.result-announced",
       title: `Results: ${comp.title}`,
@@ -780,7 +778,7 @@ export async function approveCompetition(competitionId: string, goLiveAt?: Date)
       publishedAt: goLiveAt && goLiveAt > new Date() ? goLiveAt : new Date(),
     },
   });
-  await notificationsQueue.add("competition.approved", {
+  await dispatchNotification({
     userId: comp.postedById,
     type: "competition.approved",
     title: `"${comp.title}" approved`,
@@ -806,7 +804,7 @@ export async function requestCompetitionChanges(competitionId: string, note: str
       reviewerNotes: note,
     },
   });
-  await notificationsQueue.add("competition.changes", {
+  await dispatchNotification({
     userId: comp.postedById,
     type: "competition.changes-requested",
     title: `Changes requested for "${comp.title}"`,
@@ -825,7 +823,7 @@ export async function rejectCompetition(competitionId: string, note: string): Pr
     where: { id: competitionId },
     data: { status: "REJECTED", reviewedById: session.user.id, reviewedAt: new Date(), reviewerNotes: note },
   });
-  await notificationsQueue.add("competition.rejected", {
+  await dispatchNotification({
     userId: comp.postedById,
     type: "competition.rejected",
     title: `"${comp.title}" rejected`,

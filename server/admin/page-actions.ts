@@ -55,6 +55,10 @@ export async function publishPage(formData: FormData): Promise<void> {
   } catch (err) {
     if (isRouterControlError(err)) throw err;
     logger.error({ err }, "[admin] publishPage failed");
+    redirect(
+      "/admin/pages?error=" +
+        encodeURIComponent("Couldn't publish — check the logs and try again."),
+    );
   }
 }
 
@@ -76,6 +80,10 @@ export async function unpublishPage(formData: FormData): Promise<void> {
   } catch (err) {
     if (isRouterControlError(err)) throw err;
     logger.error({ err }, "[admin] unpublishPage failed");
+    redirect(
+      "/admin/pages?error=" +
+        encodeURIComponent("Couldn't unpublish — check the logs and try again."),
+    );
   }
 }
 
@@ -97,6 +105,10 @@ export async function archivePage(formData: FormData): Promise<void> {
   } catch (err) {
     if (isRouterControlError(err)) throw err;
     logger.error({ err }, "[admin] archivePage failed");
+    redirect(
+      "/admin/pages?error=" +
+        encodeURIComponent("Couldn't archive — check the logs and try again."),
+    );
   }
 }
 
@@ -118,6 +130,10 @@ export async function deletePage(formData: FormData): Promise<void> {
   } catch (err) {
     if (isRouterControlError(err)) throw err;
     logger.error({ err }, "[admin] deletePage failed");
+    redirect(
+      "/admin/pages?error=" +
+        encodeURIComponent("Couldn't delete — check the logs and try again."),
+    );
   }
 }
 
@@ -348,5 +364,9 @@ export async function setAllowScripts(formData: FormData): Promise<void> {
   } catch (err) {
     if (isRouterControlError(err)) throw err;
     logger.error({ err }, "[admin] setAllowScripts failed");
+    redirect(
+      "/admin/pages?error=" +
+        encodeURIComponent("Couldn't toggle scripts — check the logs and try again."),
+    );
   }
 }

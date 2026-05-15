@@ -11,7 +11,7 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { pgRateLimit } from "@/lib/rate-limit-pg";
 import { buckets, objectKey, publicUrl, s3 } from "@/lib/storage";
 import { logger } from "@/lib/logger";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 
 /**
  * Twitter-style ID verification flow. The candidate uploads a
@@ -198,7 +198,7 @@ export async function submitIDVerification(formData: FormData): Promise<{
         select: { id: true },
       });
       for (const a of admins) {
-        await notificationsQueue.add("id-verification-pending", {
+        await dispatchNotification({
           userId: a.id,
           type: "admin.id_verification_pending",
           title: "New ID verification to review",
@@ -326,7 +326,7 @@ export async function reviewIDVerification(formData: FormData) {
 
   // Tell the candidate. Big moment for them either way.
   try {
-    await notificationsQueue.add("id-verification-result", {
+    await dispatchNotification({
       userId: profile.userId,
       type:
         action === "reject"

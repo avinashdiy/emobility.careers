@@ -9,7 +9,7 @@ import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { pgRateLimit } from "@/lib/rate-limit-pg";
 import { requireEmailVerified, EmailNotVerifiedError } from "@/lib/anti-spam";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { detectEmbed } from "@/lib/social/embeds";
 import { findBannedWord, autoFlagContent } from "@/lib/social/banned-words";
 import { extractHashtags, extractMentions } from "@/lib/social/extract";
@@ -380,7 +380,7 @@ export async function voteOnPoll(formData: FormData): Promise<FormState> {
   // notification fanout level if it gets noisy).
   const post = await db.post.findFirst({ where: { poll: { id: pollId } }, select: { id: true, authorId: true } });
   if (post && post.authorId !== session.user.id) {
-    await notificationsQueue.add("poll.vote", {
+    await dispatchNotification({
       userId: post.authorId,
       type: "post.poll-vote",
       title: "Someone voted on your poll",

@@ -162,18 +162,26 @@ export async function updateGrievance(formData: FormData): Promise<void> {
   if (session.user.role !== "ADMIN") redirect("/403");
   const parsed = updateSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
+    const firstError =
+      Object.values(parsed.error.flatten().fieldErrors).flat()[0] ??
+      "Invalid grievance update.";
     logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[grievance] Zod validation failed — bare form action returns void; user sees no feedback.",
+      { adminId: session.user.id, fieldErrors: parsed.error.flatten().fieldErrors },
+      "[updateGrievance] validation failed",
     );
-    return;
+    redirect("/admin/grievance?error=" + encodeURIComponent(firstError));
   }
 
   const ticket = await db.grievanceTicket.findUnique({
     where: { id: parsed.data.ticketId },
     select: { id: true, status: true, acknowledgedAt: true, filerEmail: true, filerName: true, subject: true },
   });
-  if (!ticket) return;
+  if (!ticket) {
+    redirect(
+      "/admin/grievance?error=" +
+        encodeURIComponent("That ticket no longer exists — refresh the queue."),
+    );
+  }
 
   const now = new Date();
   const data: Record<string, unknown> = {};

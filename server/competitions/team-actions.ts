@@ -16,7 +16,7 @@ import { env } from "@/lib/env";
 import { withUniqueSlug } from "@/lib/slug";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { pgRateLimit } from "@/lib/rate-limit-pg";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { s3, buckets, publicUrl, objectKey } from "@/lib/storage";
 import type { FormState } from "@/lib/form-state";
 import { optionalUrl } from "@/lib/forms/zod-url";
@@ -611,17 +611,15 @@ export async function bulkInviteTeamMembers(
       // see it next time they open the platform without checking
       // their email.
       if (row.userId) {
-        await notificationsQueue
-          .add("competition.team-invite", {
-            userId: row.userId,
-            type: "competition.team_invite",
-            title: `You're invited to ${team.teamName ?? "a team"}`,
-            body: `${captainName?.name ?? "A captain"} invited you to compete in ${team.competition.title}.`,
-            link: acceptUrl,
-            channels: ["IN_APP"],
-            actorId: session.user.id,
-          })
-          .catch(() => undefined);
+        await dispatchNotification({
+          userId: row.userId,
+          type: "competition.team_invite",
+          title: `You're invited to ${team.teamName ?? "a team"}`,
+          body: `${captainName?.name ?? "A captain"} invited you to compete in ${team.competition.title}.`,
+          link: acceptUrl,
+          channels: ["IN_APP"],
+          actorId: session.user.id,
+        }).catch(() => undefined);
       }
     }
 
@@ -712,7 +710,9 @@ function buildInviteHtml(o: {
 export async function revokeTeamInvite(formData: FormData): Promise<void> {
   try {
     const session = await requireUser();
-    const memberId = z.string().parse(formData.get("memberId"));
+    const memberIdParsed = z.string().min(1).safeParse(formData.get("memberId"));
+    if (!memberIdParsed.success) return;
+    const memberId = memberIdParsed.data;
     const member = await db.competitionTeamMember.findUnique({
       where: { id: memberId },
       include: { registration: { select: { id: true, leaderUserId: true } } },
@@ -726,6 +726,10 @@ export async function revokeTeamInvite(formData: FormData): Promise<void> {
   } catch (err) {
     if (isRouterControlError(err)) throw err;
     logger.error({ err }, "[team-actions] revokeInvite failed");
+    redirect(
+      "/me/teams?error=" +
+        encodeURIComponent("Couldn't revoke that invite — try again."),
+    );
   }
 }
 
@@ -734,7 +738,9 @@ export async function revokeTeamInvite(formData: FormData): Promise<void> {
 export async function removeTeamMember(formData: FormData): Promise<void> {
   try {
     const session = await requireUser();
-    const memberId = z.string().parse(formData.get("memberId"));
+    const memberIdParsed = z.string().min(1).safeParse(formData.get("memberId"));
+    if (!memberIdParsed.success) return;
+    const memberId = memberIdParsed.data;
     const member = await db.competitionTeamMember.findUnique({
       where: { id: memberId },
       include: { registration: { select: { id: true, leaderUserId: true } } },
@@ -750,6 +756,10 @@ export async function removeTeamMember(formData: FormData): Promise<void> {
   } catch (err) {
     if (isRouterControlError(err)) throw err;
     logger.error({ err }, "[team-actions] removeMember failed");
+    redirect(
+      "/me/teams?error=" +
+        encodeURIComponent("Couldn't remove that member — try again."),
+    );
   }
 }
 
@@ -758,7 +768,9 @@ export async function removeTeamMember(formData: FormData): Promise<void> {
 export async function updateMemberPosition(formData: FormData): Promise<void> {
   try {
     const session = await requireUser();
-    const memberId = z.string().parse(formData.get("memberId"));
+    const memberIdParsed = z.string().min(1).safeParse(formData.get("memberId"));
+    if (!memberIdParsed.success) return;
+    const memberId = memberIdParsed.data;
     const positionTitle = z
       .string()
       .max(80)
@@ -993,27 +1005,23 @@ export async function transferCaptaincy(formData: FormData): Promise<FormState> 
     const newCaptainName =
       newCaptainMember.user?.name ?? newCaptainMember.invitedEmail ?? "your teammate";
     await Promise.all([
-      notificationsQueue
-        .add("competition.captain-transfer-in", {
-          userId: newCaptainUserId,
-          type: "competition.captain_transferred",
-          title: `You're now captain of ${team.teamName ?? "the team"}`,
-          body: `${team.leader?.name ?? "The previous captain"} handed over leadership. You can now invite members, submit, and manage the team page.`,
-          link: `/me/teams/${team.id}`,
-          channels: ["IN_APP", "EMAIL"],
-          actorId: session.user.id,
-        })
-        .catch(() => undefined),
-      notificationsQueue
-        .add("competition.captain-transfer-out", {
-          userId: session.user.id,
-          type: "competition.captain_transferred_to",
-          title: `Captaincy transferred to ${newCaptainName}`,
-          body: `You're now a regular member of ${team.teamName ?? "the team"}.`,
-          link: `/me/teams/${team.id}`,
-          channels: ["IN_APP"],
-        })
-        .catch(() => undefined),
+      dispatchNotification({
+        userId: newCaptainUserId,
+        type: "competition.captain_transferred",
+        title: `You're now captain of ${team.teamName ?? "the team"}`,
+        body: `${team.leader?.name ?? "The previous captain"} handed over leadership. You can now invite members, submit, and manage the team page.`,
+        link: `/me/teams/${team.id}`,
+        channels: ["IN_APP", "EMAIL"],
+        actorId: session.user.id,
+      }).catch(() => undefined),
+      dispatchNotification({
+        userId: session.user.id,
+        type: "competition.captain_transferred_to",
+        title: `Captaincy transferred to ${newCaptainName}`,
+        body: `You're now a regular member of ${team.teamName ?? "the team"}.`,
+        link: `/me/teams/${team.id}`,
+        channels: ["IN_APP"],
+      }).catch(() => undefined),
     ]);
 
     revalidatePath(`/me/teams/${team.id}`);
@@ -1058,22 +1066,20 @@ export async function adminVerifyTeam(formData: FormData): Promise<FormState> {
       meta: { note: note || null },
     });
     // Notify the captain.
-    await notificationsQueue
-      .add("competition.team-verification", {
-        userId: team.leaderUserId,
-        type: "competition.team_verification",
-        title:
-          decision === "VERIFIED"
-            ? `Your team "${team.teamName}" is verified`
-            : `Your team "${team.teamName}" needs changes`,
-        body:
-          decision === "VERIFIED"
-            ? "You can now publish the public team page from /me/teams."
-            : note || "Admin requested changes — see /me/teams for details.",
-        link: `/me/teams`,
-        channels: ["IN_APP", "EMAIL"],
-      })
-      .catch(() => undefined);
+    await dispatchNotification({
+      userId: team.leaderUserId,
+      type: "competition.team_verification",
+      title:
+        decision === "VERIFIED"
+          ? `Your team "${team.teamName}" is verified`
+          : `Your team "${team.teamName}" needs changes`,
+      body:
+        decision === "VERIFIED"
+          ? "You can now publish the public team page from /me/teams."
+          : note || "Admin requested changes — see /me/teams for details.",
+      link: `/me/teams`,
+      channels: ["IN_APP", "EMAIL"],
+    }).catch(() => undefined);
     revalidatePath(`/admin/teams`);
     revalidatePath(`/admin/teams/${team.id}`);
     return { ok: true, message: `Team ${decision.toLowerCase()}.` };

@@ -13,6 +13,7 @@ import { requireEmailVerified } from "@/lib/anti-spam";
 import { extractHashtags, extractMentions } from "@/lib/social/extract";
 import { findBannedWord, autoFlagContent } from "@/lib/social/banned-words";
 import { logger } from "@/lib/logger";
+import { isRouterControlError } from "@/lib/server-action-errors";
 import {
   ConnectionStatus,
   PostVisibility,
@@ -59,15 +60,26 @@ export async function createPost(formData: FormData): Promise<void> {
   // void-action redirects with a notice rather than throwing).
   const pg = await pgRateLimit({ action: "post.create", userId: session.user.id });
   if (!pg.ok) redirect("/feed?error=" + encodeURIComponent(pg.message));
-  await rateLimitOrThrow(`post:${session.user.id}`, "message");
+  try {
+    await rateLimitOrThrow(`post:${session.user.id}`, "message");
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    redirect(
+      "/feed?error=" +
+        encodeURIComponent("You're posting very fast — try again in a minute."),
+    );
+  }
 
   const parsed = postCreateSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
+    const firstError =
+      Object.values(parsed.error.flatten().fieldErrors).flat()[0] ??
+      "Couldn't post — check the body and try again.";
     logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[social] Zod validation failed — bare form action returns void; user sees no feedback.",
+      { userId: session.user.id, fieldErrors: parsed.error.flatten().fieldErrors },
+      "[createPost] validation failed",
     );
-    return;
+    redirect("/feed?error=" + encodeURIComponent(firstError));
   }
   const { body, visibility, asCompanyId, attachedJobId, repostOfId } = parsed.data;
 
@@ -204,13 +216,25 @@ export async function togglePostReaction(formData: FormData): Promise<void> {
   const session = await requireUserVerified();
   const parsed = reactionSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
+    // Reaction buttons are idempotent and inline on every feed card;
+    // a redirect would jar the scroll position. Logging the failure is
+    // enough — invalid postId / type can only come from a tampered
+    // request, never legitimate UI.
     logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[social] Zod validation failed — bare form action returns void; user sees no feedback.",
+      { userId: session.user.id, fieldErrors: parsed.error.flatten().fieldErrors },
+      "[togglePostReaction] validation failed",
     );
     return;
   }
-  await rateLimitOrThrow(`react:${session.user.id}`, "ats");
+  try {
+    await rateLimitOrThrow(`react:${session.user.id}`, "ats");
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    // 120 reactions/min is the cap; if a user is hitting it they're
+    // either testing or scripting. Silent no-op is fine here.
+    logger.warn({ userId: session.user.id }, "[togglePostReaction] rate limited");
+    return;
+  }
 
   const { postId, type } = parsed.data;
   const existing = await db.postReaction.findUnique({
@@ -270,16 +294,34 @@ const commentSchema = z.object({
 
 export async function addComment(formData: FormData): Promise<void> {
   const session = await requireUserVerified();
+  const postIdRaw = String(formData.get("postId") ?? "");
+  const commentRedirectTarget = postIdRaw
+    ? `/posts/${postIdRaw}`
+    : "/feed";
+
   const pgLimit = await pgRateLimit({ action: "comment.create", userId: session.user.id });
-  if (!pgLimit.ok) return;
-  await rateLimitOrThrow(`comment:${session.user.id}`, "message");
+  if (!pgLimit.ok) {
+    redirect(`${commentRedirectTarget}?error=` + encodeURIComponent(pgLimit.message));
+  }
+  try {
+    await rateLimitOrThrow(`comment:${session.user.id}`, "message");
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    redirect(
+      `${commentRedirectTarget}?error=` +
+        encodeURIComponent("You're commenting very fast — try again in a minute."),
+    );
+  }
   const parsed = commentSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
+    const firstError =
+      Object.values(parsed.error.flatten().fieldErrors).flat()[0] ??
+      "Comment couldn't be posted — check the length.";
     logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[social] Zod validation failed — bare form action returns void; user sees no feedback.",
+      { userId: session.user.id, fieldErrors: parsed.error.flatten().fieldErrors },
+      "[addComment] validation failed",
     );
-    return;
+    redirect(`${commentRedirectTarget}?error=` + encodeURIComponent(firstError));
   }
 
   const { postId, body, parentId } = parsed.data;
@@ -287,7 +329,9 @@ export async function addComment(formData: FormData): Promise<void> {
     where: { id: postId },
     select: { authorId: true, body: true },
   });
-  if (!post) return;
+  if (!post) {
+    redirect("/feed?error=" + encodeURIComponent("This post was removed."));
+  }
 
   // Shadow-ban + auto-moderation — for comments we have a hiddenAt
   // column instead of a visibility flag, so we stamp it directly on
@@ -399,17 +443,34 @@ const connectRequestSchema = z.object({
 
 export async function requestConnection(formData: FormData): Promise<void> {
   const session = await requireUserVerified();
-  await rateLimitOrThrow(`connect:${session.user.id}`, "saveItem");
+  const recipientRaw = String(formData.get("recipientId") ?? "");
+  // The buttons that fire this action live across many surfaces
+  // (search, public profile, suggestions). Bounce the user back to the
+  // network page on any failure so they always have a recoverable
+  // landing rather than the global error page.
+  try {
+    await rateLimitOrThrow(`connect:${session.user.id}`, "saveItem");
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    redirect(
+      "/me/network?error=" +
+        encodeURIComponent("You're sending connection requests very fast — slow down."),
+    );
+  }
   const parsed = connectRequestSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
     logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[social] Zod validation failed — bare form action returns void; user sees no feedback.",
+      { userId: session.user.id, fieldErrors: parsed.error.flatten().fieldErrors },
+      "[requestConnection] validation failed",
     );
-    return;
+    redirect(
+      "/me/network?error=" +
+        encodeURIComponent("Couldn't send the request — try again from the person's profile."),
+    );
   }
   const { recipientId, message } = parsed.data;
   if (recipientId === session.user.id) return;
+  void recipientRaw;
 
   const [a, b] = [session.user.id, recipientId].sort();
   // Idempotent: upsert a single row keyed on the pair
@@ -479,7 +540,9 @@ async function acceptConnectionInternal(connectionId: string, byUserId: string) 
 
 export async function respondConnection(formData: FormData): Promise<void> {
   const session = await requireUser();
-  const id = z.string().parse(formData.get("id"));
+  const idParsed = z.string().min(1).safeParse(formData.get("id"));
+  if (!idParsed.success) return;
+  const id = idParsed.data;
   const accept = formData.get("accept") === "true";
   if (accept) {
     await acceptConnectionInternal(id, session.user.id);
@@ -529,9 +592,20 @@ export async function removeConnection(formData: FormData): Promise<void> {
 
 export async function followUser(formData: FormData): Promise<void> {
   const session = await requireUserVerified();
-  const followeeId = z.string().parse(formData.get("userId"));
+  const followeeParsed = z.string().min(1).safeParse(formData.get("userId"));
+  if (!followeeParsed.success) return;
+  const followeeId = followeeParsed.data;
   if (followeeId === session.user.id) return;
-  await rateLimitOrThrow(`follow:${session.user.id}`, "saveItem");
+  try {
+    await rateLimitOrThrow(`follow:${session.user.id}`, "saveItem");
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    // Follow buttons appear inline on cards across the feed — bouncing
+    // to a "?error" page would be jarring. Silently no-op + log; the
+    // user can retry in a minute.
+    logger.warn({ userId: session.user.id }, "[followUser] rate limited");
+    return;
+  }
 
   const existing = await db.follow.findUnique({
     where: { followerId_followeeUserId: { followerId: session.user.id, followeeUserId: followeeId } },
@@ -564,7 +638,9 @@ export async function followUser(formData: FormData): Promise<void> {
 
 export async function unfollowUser(formData: FormData): Promise<void> {
   const session = await requireUser();
-  const followeeId = z.string().parse(formData.get("userId"));
+  const followeeParsed = z.string().min(1).safeParse(formData.get("userId"));
+  if (!followeeParsed.success) return;
+  const followeeId = followeeParsed.data;
   const existing = await db.follow.findUnique({
     where: { followerId_followeeUserId: { followerId: session.user.id, followeeUserId: followeeId } },
   });
@@ -584,8 +660,16 @@ export async function unfollowUser(formData: FormData): Promise<void> {
 
 export async function followCompany(formData: FormData): Promise<void> {
   const session = await requireUserVerified();
-  const companyId = z.string().parse(formData.get("companyId"));
-  await rateLimitOrThrow(`follow:${session.user.id}`, "saveItem");
+  const companyParsed = z.string().min(1).safeParse(formData.get("companyId"));
+  if (!companyParsed.success) return;
+  const companyId = companyParsed.data;
+  try {
+    await rateLimitOrThrow(`follow:${session.user.id}`, "saveItem");
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.warn({ userId: session.user.id }, "[followCompany] rate limited");
+    return;
+  }
   const existing = await db.follow.findUnique({
     where: { followerId_followeeCompanyId: { followerId: session.user.id, followeeCompanyId: companyId } },
   });
@@ -603,7 +687,9 @@ export async function followCompany(formData: FormData): Promise<void> {
 
 export async function unfollowCompany(formData: FormData): Promise<void> {
   const session = await requireUser();
-  const companyId = z.string().parse(formData.get("companyId"));
+  const companyParsed = z.string().min(1).safeParse(formData.get("companyId"));
+  if (!companyParsed.success) return;
+  const companyId = companyParsed.data;
   const existing = await db.follow.findUnique({
     where: { followerId_followeeCompanyId: { followerId: session.user.id, followeeCompanyId: companyId } },
   });

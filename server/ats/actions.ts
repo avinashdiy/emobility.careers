@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { ApplicationStage, NoteVisibility } from "@prisma/client";
 
@@ -160,7 +160,7 @@ export async function moveStage(formData: FormData) {
   // rather than a generic stage change. The fair context is
   // already loaded above; switching is a one-line ternary.
   const fair = application.recruitmentDrive;
-  await notificationsQueue.add("stage-change", {
+  await dispatchNotification({
     userId: application.candidate.userId,
     type: "application.stage_change",
     title: fair

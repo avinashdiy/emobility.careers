@@ -6,7 +6,7 @@ import { z } from "zod";
 import crypto from "node:crypto";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { generateICS } from "@/lib/ics";
 import { sendMail } from "@/lib/mail";
 import { env } from "@/lib/env";
@@ -115,7 +115,7 @@ export async function scheduleInterview(formData: FormData) {
     });
   }
 
-  await notificationsQueue.add("interview-scheduled", {
+  await dispatchNotification({
     userId: application.candidate.user.id,
     type: "interview.scheduled",
     title: `Interview scheduled — ${application.job.title}`,
@@ -153,7 +153,7 @@ export async function cancelInterview(formData: FormData) {
     where: { id },
     data: { status: "CANCELLED" },
   });
-  await notificationsQueue.add("interview-cancelled", {
+  await dispatchNotification({
     userId: interview.application.candidate.user.id,
     type: "interview.cancelled",
     title: `Interview cancelled — ${interview.application.job.title}`,

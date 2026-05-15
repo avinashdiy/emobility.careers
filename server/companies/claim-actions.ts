@@ -11,7 +11,7 @@ import { sendMail } from "@/lib/mail";
 import { env } from "@/lib/env";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { pgRateLimit } from "@/lib/rate-limit-pg";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { CompanyTeamRole } from "@prisma/client";
 import type { FormState } from "@/lib/form-state";
 
@@ -399,17 +399,15 @@ export async function adminApproveCompanyClaim(formData: FormData): Promise<Form
     });
 
     // Notify the claimant.
-    await notificationsQueue
-      .add("company-claim-approved", {
-        userId: claim.claimantUserId,
-        type: "company.claim_approved",
-        title: `You're now on the ${claim.company.name} team`,
-        body: `Your claim was approved as ${finalRole.toLowerCase()}. Visit /employer to manage jobs and team.`,
-        link: "/employer",
-        channels: ["IN_APP", "EMAIL"],
-        actorId: session.user.id,
-      })
-      .catch(() => undefined);
+    await dispatchNotification({
+      userId: claim.claimantUserId,
+      type: "company.claim_approved",
+      title: `You're now on the ${claim.company.name} team`,
+      body: `Your claim was approved as ${finalRole.toLowerCase()}. Visit /employer to manage jobs and team.`,
+      link: "/employer",
+      channels: ["IN_APP", "EMAIL"],
+      actorId: session.user.id,
+    }).catch(() => undefined);
 
     revalidatePath("/admin/claims");
     revalidatePath(`/admin/claims/${claim.id}`);
@@ -464,17 +462,15 @@ export async function adminRejectCompanyClaim(formData: FormData): Promise<FormS
       meta: { companyId: claim.companyId, note },
     });
 
-    await notificationsQueue
-      .add("company-claim-rejected", {
-        userId: claim.claimantUserId,
-        type: "company.claim_rejected",
-        title: `Your claim on ${claim.company.name} needs more info`,
-        body: note,
-        link: `/company/${claim.company.slug}/claim`,
-        channels: ["IN_APP", "EMAIL"],
-        actorId: session.user.id,
-      })
-      .catch(() => undefined);
+    await dispatchNotification({
+      userId: claim.claimantUserId,
+      type: "company.claim_rejected",
+      title: `Your claim on ${claim.company.name} needs more info`,
+      body: note,
+      link: `/company/${claim.company.slug}/claim`,
+      channels: ["IN_APP", "EMAIL"],
+      actorId: session.user.id,
+    }).catch(() => undefined);
 
     revalidatePath("/admin/claims");
     revalidatePath(`/admin/claims/${claim.id}`);

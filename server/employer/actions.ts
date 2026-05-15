@@ -7,7 +7,8 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auth, unstable_update } from "@/lib/auth";
 import { withUniqueSlug } from "@/lib/slug";
-import { embeddingsQueue, notificationsQueue } from "@/lib/queues";
+import { embeddingsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { logger } from "@/lib/logger";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { sanitizeJobHtml, plainTextLength } from "@/lib/cms/job-sanitize";
@@ -882,9 +883,8 @@ export async function bulkInviteCandidates(formData: FormData) {
   });
 
   // Fan out invitation notifications
-  const { notificationsQueue } = await import("@/lib/queues");
   for (const c of fresh) {
-    await notificationsQueue.add("invited", {
+    await dispatchNotification({
       userId: c.user.id,
       type: "application.invited",
       title: `You've been invited to apply: ${job.title}`,
@@ -1129,7 +1129,7 @@ export async function sendBulkInMail(input: {
         data: { lastMessageAt: new Date() },
       });
 
-      await notificationsQueue.add("inmail", {
+      await dispatchNotification({
         userId: c.user.id,
         type: "message.new",
         title: `Message from ${employer.company.name}`,
