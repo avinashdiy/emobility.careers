@@ -79,6 +79,33 @@ const TOOLS: Tool[] = [
     status: "live",
   },
   {
+    href: "/ai-tools/cover-letter",
+    emoji: "✍️",
+    title: "EV Cover Letter Generator",
+    blurb:
+      "Paste a role + your background, pick a tone, get a 300-400 word EV-industry cover letter that names the right standards and technologies — not generic SaaS filler.",
+    badge: { label: "New · Free", tone: "new" },
+    status: "live",
+  },
+  {
+    href: "/ai-tools/career-path",
+    emoji: "🧬",
+    title: "EV Career Path Advisor",
+    blurb:
+      "Chart a 3-5 milestone EV roadmap from where you are today to where you want to land. India INR salary signals + the ready-for-next-stage signal at each step.",
+    badge: { label: "New · Free", tone: "new" },
+    status: "live",
+  },
+  {
+    href: "/ai-tools/linkedin-optimizer",
+    emoji: "💼",
+    title: "LinkedIn Profile Optimizer",
+    blurb:
+      "Paste your LinkedIn headline + About — we score the current profile, give 3 sharper headline alternatives, rewrite About without clichés, and flag the keywords recruiters search.",
+    badge: { label: "New · Free", tone: "new" },
+    status: "live",
+  },
+  {
     href: "/roast",
     emoji: "🔥",
     title: "Roast My Resume",
