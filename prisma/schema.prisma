@@ -250,6 +250,10 @@ model User {
   // Wave A back-relations
   groupMemberships     GroupMembership[]      @relation("GroupMember")
 
+  // Wave B back-relations
+  outreachCadencesCreated OutreachCadence[]    @relation("OutreachCadenceCreator")
+  outreachEnrollments     OutreachEnrollment[] @relation("OutreachEnrolledBy")
+
   @@index([role, status])
 }
 
@@ -590,6 +594,8 @@ model CandidateProfile {
   credentialsHeld        CandidateCredential[]
   // Wave A #10 — recruiter-search appearance tracker
   searchAppearances      ProfileSearchAppearance[]
+  // Wave B #21 — outreach sequence enrollments
+  outreachEnrollments    OutreachEnrollment[]
 
   @@index([profileMode, availabilityStatus, openToWork])
   @@index([isDIYguruVerified])
@@ -930,6 +936,9 @@ model Company {
   reviews            CompanyReview[]
   awards             EmployerAward[]
 
+  // Wave B #21 — outreach cadences scoped to the company
+  outreachCadences   OutreachCadence[]
+
   @@index([verificationStatus])
 }
 
@@ -1109,6 +1118,8 @@ model JobPosting {
   hiringAssistant  HiringAssistantConfig?
   automations      PipelineAutomation[]
   callingSessions  CallingSession[]
+  // Wave B #21 — outreach cadences scoped to this job
+  outreachCadences OutreachCadence[]
 
   // FTS — see Skill.searchTsv for the rationale.
   searchTsv Unsupported("tsvector")?
@@ -1179,6 +1190,16 @@ model Application {
   resumeSnapshotUrl String?
   matchScore        Float?
   matchExplanation  Json?
+  /// Wave B #17 — AI-generated one-paragraph "why this candidate
+  /// matches" summary, cached after first generation so the ATS
+  /// card doesn't re-prompt OpenAI on every render. Null until the
+  /// recruiter (or the daily worker) triggers a generation pass.
+  /// Markdown-free plain text, 80-140 words target.
+  aiSummary         String?              @db.Text
+  /// When the summary was last generated. Recruiter can manually
+  /// regenerate via a "Refresh" button after a stage change or once
+  /// the candidate's profile shows meaningful new content.
+  aiSummaryAt       DateTime?
   appliedAt         DateTime             @default(now())
   updatedAt         DateTime             @updatedAt
   withdrawnAt       DateTime?
@@ -1204,6 +1225,8 @@ model Application {
 
   // Wave C #16 — vernacular calling agent
   callingSessions CallingSession[]
+  // Wave B #21 — outreach sequence enrollments tied to this application
+  outreachEnrollments OutreachEnrollment[]
 
   @@unique([jobId, candidateId])
   @@index([jobId, stage])
@@ -5321,4 +5344,113 @@ enum GroupNotifyMode {
   REALTIME     // every new post pings the member
   WEEKLY       // Sunday digest
   OFF          // joined-but-quiet
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Wave B — Recruiter superpowers (#21 Sequenced outreach)
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── #21 Sequenced outreach ──────────────────────────────────────────
+//
+// A recruiter defines a cadence per job (or one default cadence per
+// company). Each cadence is a series of OutreachStep rows: "Day 0
+// first-touch, Day 4 follow-up, Day 10 final". When a candidate is
+// enrolled (via the recruiter or the AI Hiring Assistant), an
+// OutreachEnrollment row tracks their position. A daily worker tick
+// advances enrollments to the next step when (a) the step's delay
+// has elapsed and (b) the candidate hasn't responded.
+//
+// We intentionally DON'T model the messages themselves here — they
+// flow through the existing MessageThread + dispatchNotification
+// path. Each OutreachStep just carries the template + scheduling
+// metadata; the engine fills the template into a regular message
+// when it fires.
+
+model OutreachCadence {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Null = company-wide default cadence. Set = scoped to one job.
+  /// Lets a recruiter customise the cadence for a senior role
+  /// without rewriting the company default.
+  jobId       String?
+  job         JobPosting? @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdById String
+  createdBy   User     @relation("OutreachCadenceCreator", fields: [createdById], references: [id])
+  /// Friendly name for the rules list ("3-touch senior cadence",
+  /// "Engineering screen pass").
+  label       String
+  enabled     Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  steps       OutreachStep[]
+  enrollments OutreachEnrollment[]
+
+  @@index([companyId, enabled])
+  @@index([jobId])
+}
+
+model OutreachStep {
+  id          String           @id @default(cuid())
+  cadenceId   String
+  cadence     OutreachCadence  @relation(fields: [cadenceId], references: [id], onDelete: Cascade)
+  /// 0-indexed position in the sequence. Step 0 = first touch.
+  order       Int
+  /// Days from enrollment (not from previous step). So a "Day 0,
+  /// Day 4, Day 10" cadence has delayDays = 0, 4, 10. Simplifies
+  /// the engine's "is this step due" check to a single DateTime
+  /// comparison against enrolledAt.
+  delayDays   Int              @default(0)
+  /// Subject + body template strings. Placeholders supported:
+  ///   {{candidateFirstName}}, {{candidateName}}, {{jobTitle}},
+  ///   {{companyName}}, {{recruiterName}}, {{location}}.
+  /// The engine does literal token replacement — no Mustache deps.
+  subject     String?
+  body        String           @db.Text
+  /// Channel mask — usually [IN_APP, EMAIL], optionally [WHATSAPP]
+  /// for high-volume blue-collar cadences. Stored as a string[] of
+  /// the NotificationChannel enum values.
+  channels    String[]         @default(["IN_APP", "EMAIL"])
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([cadenceId, order])
+}
+
+enum OutreachEnrollmentStatus {
+  ACTIVE        // Still progressing through the cadence
+  RESPONDED     // Candidate replied — cadence paused
+  COMPLETED     // Last step fired with no response
+  CANCELLED     // Recruiter manually pulled the candidate
+  FAILED        // Provider rejected too many sends; auto-paused
+}
+
+model OutreachEnrollment {
+  id           String                  @id @default(cuid())
+  cadenceId    String
+  cadence      OutreachCadence         @relation(fields: [cadenceId], references: [id], onDelete: Cascade)
+  applicationId String?
+  application  Application?            @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  candidateId  String
+  candidate    CandidateProfile        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  enrolledById String
+  enrolledBy   User                    @relation("OutreachEnrolledBy", fields: [enrolledById], references: [id])
+  enrolledAt   DateTime                @default(now())
+  /// Step index the engine is currently waiting to fire. Starts at 0
+  /// (= "ready for first touch"). Increments after each send. The
+  /// cadence is "done" when this exceeds the step count.
+  nextStepIndex Int                    @default(0)
+  /// Timestamp of the last step fired — engine uses this PLUS the
+  /// step's delayDays-from-enrolledAt to compute due time.
+  lastSentAt   DateTime?
+  status       OutreachEnrollmentStatus @default(ACTIVE)
+  /// Stamped when the candidate responds (any message from them on
+  /// the thread). Engine flips status → RESPONDED.
+  respondedAt  DateTime?
+  cancelReason String?
+
+  @@unique([cadenceId, candidateId])
+  @@index([status, nextStepIndex])
+  @@index([candidateId])
 }
