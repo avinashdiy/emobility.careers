@@ -47,8 +47,11 @@ export async function SiteFooter() {
             { href: "/signup", label: "Create profile" },
             { href: "/me", label: "My applications" },
             { href: "/ai-tools", label: "AI tools" },
+            { href: "/ai-tools/interview-prep", label: "Interview prep" },
             { href: "/ai-tools/mock-interview", label: "Mock interview" },
             { href: "/ai-tools/interview-simulator", label: "Interview simulator" },
+            { href: "/ai-tools/skills-analyzer", label: "Analyze EV skills" },
+            { href: "/ai-tools/internship-navigator", label: "Internship navigator" },
             { href: "/roast", label: "Roast my resume" },
           ]}
         />

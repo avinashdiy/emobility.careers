@@ -34,6 +34,15 @@ interface Tool {
 
 const TOOLS: Tool[] = [
   {
+    href: "/ai-tools/interview-prep",
+    emoji: "📚",
+    title: "Interview Prep",
+    blurb:
+      "AI study plan for your upcoming round — 5-7 topic cards with sample questions, answer outlines, and where to deepen knowledge. Cram-note tuned to how many days you have.",
+    badge: { label: "New · Free", tone: "new" },
+    status: "live",
+  },
+  {
     href: "/ai-tools/mock-interview",
     emoji: "🎤",
     title: "Embedded Mock Interview",
@@ -48,6 +57,24 @@ const TOOLS: Tool[] = [
     title: "EV Interview Simulator",
     blurb:
       "Role-play an interview at a specific company (Ola, Tata, Ather, Bosch…) with the interviewer style they actually use. Walks the same script their real hiring loops do.",
+    badge: { label: "New · Free", tone: "new" },
+    status: "live",
+  },
+  {
+    href: "/ai-tools/skills-analyzer",
+    emoji: "🧭",
+    title: "Analyze Your EV Skills",
+    blurb:
+      "Paste your skills, we score you across battery / charging / motors / software / industry context. Returns 3-5 prioritised gaps + the strengths to bring forward on your resume.",
+    badge: { label: "New · Free", tone: "new" },
+    status: "live",
+  },
+  {
+    href: "/ai-tools/internship-navigator",
+    emoji: "🎯",
+    title: "Internship Hunt Navigator",
+    blurb:
+      "We re-rank our live EV internship postings against your skills + goals, flag the 5 strongest matches, and tell you what to learn before applying.",
     badge: { label: "New · Free", tone: "new" },
     status: "live",
   },
