@@ -40,6 +40,12 @@ export default async function TalentSearch({
     openToWork?: string;
     lastActive?: string; // "1d" | "7d" | "30d" | "90d"
     sort?: string;       // "relevance" | "active" | "experienced"
+    // Wave C #28 — recruiter filter "verified in this skill". One
+    // slug only for now (most common case); multi-select TBD when
+    // we see it requested.
+    verifiedSkill?: string;
+    // Wave C #29 — credential filter on candidate side.
+    credential?: string;
   }>;
 }) {
   const session = await auth();
@@ -67,6 +73,18 @@ export default async function TalentSearch({
   if (sp.profileMode) where.profileMode = sp.profileMode as Prisma.CandidateProfileWhereInput["profileMode"];
   if (sp.diyguruOnly === "true") where.isDIYguruVerified = true;
   if (sp.openToWork === "true") where.openToWork = true;
+  // Wave C #28 — verified-skill filter
+  if (sp.verifiedSkill) {
+    where.verifiedSkillBadges = {
+      some: { meta: { slug: sp.verifiedSkill } },
+    };
+  }
+  // Wave C #29 — candidate-side credential filter
+  if (sp.credential) {
+    where.credentialsHeld = {
+      some: { credential: { slug: sp.credential } },
+    };
+  }
 
   // "Last active in" — User.lastLoginAt drives this. The cutoff converts
   // band → ms, then filters via the User relation. We pull lastLoginAt
@@ -122,7 +140,24 @@ export default async function TalentSearch({
     : [];
   const appliedSet = new Set(candidatesWithApplication.map((a) => a.candidateId));
 
-  const evDomains = await db.eVDomain.findMany({ orderBy: { order: "asc" } });
+  const [evDomains, skillOptions, credentialOptions] = await Promise.all([
+    db.eVDomain.findMany({ orderBy: { order: "asc" } }),
+    // Wave C #28 — populate the verified-skill dropdown
+    db.skillAssessmentMeta.findMany({
+      where: { isPublic: true },
+      orderBy: [{ evDomainSlug: "asc" }, { sortOrder: "asc" }],
+      select: {
+        slug: true,
+        assessment: { select: { title: true } },
+      },
+    }).then((rows) => rows.map((r) => ({ slug: r.slug, title: r.assessment.title }))),
+    // Wave C #29 — populate the credential dropdown
+    db.credential.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+      select: { slug: true, name: true },
+    }),
+  ]);
 
   const rows: SearchCandidate[] = candidates.map((c) => {
     const phoneVisible =
@@ -229,6 +264,31 @@ export default async function TalentSearch({
               <input type="checkbox" name="openToWork" value="true" defaultChecked={sp.openToWork === "true"} className="h-4 w-4 accent-emce-mid" />
               Open to work only
             </label>
+
+            {/* Wave C #28 + #29 — verified-skill + credential filters.
+                These hit the same form-submit. We load the option lists
+                from the DB once via the parent layout call below so
+                the dropdowns aren't stale. */}
+            <div className="sm:col-span-3">
+              <NativeSelect name="verifiedSkill" defaultValue={sp.verifiedSkill ?? ""}>
+                <option value="">Verified in: any skill</option>
+                {skillOptions.map((s) => (
+                  <option key={s.slug} value={s.slug}>
+                    ✓ {s.title}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
+            <div className="sm:col-span-3">
+              <NativeSelect name="credential" defaultValue={sp.credential ?? ""}>
+                <option value="">Holds credential: any</option>
+                {credentialOptions.map((c) => (
+                  <option key={c.slug} value={c.slug}>
+                    {c.name}
+                  </option>
+                ))}
+              </NativeSelect>
+            </div>
           </form>
         </Card>
 

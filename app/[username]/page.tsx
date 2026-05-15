@@ -261,6 +261,26 @@ export default async function PublicCandidateProfile({
       evDomains: { include: { evDomain: true } },
       volunteerExperiences: { orderBy: { startDate: "desc" } },
       representsCompany: { select: { id: true, slug: true, name: true, logoUrl: true } },
+      // Wave C #28 — earned skill badges. Pulled here so the Skills
+      // section can paint a "✓ Verified" pill next to skills the
+      // candidate has badge-backed evidence for.
+      verifiedSkillBadges: {
+        include: {
+          meta: {
+            select: {
+              slug: true,
+              evDomainSlug: true,
+              recruiterWeight: true,
+              assessment: { select: { title: true } },
+            },
+          },
+        },
+        orderBy: { earnedAt: "desc" },
+      },
+      // Wave C #29 — earned credentials
+      credentialsHeld: {
+        include: { credential: true },
+      },
     },
   });
   if (!profile) notFound();
@@ -1257,6 +1277,40 @@ export default async function PublicCandidateProfile({
                           {v.description}
                         </p>
                       )}
+                    </li>
+                  ))}
+                </ul>
+              </Card>
+            )}
+
+            {/* Wave C #28 — Verified skill badges (above the Skills
+                list because they're the strongest peer-validated
+                signal on the profile). Shown only when at least one
+                badge exists so unverified profiles don't render an
+                empty section. */}
+            {profile.verifiedSkillBadges.length > 0 && (
+              <Card>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[16px] font-semibold text-emce-text">
+                    Verified skills
+                  </h2>
+                  {isOwner && (
+                    <EditPencil href="/skills" label="Take more assessments" />
+                  )}
+                </div>
+                <p className="mt-1 text-hint text-emce-text-sec">
+                  Independently scored on an EV-industry assessment.
+                </p>
+                <ul className="mt-3 flex flex-wrap gap-2">
+                  {profile.verifiedSkillBadges.map((b) => (
+                    <li key={b.id}>
+                      <Link
+                        href={`/skills/${b.meta.slug}`}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-emce-verified-bg to-emce-light-soft px-3 py-1 text-[11px] font-bold text-emce-verified-text border border-emce-verified-border hover:from-emce-mid/30"
+                      >
+                        ✓ {b.meta.assessment.title}
+                        <span className="text-emce-text-muted">· {b.score}%</span>
+                      </Link>
                     </li>
                   ))}
                 </ul>
