@@ -247,6 +247,9 @@ model User {
   companyReviewsModerated  CompanyReview[]    @relation("CompanyReviewModerator")
   careerExplorations       CareerExplorationLog[] @relation("CareerExplorerUser")
 
+  // Wave A back-relations
+  groupMemberships     GroupMembership[]      @relation("GroupMember")
+
   @@index([role, status])
 }
 
@@ -585,6 +588,8 @@ model CandidateProfile {
   verifiedSkillBadges    VerifiedSkillBadge[]
   callingSessions        CallingSession[]
   credentialsHeld        CandidateCredential[]
+  // Wave A #10 — recruiter-search appearance tracker
+  searchAppearances      ProfileSearchAppearance[]
 
   @@index([profileMode, availabilityStatus, openToWork])
   @@index([isDIYguruVerified])
@@ -5203,4 +5208,117 @@ model CareerExplorationLog {
 
   @@index([cacheKey, createdAt])
   @@index([userId, createdAt])
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Wave A — Profile signals & feed delight (#5, #10)
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── #10 Profile Performance (search-impression tracking) ───────────
+//
+// Each week, every candidate row that surfaces in a recruiter's
+// /employer/candidates query gets counted once per recruiter per week.
+// We aggregate (not per-event) so cardinality stays low — at scale a
+// candidate might appear in 200+ searches per week and we never need
+// per-search granularity for the "you appeared in X searches" stat.
+//
+// Why per-recruiter per-week rather than just per-week: the same
+// recruiter scrolling a search page hits the query repeatedly. Without
+// the recruiter axis we'd over-count by 5-10x just from pagination.
+
+model ProfileSearchAppearance {
+  id          String           @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  /// The recruiter who ran the search (their User id; we resolve back
+  /// to EmployerProfile lazily in the analytics view). Null when a
+  /// public visitor browses the same candidate list — kept distinct
+  /// so "recruiter views" and "public views" don't blur together.
+  recruiterUserId String?
+  /// Monday-aligned UTC date so weekly buckets are stable across
+  /// timezone boundaries. Stored as a date-truncated DateTime.
+  weekStart   DateTime
+  /// Times this candidate appeared in the recruiter's search results
+  /// over the week. Incremented on each new query (capped at 50 per
+  /// week per recruiter to keep one obsessive recruiter from
+  /// inflating the stat).
+  count       Int              @default(1)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([candidateId, recruiterUserId, weekStart])
+  @@index([candidateId, weekStart])
+}
+
+// ─── #5 EV Community Groups ─────────────────────────────────────────
+//
+// Groups are curated topic spaces (Battery Engineers, Charging Infra,
+// BMS, EV Service Techs, etc.) — a thin branded layer over the existing
+// HashtagSubscription / hashtag-based feed. Each Group has a stable
+// slug that doubles as a hashtag; a post that uses #<slug> shows in
+// the group's feed automatically.
+//
+// We keep `memberCount` denormalised on the Group row so the browse
+// page doesn't have to JOIN-count every render. The join action keeps
+// the counter in sync inside a transaction.
+
+model Group {
+  id            String   @id @default(cuid())
+  /// Stable slug — also used as the hashtag. "battery-engineers",
+  /// "charging-infrastructure", "bms-design". Hashtag matching is
+  /// case-insensitive so #BatteryEngineers and #battery-engineers
+  /// hit the same group feed.
+  slug          String   @unique
+  name          String
+  /// One-line tagline shown on the group card.
+  tagline       String?  @db.VarChar(220)
+  /// Long-form description rendered on the group detail page. Stored
+  /// as plain text; rich text gets sanitised at render time via the
+  /// existing htmlOrFallback helper.
+  description   String?  @db.Text
+  /// Banner image (cover photo) — 1500×500 ideal. Falls back to the
+  /// brand mesh gradient when null.
+  bannerUrl     String?
+  /// EV domain this group is anchored to. Drives the browse-by-
+  /// domain layout on /groups.
+  evDomainSlug  String
+  /// Denormalised counter — incremented on join, decremented on
+  /// leave. Surfaces on the browse card without a count() per render.
+  memberCount   Int      @default(0)
+  postCount     Int      @default(0)
+  /// Public flag — admin-only groups stay hidden from browse.
+  isPublic      Boolean  @default(true)
+  /// Optional rules string shown above the post composer ("Posts must
+  /// cite an EV topic; no recruiting; no self-promotion"). Rendered
+  /// as plain text.
+  rules         String?  @db.Text
+  /// Sort order within an EV domain section.
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  memberships   GroupMembership[]
+
+  @@index([evDomainSlug, isPublic])
+}
+
+model GroupMembership {
+  id        String   @id @default(cuid())
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation("GroupMember", fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt  DateTime @default(now())
+  /// Per-member notification preference — defaults to weekly digest
+  /// to avoid spamming members who joined for browsability.
+  notify    GroupNotifyMode @default(WEEKLY)
+
+  @@unique([groupId, userId])
+  @@index([userId])
+}
+
+enum GroupNotifyMode {
+  REALTIME     // every new post pings the member
+  WEEKLY       // Sunday digest
+  OFF          // joined-but-quiet
 }
