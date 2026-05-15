@@ -30,20 +30,22 @@ import { FeaturedFairsRail } from "@/components/recruitment-drives/FeaturedFairs
  * salary" — but the page reads first as a place worth being on.
  */
 
-// ISR — cache the full page at the edge for 5 minutes, then
-// regenerate on the next request. The live counters (jobs open,
-// recent hires, top hiring companies, hot skills) are still fresh
-// enough to feel live but the page itself is served from cache
-// for the vast majority of visits. Was `force-dynamic` before,
-// which forced a full SSR + cold DB hit on every visit and
-// blew our Lighthouse TTFB / LCP budget.
+// Reverted from `revalidate = 300` back to `force-dynamic` after
+// a privacy bug — ISR caches the FULL rendered HTML for N seconds,
+// including the <SiteHeader /> which renders the signed-in user's
+// avatar and persona switcher. With ISR enabled, the first
+// visitor's session leaked into the cached HTML and every
+// subsequent visit (within the 300 s window) rendered that
+// stranger's identity on the page chrome. Same root cause as the
+// Cloudflare cross-user cache hit we patched in middleware.ts —
+// any auth-reading render needs to be per-request, not pre-baked.
 //
-// 5 min sweet-spot rationale: salary/job counters update on the
-// order of minutes, not seconds. A 30 s cache would be tighter
-// data freshness but wouldn't help Lighthouse runs that happen
-// at unpredictable cadence. 5 min keeps the cache hit-rate above
-// 90% across realistic traffic.
-export const revalidate = 300;
+// The Lighthouse perf budget that motivated the ISR switch was
+// dominated by avatar weight + Google Translate JS, not the HTML
+// TTFB. Both of those are now solved at the asset layer
+// (sharp pipeline + Next/Image + lazy translate widget), so we
+// can afford a fresh SSR on every homepage hit.
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
   title: "The address of EV in India · Jobs, salaries, people, pulse",

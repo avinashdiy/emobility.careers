@@ -18,6 +18,88 @@ const PROTECTED_PREFIXES: Array<{ prefix: string; roles: string[] }> = [
 // page ever rendered.
 const PERSONA_OPTIN_PATHS = ["/employer/onboarding"];
 
+/**
+ * Routes that are safe to cache publicly across users — same content
+ * for every viewer, no session-dependent rendering.
+ *
+ *   • OG / Twitter / Apple-touch images — generated per-PAGE (e.g.
+ *     /<slug>/opengraph-image) but identical for every visitor, so
+ *     Cloudflare caching them is a feature, not a bug.
+ *   • The Next.js metadata-route helpers (`icon`, `apple-icon`,
+ *     `favicon`, `manifest`) for the same reason.
+ *
+ * Sitemaps and robots.txt are already excluded at the matcher level
+ * (see `config.matcher` below) so we don't need to list them here.
+ *
+ * Default behaviour for anything NOT in this list: we set
+ * `Cache-Control: private, no-store` on the response. The reason is
+ * subtle but critical:
+ *
+ *   Every HTML response in this app renders <SiteHeader />, which
+ *   reads the session to render the Me dropdown / avatar /
+ *   persona switcher. The HTML body therefore contains user-
+ *   specific markup on EVERY route, even routes that look "public"
+ *   like /jobs or the marketing homepage. If Cloudflare ever caches
+ *   that HTML and serves it to a different user, user A sees user
+ *   B's name in the header — that's the privacy bug we hit.
+ *
+ *   The middleware default closes the door for every HTML route
+ *   in one place. Per-route opt-in to public caching is the
+ *   explicit path forward (set Cache-Control via headers() in the
+ *   route handler), but the SAFE default is private/no-store.
+ */
+function isPublicCacheableResponse(pathname: string): boolean {
+  // Metadata-route images — Next generates these at build time per
+  // page and they're identical for every viewer.
+  if (pathname.endsWith("/opengraph-image")) return true;
+  if (pathname.endsWith("/twitter-image")) return true;
+  // Next.js metadata icon routes — `/icon`, `/icon-X.png`,
+  // `/apple-icon`, `/apple-icon-X.png`. Match the suffix loosely
+  // since Next adds a hash to the filename.
+  if (/^\/(apple-)?icon(\.|-|$)/.test(pathname)) return true;
+  // Manifest + AI / crawler artifacts — same content for everyone.
+  if (pathname === "/manifest" || pathname === "/manifest.webmanifest") return true;
+  if (pathname === "/llms.txt") return true;
+  return false;
+}
+
+/**
+ * API routes that handle their own cache policy. We don't want to
+ * stomp on a route handler that's deliberately serving a
+ * publicly-cacheable JSON feed (e.g. unauthenticated metric
+ * endpoints in the future) or a route that streams.
+ */
+function isApiRoute(pathname: string): boolean {
+  return pathname.startsWith("/api/");
+}
+
+/**
+ * Apply the Cache-Control: private, no-store default to a response
+ * unless the route handler has explicitly set its own
+ * Cache-Control header (we respect any pre-set value so per-route
+ * opt-in works).
+ */
+function applyPrivateCacheHeaders(res: NextResponse, pathname: string): NextResponse {
+  if (isApiRoute(pathname)) return res;
+  if (isPublicCacheableResponse(pathname)) return res;
+  // Respect a value already set by an upstream layer (e.g. a route
+  // handler that explicitly opted into public caching).
+  if (res.headers.has("Cache-Control")) return res;
+  // `private` — CDNs and shared caches must not store the response.
+  // `no-store` — the browser must not cache it either; every
+  //              navigation re-fetches from the origin.
+  // We use both because `private` alone still allows browser-level
+  // caching, and a browser cache hit on a public terminal (kiosk,
+  // shared family device) leaks the same content. `no-store` makes
+  // the policy unambiguous: never write this response to any cache.
+  res.headers.set("Cache-Control", "private, no-store");
+  // Some CDNs use Vary: Cookie as a coarse signal — set it as
+  // belt-and-braces so even a misconfigured CDN won't fan out a
+  // single cached response across the cookie space.
+  res.headers.set("Vary", "Cookie");
+  return res;
+}
+
 export default auth((req: NextRequest & { auth: { user?: { role?: string } } | null }) => {
   const { pathname } = req.nextUrl;
 
@@ -28,7 +110,13 @@ export default auth((req: NextRequest & { auth: { user?: { role?: string } } | n
 
   const match = PROTECTED_PREFIXES.find((p) => pathname.startsWith(p.prefix));
   if (!match) {
-    return NextResponse.next({ request: { headers: requestHeaders } });
+    // Non-protected route: still apply the cache policy. <SiteHeader />
+    // renders user-specific markup on every page so even "public"
+    // pages are user-specific responses.
+    return applyPrivateCacheHeaders(
+      NextResponse.next({ request: { headers: requestHeaders } }),
+      pathname,
+    );
   }
 
   const session = req.auth;
@@ -36,7 +124,9 @@ export default auth((req: NextRequest & { auth: { user?: { role?: string } } | n
     const url = req.nextUrl.clone();
     url.pathname = "/signin";
     url.searchParams.set("next", pathname);
-    return NextResponse.redirect(url);
+    // Redirects to /signin must also be private — otherwise a CDN
+    // could memoise a redirect for one user and apply it to another.
+    return applyPrivateCacheHeaders(NextResponse.redirect(url), pathname);
   }
 
   const role = session.user.role;
@@ -48,10 +138,13 @@ export default auth((req: NextRequest & { auth: { user?: { role?: string } } | n
   if (!isOptIn && (!role || !match.roles.includes(role))) {
     const url = req.nextUrl.clone();
     url.pathname = "/403";
-    return NextResponse.redirect(url);
+    return applyPrivateCacheHeaders(NextResponse.redirect(url), pathname);
   }
 
-  return NextResponse.next({ request: { headers: requestHeaders } });
+  return applyPrivateCacheHeaders(
+    NextResponse.next({ request: { headers: requestHeaders } }),
+    pathname,
+  );
 });
 
 export const config = {
