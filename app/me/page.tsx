@@ -17,6 +17,11 @@ import { ProfileCompletenessCard } from "@/components/profile/ProfileCompletenes
 import { ProductTour } from "@/components/onboarding/ProductTour";
 import { ApplicationTracker } from "@/components/candidate/ApplicationTracker";
 import { evaluateProfile, COMPLETENESS_THRESHOLDS } from "@/lib/profile-completeness";
+import {
+  evaluateProfileQuality,
+  loadProfileQualityInputs,
+} from "@/lib/profile-quality";
+import { ProfileQualityCard } from "@/components/profile/ProfileQualityCard";
 import { getCandidateApplicationStats } from "@/lib/applications-stats";
 import { relativeTime } from "@/lib/utils";
 
@@ -200,6 +205,12 @@ export default async function MeDashboard() {
     emailVerified: !!profile.user.emailVerifiedAt,
   });
   const applicationStats = await getCandidateApplicationStats(profile.id);
+  // Wave A #2 — Profile Quality Score. Built alongside the existing
+  // completeness scorer (different signal — completeness = "filled?",
+  // quality = "good?"). Cheap enough to compute synchronously on the
+  // dashboard render; involves a couple of count() round-trips for
+  // the activity axis.
+  const quality = evaluateProfileQuality(await loadProfileQualityInputs(profile.id));
 
   return (
     <div className="container max-w-6xl space-y-6 py-6 md:py-8">
@@ -398,6 +409,11 @@ export default async function MeDashboard() {
           </div>
 
           <aside className="space-y-6">
+            {/* Wave A #2 — Profile Quality Score. Shown first in the
+                aside so a new candidate sees what to fix before the
+                share / coming-up cards. */}
+            <ProfileQualityCard result={quality} />
+
             {/* Wave A #4 — WhatsApp share card. Renders only when the
                 candidate's profile has enough content to share (50%
                 completeness). Below that, sharing is mostly noise
