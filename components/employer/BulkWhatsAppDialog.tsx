@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { whatsappLink } from "@/lib/whatsapp/link";
+import { bulkWhatsAppInvite } from "@/server/whatsapp/bulk-invite";
 
 /**
  * Bulk WhatsApp launcher. Browsers don't let us open many wa.me tabs
@@ -39,11 +40,37 @@ export function BulkWhatsAppDialog({ candidates }: { candidates: Recipient[] }) 
     "Hi {{firstName}}, this is from emobility.careers. I noticed your profile and wanted to chat about a role we're hiring for — do you have a few minutes?",
   );
   const [opened, setOpened] = useState<Set<string>>(new Set());
+  // Wave B #20 — platform-send state. Captures the result of the
+  // bulkWhatsAppInvite server action so the recruiter sees sent /
+  // skipped / failed counts inline instead of having to count
+  // green ticks.
+  const [sending, setSending] = useState(false);
+  const [platformResult, setPlatformResult] = useState<
+    null | { sent: number; skipped: number; failed: number; message?: string; ok: boolean }
+  >(null);
 
   function close() {
     setOpen(false);
     // Reset opened state so a re-open doesn't show stale ticks.
     setOpened(new Set());
+    setPlatformResult(null);
+  }
+
+  async function sendViaPlatform() {
+    if (reachable.length === 0) return;
+    setSending(true);
+    setPlatformResult(null);
+    try {
+      const res = await bulkWhatsAppInvite({
+        candidateIds: reachable.map((c) => c.id),
+        bodyTemplate: body,
+      });
+      setPlatformResult(res);
+    } catch {
+      setPlatformResult({ ok: false, sent: 0, skipped: 0, failed: 0, message: "Send failed — try again." });
+    } finally {
+      setSending(false);
+    }
   }
   function markOpened(id: string) {
     setOpened((prev) => new Set(prev).add(id));
@@ -150,18 +177,57 @@ export function BulkWhatsAppDialog({ candidates }: { candidates: Recipient[] }) 
               </ul>
             </div>
 
-            <div className="flex items-center justify-between border-t border-emce-border bg-emce-light-soft/50 px-5 py-3 text-hint text-emce-text-sec">
+            {/* Wave B #20 — platform-send result line */}
+            {platformResult && (
+              <div
+                className={`px-5 py-2 text-hint ${
+                  platformResult.ok
+                    ? "border-t border-emce-mid bg-emce-light-soft text-emce-success-deep"
+                    : "border-t border-emce-red bg-emce-red-light text-emce-red-deep"
+                }`}
+              >
+                {platformResult.ok ? (
+                  <>
+                    ✓ Sent {platformResult.sent} via platform
+                    {platformResult.skipped > 0 && <> · skipped {platformResult.skipped} (no phone)</>}
+                    {platformResult.failed > 0 && <> · {platformResult.failed} failed</>}
+                  </>
+                ) : (
+                  <>⚠ {platformResult.message ?? "Send failed."}</>
+                )}
+              </div>
+            )}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 border-t border-emce-border bg-emce-light-soft/50 px-5 py-3 text-hint text-emce-text-sec">
               <span>
                 {opened.size}/{reachable.length} opened
                 {unreachable.length > 0 && <> · {unreachable.length} unreachable</>}
               </span>
-              <button
-                type="button"
-                onClick={close}
-                className="rounded-md border border-emce-border bg-white px-3 py-1 text-xs font-bold text-emce-text hover:bg-emce-light-soft"
-              >
-                Done
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Wave B #20 — platform-send button. Fans the message
+                    out via dispatchNotification + WhatsApp Cloud API.
+                    Saves the recruiter from clicking each deep-link
+                    manually. Companies without an approved Meta
+                    template fall back to the per-row "Open chat →"
+                    links above. */}
+                {reachable.length > 0 && !platformResult?.ok && (
+                  <button
+                    type="button"
+                    onClick={sendViaPlatform}
+                    disabled={sending}
+                    className="rounded-md bg-emce-dark px-3 py-1 text-xs font-bold text-emce-light hover:bg-emce-dark-deep disabled:opacity-60"
+                  >
+                    {sending ? "Sending…" : `📤 Send all ${reachable.length} via platform`}
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={close}
+                  className="rounded-md border border-emce-border bg-white px-3 py-1 text-xs font-bold text-emce-text hover:bg-emce-light-soft"
+                >
+                  Done
+                </button>
+              </div>
             </div>
           </div>
         </div>
