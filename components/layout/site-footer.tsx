@@ -63,6 +63,7 @@ export async function SiteFooter() {
             { href: "/contact", label: "Contact" },
             { href: "/privacy", label: "Privacy" },
             { href: "/terms", label: "Terms" },
+            { href: "/accessibility", label: "Accessibility" },
           ]}
         />
       </div>

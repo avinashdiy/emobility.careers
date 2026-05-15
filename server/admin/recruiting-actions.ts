@@ -98,7 +98,10 @@ const adminJobSchema = z.object({
   // gate runs separately below so 20 chars of `<p></p>` markup
   // doesn't pass as a real body. Both gates fire so we get a
   // friendly per-field error.
-  description: z.string().min(20),
+  // Just "non-empty" at the Zod layer; the plain-text length gate
+  // below is the real "≥ 20 readable characters" check. See
+  // server/employer/actions.ts for the same change + rationale.
+  description: z.string().min(1, "Description is required."),
   responsibilities: z.string().optional(),
   requirements: z.string().optional(),
   benefits: z.string().optional(),
@@ -174,7 +177,7 @@ export async function adminCreateJob(
       firstField === "newCompanyWebsite"
         ? " (URLs need to be valid — e.g. https://company.com/careers)"
         : firstField === "description"
-          ? " — description is required and must be at least 20 chars"
+          ? " — description can't be empty"
           : "";
     return {
       ok: false,

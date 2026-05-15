@@ -43,6 +43,10 @@ export default async function ApplicationDetail({
           experiences: { orderBy: { startDate: "desc" }, take: 5 },
           skills: { include: { skill: true } },
           evDomains: { include: { evDomain: true } },
+          // Pull the User.phone as a fallback — older signups stored
+          // phone on User (via SMS-OTP onboarding) and never copied it
+          // onto CandidateProfile.phone. Render whichever is set.
+          user: { select: { phone: true, email: true } },
         },
       },
       notes: {
@@ -116,6 +120,46 @@ export default async function ApplicationDetail({
               )}
             </div>
           </div>
+
+          {/*
+            Contact row — unconditional. The candidate has applied to
+            this employer's job, which IS the consent signal (matches
+            lib/profile-visibility.ts → canSeeContact, where an
+            employer with an application relationship always sees
+            contact). We deliberately ignore `c.contactVisibility`
+            here because applying THROUGH the platform is itself the
+            "yes, share my contact" act. Candidates who don't want a
+            specific recruiter to see their phone shouldn't apply to
+            that job. Phone + email fall back to the User record (some
+            legacy candidates onboarded via SMS-OTP have phone there
+            but not on CandidateProfile).
+          */}
+          {(c.phone || c.user?.phone || c.email || c.user?.email) && (
+            <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-emce-border pt-3 text-sm">
+              <span className="text-hint font-bold uppercase tracking-wide text-emce-text-muted">
+                Contact
+              </span>
+              {(c.email || c.user?.email) && (
+                <a
+                  href={`mailto:${c.email ?? c.user?.email}`}
+                  className="font-semibold text-emce-dark hover:underline"
+                >
+                  ✉️ {c.email ?? c.user?.email}
+                </a>
+              )}
+              {(c.phone || c.user?.phone) && (
+                <a
+                  href={`tel:${c.phone ?? c.user?.phone}`}
+                  className="font-semibold text-emce-dark hover:underline"
+                >
+                  📞 {c.phone ?? c.user?.phone}
+                </a>
+              )}
+              <span className="text-hint text-emce-text-muted">
+                Shared because the candidate applied to this role.
+              </span>
+            </div>
+          )}
         </Card>
 
         <div className="mt-4 grid gap-4 lg:grid-cols-3">

@@ -4,7 +4,7 @@ import { useEditor, EditorContent, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Bold, Italic, List, ListOrdered, Heading2, Link as LinkIcon, Undo2, Redo2 } from "lucide-react";
 
 /**
@@ -12,26 +12,45 @@ import { Bold, Italic, List, ListOrdered, Heading2, Link as LinkIcon, Undo2, Red
  * description / responsibilities / requirements / benefits in
  * AdminJobForm + EmployerJobForm.
  *
- * Form integration:
- *   The editor's current HTML is mirrored into a hidden
- *   `<input type="hidden" name={name}>` so the surrounding `<form
- *   action={...}>` server action submission picks it up via
- *   `FormData.get(name)`. No client-side change needed in the
- *   server action — it still reads the string field.
+ * Form integration — CONTROLLED hidden input:
+ *   The editor's current HTML lives in React state (`value`) and
+ *   that state drives a hidden `<input type="hidden" name={name}
+ *   value={value} readOnly>` so the form submit's FormData read
+ *   always reflects the latest editor content.
+ *
+ *   The previous implementation used an imperative
+ *   `hiddenRef.current.value = ...` write inside Tiptap's
+ *   `onUpdate`. That pattern silently desynced from React's
+ *   view under a few real-world race conditions:
+ *     • a sibling component's re-render between onUpdate and
+ *       form submit could cause React to reconcile the input
+ *       to the original `defaultValue` it remembered.
+ *     • paste events from Word/Google Docs that produced large
+ *       transactions sometimes ran after the user's submit
+ *       click on slower machines.
+ *     • re-mounting the editor (key change, conditional render)
+ *       reset the DOM value but not the new editor instance.
+ *
+ *   Result: form would submit with an empty `description` even
+ *   though the user could see their content on screen, and the
+ *   server would reject with "must be at least 20 chars". The
+ *   user-reported bug.
+ *
+ *   Controlling the input via React state closes every one of
+ *   those race conditions — the value the form serialises is
+ *   the value React is rendering, by definition.
  *
  * Paste handling:
- *   StarterKit's defaults preserve common formatting from Word /
- *   Google Docs paste (bold, italic, lists, headings). Unknown
- *   classes / attributes get scrubbed by the schema. The server-
- *   side sanitiser in `lib/cms/job-sanitize.ts` is the final trust
- *   boundary — it runs on every save and discards anything outside
- *   the job-content allowlist.
+ *   StarterKit preserves common formatting from Word / Google
+ *   Docs paste (bold, italic, lists, headings). Unknown classes
+ *   / attributes get scrubbed. The server-side sanitiser in
+ *   `lib/cms/job-sanitize.ts` is the final trust boundary.
  *
  * Empty-state guard:
- *   Tiptap defaults to `<p></p>` for an empty editor, which fails
- *   the `description: min(20)` Zod rule. We strip that to a literal
- *   empty string in `onUpdate` so the form's required check trips
- *   instead of trying to validate a single `<p></p>` tag.
+ *   Tiptap returns `<p></p>` for an empty doc — we collapse that
+ *   to "" before storing so the server-side "non-empty" check
+ *   trips correctly. The real "≥20 readable characters" gate
+ *   runs server-side on plain-text length, not HTML length.
  */
 
 interface Props {
@@ -48,9 +67,11 @@ interface Props {
   id?: string;
   /// Min-height of the editing area. Defaults to roughly 8 rows.
   minHeight?: number;
-  /// Mark the hidden input as required. Tiptap doesn't expose
-  /// HTML5 validation directly so this is best-effort — the real
-  /// guard is the Zod min() check on the server.
+  /// Visually mark the field as required (for ARIA + the Label
+  /// component) — we do NOT set HTML5 `required` on the hidden
+  /// input because Chrome's validation tries to focus a hidden
+  /// field, fails silently, and leaves the form in a half-
+  /// submitted state. The real "required" gate is server-side.
   required?: boolean;
   /// aria-invalid pass-through for the surrounding error styling.
   ariaInvalid?: boolean;
@@ -68,15 +89,15 @@ export function RichTextEditor({
   placeholder,
   id,
   minHeight = 180,
-  required = false,
+  required: _required = false,
   ariaInvalid = false,
 }: Props) {
-  // Mirror the editor's HTML into a hidden input so FormData picks
-  // it up. Using a ref keeps each keystroke off React's render path
-  // — only the hidden input value updates.
-  const hiddenRef = useRef<HTMLInputElement>(null);
-  // Track plain-text length for the "required" check.
-  const [_isEmpty, setIsEmpty] = useState(!defaultValue);
+  // Single source of truth for the hidden input. Tiptap's onUpdate
+  // pushes into this state; the JSX renders the state into the
+  // hidden input's `value` (CONTROLLED). When the form serialises,
+  // FormData reads from the DOM, and the DOM value is whatever
+  // React last rendered — by definition the latest onUpdate result.
+  const [value, setValue] = useState<string>(defaultValue);
 
   const editor = useEditor({
     extensions: [
@@ -104,31 +125,26 @@ export function RichTextEditor({
     },
     onUpdate({ editor: e }) {
       const html = e.getHTML();
-      // Tiptap returns `<p></p>` for a truly empty doc. Treat
-      // that as empty for the FormData round-trip so server-side
-      // `min()` rules fire correctly.
+      // Tiptap returns `<p></p>` for a truly empty doc — collapse
+      // that to "" so the server's "non-empty" check fires
+      // correctly. The plain-text length gate that enforces the
+      // "≥ 20 readable characters" rule runs server-side against
+      // the sanitised HTML, not against this value.
       const plain = e.getText().trim();
-      const empty = plain.length === 0;
-      const value = empty ? "" : html;
-      if (hiddenRef.current) hiddenRef.current.value = value;
-      setIsEmpty(empty);
+      setValue(plain.length === 0 ? "" : html);
     },
   });
 
-  // Re-sync the hidden input when defaultValue changes after mount
-  // — e.g. when useActionState round-trips prevValues into the
-  // editor. Tiptap's `content` prop is initial-only; we have to
-  // imperatively setContent for updates.
+  // External defaultValue change (validation-failure round-trip,
+  // edit-page initial load). Sync both the editor's rendered
+  // content and the controlled value. `emitUpdate: false` avoids
+  // a feedback loop where setContent → onUpdate → setValue →
+  // re-render → useEffect → setContent.
   useEffect(() => {
     if (!editor) return;
-    const current = editor.getHTML();
-    const next = defaultValue || "";
-    if (next && next !== current) {
-      editor.commands.setContent(next, { emitUpdate: false });
-      if (hiddenRef.current) hiddenRef.current.value = next;
-      setIsEmpty(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    if (defaultValue === editor.getHTML()) return;
+    editor.commands.setContent(defaultValue || "", { emitUpdate: false });
+    setValue(defaultValue || "");
   }, [defaultValue, editor]);
 
   return (
@@ -141,12 +157,17 @@ export function RichTextEditor({
     >
       {editor && <Toolbar editor={editor} />}
       <EditorContent editor={editor} id={id} />
+      {/* Controlled hidden input — `readOnly` suppresses React's
+          "controlled input without onChange" warning. We deliberately
+          do NOT set HTML5 `required` here even when the field is
+          required: Chrome's validation tries to focus a hidden
+          input and silently fails, leaving the form half-submitted.
+          The real required-check runs server-side in the action. */}
       <input
-        ref={hiddenRef}
         type="hidden"
         name={name}
-        defaultValue={defaultValue}
-        required={required}
+        value={value}
+        readOnly
       />
     </div>
   );

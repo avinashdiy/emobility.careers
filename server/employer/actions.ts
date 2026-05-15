@@ -324,7 +324,14 @@ export async function updateCompany(formData: FormData) {
 
 const jobSchema = z.object({
   title: z.string().min(3).max(140),
-  description: z.string().min(20),
+  // Just "non-empty" at the Zod layer. The real "≥ 20 readable
+  // characters" rule runs below against the sanitised HTML's
+  // plain-text length — measuring HTML markup chars here was
+  // rejecting valid bodies like `<p>Hello world!</p>` (19 chars
+  // of markup, 12 chars of readable text) with the misleading
+  // message "must be at least 20 chars" while the user could
+  // clearly see content on screen.
+  description: z.string().min(1, "Description is required."),
   responsibilities: z.string().optional(),
   requirements: z.string().optional(),
   benefits: z.string().optional(),
@@ -405,7 +412,7 @@ export async function createJob(
       ok: false,
       message:
         firstField === "description"
-          ? "Description is required and must be at least 20 chars."
+          ? "Description can't be empty."
           : firstField !== undefined
             ? `Couldn't save: "${firstField}" failed validation. Check the highlighted field.`
             : "Couldn't save. Check the highlighted fields.",

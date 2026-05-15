@@ -61,7 +61,7 @@ export default function DIYguruPage() {
               <Link href="/signup?role=CANDIDATE">Create your profile →</Link>
             </Button>
             <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white/10 hover:text-white">
-              <a href="https://campus.diyguru.com" target="_blank" rel="noopener noreferrer">Visit DIYguru</a>
+              <a href="https://diyguru.org" target="_blank" rel="noopener noreferrer">Visit DIYguru</a>
             </Button>
           </div>
         </div>
