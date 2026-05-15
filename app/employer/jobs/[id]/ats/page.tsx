@@ -48,7 +48,18 @@ export default async function ATSPage({
           // Wave A #1 — Open-to-Work / Hiring ring in the ATS card.
           openToWork: true,
           hiringNow: true,
-          user: { select: { phone: true } },
+          // Wave B #19 — trust pill row
+          idVerificationStatus: true,
+          _count: { select: { verifiedSkillBadges: true } },
+          user: {
+            select: {
+              phone: true,
+              emailVerifiedAt: true,
+              phoneVerifiedAt: true,
+              // Wave B #27 — last-active pill
+              lastLoginAt: true,
+            },
+          },
         },
       },
     },
@@ -77,6 +88,13 @@ export default async function ATSPage({
       matchScore: a.matchScore,
       source: a.source,
       appliedAt: a.appliedAt.toISOString(),
+      // Wave B #17 — preview the AI summary on the kanban card.
+      // We slice to 160 chars; the full summary lives on the
+      // application detail page. Null until the summariser fires.
+      aiSummaryPreview:
+        a.aiSummary && a.aiSummary.length > 0
+          ? a.aiSummary.slice(0, 160) + (a.aiSummary.length > 160 ? "…" : "")
+          : null,
       candidate: {
         id: a.candidate.id,
         slug: a.candidate.slug,
@@ -88,6 +106,15 @@ export default async function ATSPage({
         phone: phoneVisible ? a.candidate.phone ?? a.candidate.user.phone ?? null : null,
         openToWork: a.candidate.openToWork,
         hiringNow: a.candidate.hiringNow,
+        // Wave B #19 — trust pills
+        idVerified: a.candidate.idVerificationStatus === "VERIFIED",
+        emailVerified: !!a.candidate.user.emailVerifiedAt,
+        phoneVerified: !!a.candidate.user.phoneVerifiedAt,
+        verifiedSkillCount: a.candidate._count.verifiedSkillBadges,
+        // Wave B #27 — last-active feed-in
+        lastActiveAt: a.candidate.user.lastLoginAt
+          ? a.candidate.user.lastLoginAt.toISOString()
+          : null,
       },
     };
   });

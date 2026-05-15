@@ -67,7 +67,21 @@ export interface PipelineApp {
     // and prioritises active candidates without clicking through.
     openToWork?: boolean;
     hiringNow?: boolean;
+    // Wave B #19 — trust pill row. Each flag drives one tiny pill;
+    // the recruiter scans the row to triage by trust signal without
+    // clicking into the profile.
+    idVerified?: boolean;       // Twitter-style blue check
+    emailVerified?: boolean;
+    phoneVerified?: boolean;
+    verifiedSkillCount?: number; // count of EV-skill badges held
+    // Wave B #27 — last-active timestamp (ISO string). Drives the
+    // "Active 2h ago" / "Active 4d ago" / "Active 2mo ago" pill.
+    lastActiveAt?: string | null;
   };
+  // Wave B #17 — preview of the AI applicant summary (first 120
+  // chars). Recruiter expanding the card sees the full summary;
+  // collapsed row shows just the preview so dense lists stay tidy.
+  aiSummaryPreview?: string | null;
 }
 
 export function PipelineBoard({
@@ -277,17 +291,124 @@ function Card({ app, jobId, selected, onToggle }: { app: PipelineApp; jobId: str
           {app.candidate.headline && (
             <p className="truncate text-hint text-emce-text-sec">{app.candidate.headline}</p>
           )}
+
+          {/* Wave B #19 — trust pill row. Each tiny icon = one
+              verification signal. Stays on one line; if all four are
+              earned the row reads "✓ ID  ✉ Email  📞 Phone  🏅 3" in
+              <10 chars of horizontal space. Title attribute names the
+              signal for tooltip clarity on hover. */}
+          <TrustPills candidate={app.candidate} />
+
           <div className="mt-1 flex flex-wrap gap-1">
-            {app.candidate.isDIYguruVerified && <Badge variant="verified">⭐</Badge>}
+            {app.candidate.isDIYguruVerified && <Badge variant="diyguru">⭐ DIYguru</Badge>}
             {app.matchScore != null && (
               <Badge variant="success">{Math.round(app.matchScore * 100)}%</Badge>
             )}
             {app.source === "AI_INVITED" && <Badge variant="warning">Invited</Badge>}
             {app.source === "REFERRAL" && <Badge variant="default">Referral</Badge>}
             {app.rating && <Badge variant="default">{"★".repeat(app.rating)}</Badge>}
+            {/* Wave B #27 — last-active pill */}
+            {app.candidate.lastActiveAt && (
+              <Badge
+                variant="outline"
+                title={`Last active ${new Date(app.candidate.lastActiveAt).toLocaleString("en-IN")}`}
+                className={lastActiveTone(app.candidate.lastActiveAt)}
+              >
+                {lastActiveLabel(app.candidate.lastActiveAt)}
+              </Badge>
+            )}
           </div>
+
+          {/* Wave B #17 — AI summary preview. Recruiter sees the
+              first ~120 chars on the card; the full summary lives on
+              the application detail page. Click-through is via the
+              normal name-link anchor above. */}
+          {app.aiSummaryPreview && (
+            <p className="mt-1.5 line-clamp-2 text-hint text-emce-text-muted">
+              <span className="font-bold text-emce-mid-muted">AI · </span>
+              {app.aiSummaryPreview}
+            </p>
+          )}
         </div>
       </div>
     </div>
   );
+}
+
+/**
+ * Tiny tier of trust pills — ID-verified, email-verified, phone-
+ * verified, verified-skill count. Renders nothing when no signal is
+ * earned (avoids a row of grey empties on a fresh-signup card).
+ */
+function TrustPills({
+  candidate,
+}: {
+  candidate: PipelineApp["candidate"];
+}) {
+  const idV = candidate.idVerified;
+  const emailV = candidate.emailVerified;
+  const phoneV = candidate.phoneVerified;
+  const skillCount = candidate.verifiedSkillCount ?? 0;
+  if (!idV && !emailV && !phoneV && skillCount === 0) return null;
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px]">
+      {idV && (
+        <span
+          title="ID verified"
+          className="inline-flex h-5 items-center gap-0.5 rounded-full bg-emce-verified-bg px-1.5 font-bold text-emce-verified-text border border-emce-verified-border"
+        >
+          ✓ ID
+        </span>
+      )}
+      {emailV && (
+        <span
+          title="Email verified"
+          className="inline-flex h-5 items-center gap-0.5 rounded-full bg-emce-light-soft px-1.5 font-bold text-emce-dark"
+        >
+          ✉ Email
+        </span>
+      )}
+      {phoneV && (
+        <span
+          title="Phone verified"
+          className="inline-flex h-5 items-center gap-0.5 rounded-full bg-emce-light-soft px-1.5 font-bold text-emce-dark"
+        >
+          📞 Phone
+        </span>
+      )}
+      {skillCount > 0 && (
+        <span
+          title={`${skillCount} verified EV-skill badge${skillCount === 1 ? "" : "s"}`}
+          className="inline-flex h-5 items-center gap-0.5 rounded-full bg-emce-mid/20 px-1.5 font-bold text-emce-success-deep"
+        >
+          🏅 {skillCount}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** "Active 12m ago" / "Active 3h ago" / "Active 5d ago" / "Active 2mo ago". */
+function lastActiveLabel(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(ms / 60_000);
+  if (m < 1) return "Active now";
+  if (m < 60) return `Active ${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `Active ${h}h ago`;
+  const d = Math.floor(h / 24);
+  if (d < 30) return `Active ${d}d ago`;
+  const mo = Math.floor(d / 30);
+  if (mo < 12) return `Active ${mo}mo ago`;
+  return `Active ${Math.floor(d / 365)}y+ ago`;
+}
+
+/** Colour tone for the last-active pill. Active today → green
+ *  emce-mid; this week → neutral; older → muted. */
+function lastActiveTone(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const days = ms / (24 * 60 * 60 * 1000);
+  if (days < 1) return "border-emce-mid/50 text-emce-success-deep bg-emce-light-soft";
+  if (days < 7) return "border-emce-border text-emce-text-sec";
+  return "border-emce-border text-emce-text-muted opacity-80";
 }
