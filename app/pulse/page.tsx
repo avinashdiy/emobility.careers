@@ -254,7 +254,7 @@ export default async function PulsePage() {
                 title="What EV roles pay right now"
                 hint="Median bands across public listings, last 90 days. Sign in for company + experience breakdowns."
               />
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <div className="emce-stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {salaries.map((s) => (
                   <Card key={s.jobTitle} className="text-center">
                     <p className="line-clamp-2 text-sm font-bold text-emce-text">{s.jobTitle}</p>
@@ -287,7 +287,7 @@ export default async function PulsePage() {
                 title="EV pros worth watching"
                 hint="Verified, open to work, and ranked by recent profile activity."
               />
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="emce-stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
                 {candidates.map((c) => (
                   <Link
                     key={c.slug}

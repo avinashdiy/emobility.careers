@@ -138,8 +138,20 @@ export default async function NotificationsPage({
 
   return (
     <div className="container max-w-3xl py-6 md:py-8">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-dashboard text-emce-text md:text-3xl">Notifications</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2 animate-fade-up">
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+            🔔 Inbox
+          </p>
+          <h1 className="mt-1 text-2xl font-extrabold leading-tight tracking-tight text-emce-text md:text-[28px]">
+            Notifications
+            {totalUnread > 0 && (
+              <span className="ml-2 inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-full bg-emce-mid px-1.5 text-xs font-extrabold text-emce-darkest tabular-nums">
+                {totalUnread}
+              </span>
+            )}
+          </h1>
+        </div>
         {/* Renders only when there's something to clear — keeps the
             header tidy for users who already cleared their queue. */}
         {totalUnread > 0 && <MarkAllReadButton />}

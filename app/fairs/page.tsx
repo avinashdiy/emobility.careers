@@ -85,16 +85,35 @@ export default async function FairsListPage() {
     <>
       <SiteHeader />
       <main className="min-h-screen bg-emce-light-bg">
-        <section className="emce-hero-gradient text-white">
-          <div className="container max-w-5xl py-10 md:py-14">
-            <div className="emce-pill mb-3">
+        <section className="emce-mesh-hero relative text-white">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -left-10 top-10 hidden h-56 w-56 rounded-full bg-emce-mid/30 blur-3xl animate-float md:block"
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-8 bottom-4 hidden h-64 w-64 rounded-full bg-emce-light/20 blur-3xl animate-float md:block"
+            style={{ animationDelay: "1.6s" }}
+          />
+          <div
+            aria-hidden
+            className="emce-dot-grid pointer-events-none absolute inset-0 opacity-25"
+          />
+          <div className="container relative max-w-5xl py-10 md:py-14">
+            <div className="emce-pill mb-3 animate-fade-up">
               <span aria-hidden>📍</span>
               <span>Recruitment drives · EV industry</span>
             </div>
-            <h1 className="text-2xl font-extrabold leading-tight tracking-tight md:text-4xl">
-              Where the EV industry hires.
+            <h1
+              className="animate-fade-up text-2xl font-extrabold leading-tight tracking-tight md:text-4xl"
+              style={{ animationDelay: "80ms" }}
+            >
+              Where the <span className="emce-text-gradient">EV industry hires.</span>
             </h1>
-            <p className="mt-3 max-w-2xl text-white/85 md:text-lg">
+            <p
+              className="animate-fade-up mt-3 max-w-2xl text-white/85 md:text-lg"
+              style={{ animationDelay: "160ms" }}
+            >
               Multi-company job fairs across India. Apply once, get shortlisted
               via on-site challenges, interview at the booth.
             </p>
@@ -192,7 +211,7 @@ function FairGrid({
   dimmed?: boolean;
 }) {
   return (
-    <div className={`grid gap-3 sm:grid-cols-2 ${dimmed ? "opacity-80" : ""}`}>
+    <div className={`emce-stagger grid gap-3 sm:grid-cols-2 ${dimmed ? "opacity-80" : ""}`}>
       {drives.map((d) => (
         <Link key={d.id} href={`/fairs/${d.slug}`} className="block">
           <Card className="h-full overflow-hidden p-0 transition hover:border-emce-mid hover:shadow-emce-hover">

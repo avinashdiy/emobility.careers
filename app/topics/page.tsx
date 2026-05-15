@@ -162,7 +162,7 @@ export default async function TopicsDiscoveryPage() {
                 <span className="text-hint text-emce-text-sec">live count</span>
               )}
             </div>
-            <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            <ul className="emce-stagger mt-3 grid gap-2 sm:grid-cols-2">
               {trendingRows.map((row) => (
                 <TagListItem
                   key={row.tag}
@@ -184,7 +184,7 @@ export default async function TopicsDiscoveryPage() {
               <p className="mt-1 text-hint text-emce-text-sec">
                 Based on the EV domains in your profile.
               </p>
-              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+              <ul className="emce-stagger mt-3 grid gap-2 sm:grid-cols-2">
                 {rail.tags.map((tag) => (
                   <TagListItem
                     key={tag}

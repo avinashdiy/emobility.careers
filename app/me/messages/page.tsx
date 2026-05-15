@@ -4,6 +4,7 @@ import { signinNextUrl } from "@/lib/auth-redirect";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "Messages" };
@@ -30,15 +31,22 @@ export default async function MessagesInbox() {
 
   return (
     <div className="container max-w-3xl py-10">
-      <h1 className="text-dashboard text-emce-text">Messages</h1>
+      <div className="animate-fade-up">
+        <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+          💬 Conversations
+        </p>
+        <h1 className="mt-1 text-2xl font-extrabold leading-tight tracking-tight text-emce-text md:text-[28px]">
+          Messages
+        </h1>
+      </div>
       {threads.length === 0 ? (
-        <Card className="mt-6 p-10 text-center">
-          <div className="text-4xl">💬</div>
-          <p className="mt-3 text-section text-emce-text">No conversations yet</p>
-          <p className="mt-1 text-hint text-emce-text-sec">
-            Recruiters can message you about your applications. Threads will appear here.
-          </p>
-        </Card>
+        <EmptyState
+          variant="mesh"
+          className="mt-6"
+          icon="💬"
+          title="No conversations yet"
+          body="Recruiters can message you about your applications. Threads will appear here."
+        />
       ) : (
         <ul className="emce-stagger mt-6 space-y-2">
           {threads.map((t) => (

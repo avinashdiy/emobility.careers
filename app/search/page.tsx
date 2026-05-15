@@ -200,7 +200,7 @@ export default async function SearchPage({
         <div className="mt-6 space-y-8">
           {people.length > 0 && (
             <Section title="People" allHref={`/search?q=${encodeURIComponent(q)}&tab=people`} showAll={tab === "all"}>
-              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="emce-stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {people.map((p) => {
                   const name = `${p.firstName} ${p.lastName ?? ""}`.trim();
                   return (
@@ -227,7 +227,7 @@ export default async function SearchPage({
 
           {mentors.length > 0 && (
             <Section title="Mentors" allHref={`/search?q=${encodeURIComponent(q)}&tab=mentors`} showAll={tab === "all"}>
-              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="emce-stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {mentors.map((m) => {
                   const cp = m.user.candidateProfile;
                   const name = cp ? `${cp.firstName} ${cp.lastName ?? ""}`.trim() : "Mentor";
@@ -251,7 +251,7 @@ export default async function SearchPage({
 
           {jobs.length > 0 && (
             <Section title="Jobs" allHref={`/search?q=${encodeURIComponent(q)}&tab=jobs`} showAll={tab === "all"}>
-              <ul className="space-y-2">
+              <ul className="emce-stagger space-y-2">
                 {jobs.map((j) => (
                   <li key={j.id}>
                     <Card>
@@ -273,7 +273,7 @@ export default async function SearchPage({
 
           {companies.length > 0 && (
             <Section title="Companies" allHref={`/search?q=${encodeURIComponent(q)}&tab=companies`} showAll={tab === "all"}>
-              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="emce-stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {companies.map((c) => (
                   <li key={c.id}>
                     <Card>
@@ -293,7 +293,7 @@ export default async function SearchPage({
 
           {competitions.length > 0 && (
             <Section title="Competitions" allHref={`/search?q=${encodeURIComponent(q)}&tab=competitions`} showAll={tab === "all"}>
-              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="emce-stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {competitions.map((c) => (
                   <li key={c.id}>
                     <CompetitionCard c={c} />
@@ -305,7 +305,7 @@ export default async function SearchPage({
 
           {posts.length > 0 && (
             <Section title="Posts" allHref={`/search?q=${encodeURIComponent(q)}&tab=posts`} showAll={tab === "all"}>
-              <ul className="space-y-2">
+              <ul className="emce-stagger space-y-2">
                 {posts.map((p) => {
                   const name = p.author.candidateProfile ? `${p.author.candidateProfile.firstName} ${p.author.candidateProfile.lastName ?? ""}`.trim() : "Author";
                   return (

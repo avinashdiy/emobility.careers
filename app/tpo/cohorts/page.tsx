@@ -128,7 +128,7 @@ export default async function CohortListPage({
           body={showArchived ? "Cohorts you archive will show up here." : "Use the form above to create your first cohort."}
         />
       ) : (
-        <ul className="grid gap-3 md:grid-cols-2">
+        <ul className="emce-stagger grid gap-3 md:grid-cols-2">
           {cohorts.map((c) => {
             const hired = cohortHired.get(c.id) ?? 0;
             const placementPct = c._count.candidates > 0

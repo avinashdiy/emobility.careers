@@ -155,7 +155,7 @@ export default async function SalariesPage({
                 Not enough submissions yet to compute role medians. Be the first — submit yours.
               </Card>
             ) : (
-              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="emce-stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {limitedRoles.map((r) => (
                   <li key={r.jobTitle}>
                     <Card>
@@ -193,7 +193,7 @@ export default async function SalariesPage({
                 Need a few more company submissions before we can rank.
               </Card>
             ) : (
-              <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ul className="emce-stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {limitedCompanies.map((c) => (
                   <li key={`${c.companyId ?? c.companyName}`}>
                     <Card>

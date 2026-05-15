@@ -99,7 +99,7 @@ export default async function InstitutionsPage({
             body="Try clearing the filters or check the spelling."
           />
         ) : (
-          <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <ul className="emce-stagger mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {list.map((i) => (
               <li key={i.id}>
                 <Card className="h-full p-4">
