@@ -17,7 +17,19 @@ export const metadata = { title: "Browse EV jobs" };
 export default async function JobsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; location?: string; domain?: string; workMode?: string; profileMode?: string; page?: string }>;
+  searchParams: Promise<{
+    q?: string;
+    location?: string;
+    domain?: string;
+    workMode?: string;
+    profileMode?: string;
+    powertrain?: string;
+    companyTier?: string;
+    credential?: string;
+    packKwhMin?: string;
+    chargerKwMin?: string;
+    page?: string;
+  }>;
 }) {
   const sp = await searchParams;
   const session = await auth();
@@ -45,11 +57,23 @@ export default async function JobsPage({
     domain: sp.domain,
     workMode: sp.workMode,
     profileMode: sp.profileMode,
+    // Wave C #29 — facet filters
+    powertrain: sp.powertrain,
+    companyTier: sp.companyTier,
+    credential: sp.credential,
+    packKwhMin: sp.packKwhMin ? Number(sp.packKwhMin) : undefined,
+    chargerKwMin: sp.chargerKwMin ? Number(sp.chargerKwMin) : undefined,
     viewerIsDIYguru,
     page: sp.page ? parseInt(sp.page) : 1,
   };
   const { jobs, total, page, pages } = await searchJobs(filter);
-  const evDomains = await db.eVDomain.findMany({ orderBy: { order: "asc" } });
+  const [evDomains, credentials] = await Promise.all([
+    db.eVDomain.findMany({ orderBy: { order: "asc" } }),
+    db.credential.findMany({
+      where: { isActive: true },
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    }),
+  ]);
 
   // Score the visible page of results for the logged-in candidate so
   // each card can carry an "X% match" pill. We pass the IDs through
@@ -170,6 +194,75 @@ export default async function JobsPage({
                   <option value="TECHNICIAN">Technician</option>
                   <option value="LEADERSHIP">Leadership</option>
                 </NativeSelect>
+              </div>
+            </div>
+          </details>
+
+          {/* Wave C #29 — EV facet row. Sits on its own row below the
+              primary filters so the UI doesn't blow out to 18 columns
+              on desktop. The four sub-facets all live inside the same
+              `details` collapse on mobile via the parent <details>
+              `sm:!contents` trick, but the row itself is grid-cols-12
+              so each facet is its own column at sm+. */}
+          <details className="group sm:col-span-12 sm:!block">
+            <summary className="cursor-pointer list-none text-hint font-bold text-emce-mid-muted">
+              <span className="group-open:hidden">EV facets ▾</span>
+              <span className="hidden group-open:inline">EV facets ▴</span>
+            </summary>
+            <div className="mt-2 grid grid-cols-2 gap-3 sm:grid-cols-12">
+              <div className="sm:col-span-3">
+                <NativeSelect name="powertrain" defaultValue={filter.powertrain ?? ""}>
+                  <option value="">Any powertrain area</option>
+                  <option value="battery">Battery</option>
+                  <option value="bms">BMS</option>
+                  <option value="motor">Motor & drives</option>
+                  <option value="charging">Charging</option>
+                  <option value="power-electronics">Power electronics</option>
+                  <option value="vehicle-integration">Vehicle integration</option>
+                  <option value="software">Software & IoT</option>
+                  <option value="manufacturing">Manufacturing</option>
+                  <option value="after-sales">After-sales / service</option>
+                </NativeSelect>
+              </div>
+              <div className="sm:col-span-3">
+                <NativeSelect name="companyTier" defaultValue={filter.companyTier ?? ""}>
+                  <option value="">Any company tier</option>
+                  <option value="oem">OEM</option>
+                  <option value="tier-1">Tier-1 supplier</option>
+                  <option value="tier-2">Tier-2 supplier</option>
+                  <option value="startup">Startup</option>
+                  <option value="charging-operator">Charging operator</option>
+                  <option value="research">Research institute</option>
+                  <option value="consulting">Consulting</option>
+                </NativeSelect>
+              </div>
+              <div className="sm:col-span-3">
+                <NativeSelect name="credential" defaultValue={filter.credential ?? ""}>
+                  <option value="">Any credential</option>
+                  {credentials.map((c) => (
+                    <option key={c.slug} value={c.slug}>{c.name}</option>
+                  ))}
+                </NativeSelect>
+              </div>
+              <div className="sm:col-span-3">
+                <div className="flex gap-2">
+                  <Input
+                    name="packKwhMin"
+                    type="number"
+                    min="0"
+                    placeholder="Min kWh"
+                    defaultValue={filter.packKwhMin ?? ""}
+                    title="Minimum battery-pack size (kWh) the role works with"
+                  />
+                  <Input
+                    name="chargerKwMin"
+                    type="number"
+                    min="0"
+                    placeholder="Min kW"
+                    defaultValue={filter.chargerKwMin ?? ""}
+                    title="Minimum charger output (kW) the role designs / installs"
+                  />
+                </div>
               </div>
             </div>
           </details>

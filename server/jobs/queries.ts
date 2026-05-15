@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { Prisma, JobStatus, JobAudience } from "@prisma/client";
+import { Prisma, JobStatus, JobAudience, PowertrainArea, CompanyTier } from "@prisma/client";
 import { buildTsQuery } from "@/lib/search-fts";
 
 export interface JobsFilter {
@@ -13,9 +13,52 @@ export interface JobsFilter {
       audience filter so DIYGURU_ONLY jobs only surface for verified
       students. Pass `null` (default) for anonymous browsing. */
   viewerIsDIYguru?: boolean;
+  // ─── #29 EV facet filters ─────────────────────────────────────
+  /** Powertrain area facet — slugged version of the PowertrainArea
+      enum so the URL stays readable (`?powertrain=battery`). The
+      query maps to enum values when present; unrecognised slugs are
+      silently dropped so a bookmarked URL doesn't 500 after we
+      rename an enum value. */
+  powertrain?: string;
+  /** Company tier — OEM / TIER1 / STARTUP / etc. Same slug pattern. */
+  companyTier?: string;
+  /** Credential slug — filters to jobs that REQUIRE this credential.
+      Lets a candidate who holds ARAI surface every job that asks
+      for it. Soft (non-required) credential links are not filtered
+      here — those still surface, just lower in matching. */
+  credential?: string;
+  /** Minimum battery-pack size (kWh) the role works with. */
+  packKwhMin?: number;
+  /** Minimum charger output (kW) the role designs / installs. */
+  chargerKwMin?: number;
   page?: number;
   pageSize?: number;
 }
+
+/** Slug → enum lookups for the powertrain facet. Anything not in the
+ *  map is silently ignored — keeps the URL contract loose for
+ *  forward-compat as we add more areas. */
+const POWERTRAIN_SLUGS: Record<string, PowertrainArea> = {
+  battery: PowertrainArea.BATTERY,
+  bms: PowertrainArea.BMS,
+  motor: PowertrainArea.MOTOR,
+  charging: PowertrainArea.CHARGING,
+  "power-electronics": PowertrainArea.POWER_ELECTRONICS,
+  "vehicle-integration": PowertrainArea.VEHICLE_INTEGRATION,
+  software: PowertrainArea.SOFTWARE,
+  manufacturing: PowertrainArea.MANUFACTURING,
+  "after-sales": PowertrainArea.AFTER_SALES,
+};
+
+const COMPANY_TIER_SLUGS: Record<string, CompanyTier> = {
+  oem: CompanyTier.OEM,
+  "tier-1": CompanyTier.TIER1_SUPPLIER,
+  "tier-2": CompanyTier.TIER2_SUPPLIER,
+  startup: CompanyTier.STARTUP,
+  "charging-operator": CompanyTier.CHARGING_OPERATOR,
+  research: CompanyTier.RESEARCH_INSTITUTE,
+  consulting: CompanyTier.CONSULTING,
+};
 
 export async function searchJobs(filter: JobsFilter) {
   const page = filter.page ?? 1;
@@ -90,6 +133,33 @@ export async function searchJobs(filter: JobsFilter) {
   }
   if (filter.domain) {
     where.evDomains = { some: { evDomain: { slug: filter.domain } } };
+  }
+
+  // ─── #29 EV facet filters ─────────────────────────────────────
+  if (filter.powertrain && POWERTRAIN_SLUGS[filter.powertrain]) {
+    where.powertrainArea = POWERTRAIN_SLUGS[filter.powertrain];
+  }
+  if (filter.companyTier && COMPANY_TIER_SLUGS[filter.companyTier]) {
+    // The CompanyTier filter goes through the relation since the column
+    // lives on Company, not JobPosting. Merging with the existing
+    // `company` constraint above keeps the verificationStatus check.
+    where.company = {
+      ...(where.company as Prisma.CompanyWhereInput),
+      companyTier: COMPANY_TIER_SLUGS[filter.companyTier],
+    };
+  }
+  if (filter.credential) {
+    // We deliberately filter on REQUIRED credentials only — soft "nice
+    // to have" credentials inform the match score, not the filter.
+    where.credentials = {
+      some: { credential: { slug: filter.credential }, required: true },
+    };
+  }
+  if (filter.packKwhMin !== undefined && filter.packKwhMin > 0) {
+    where.packSizeKwh = { gte: filter.packKwhMin };
+  }
+  if (filter.chargerKwMin !== undefined && filter.chargerKwMin > 0) {
+    where.chargerKw = { gte: filter.chargerKwMin };
   }
 
   const [jobs, total] = await Promise.all([
