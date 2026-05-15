@@ -239,6 +239,14 @@ model User {
   // FeaturedSlot rows this admin curated.
   featuredSlotsCurated FeaturedSlot[] @relation("FeaturedCurator")
 
+  // Wave C back-relations
+  automationsCreated   PipelineAutomation[]   @relation("AutomationCreator")
+  hiringAssistantsOwned HiringAssistantConfig[] @relation("HiringAssistantOwner")
+  callingSessionsTriggered CallingSession[]   @relation("CallingTriggerer")
+  companyReviewsAuthored   CompanyReview[]    @relation("CompanyReviewAuthor")
+  companyReviewsModerated  CompanyReview[]    @relation("CompanyReviewModerator")
+  careerExplorations       CareerExplorationLog[] @relation("CareerExplorerUser")
+
   @@index([role, status])
 }
 
@@ -573,6 +581,11 @@ model CandidateProfile {
   // FTS — see Skill.searchTsv comment for the pattern.
   searchTsv Unsupported("tsvector")?
 
+  // Wave C back-relations
+  verifiedSkillBadges    VerifiedSkillBadge[]
+  callingSessions        CallingSession[]
+  credentialsHeld        CandidateCredential[]
+
   @@index([profileMode, availabilityStatus, openToWork])
   @@index([isDIYguruVerified])
 }
@@ -901,6 +914,17 @@ model Company {
   // WordPress legacy tracking
   wpLegacyId Int? @unique
 
+  // Wave C back-relations
+  /// Company-level tier facet (e.g. OEM vs Tier1 vs startup) — used as
+  /// a first-class filter alongside the existing `companyType` enum.
+  /// Nullable until the admin classifies a company; defaults to null
+  /// rather than OTHER so the UI can show "not classified" instead of
+  /// silently bucketing OEMs as "Other".
+  companyTier        CompanyTier?
+  automations        PipelineAutomation[]
+  reviews            CompanyReview[]
+  awards             EmployerAward[]
+
   @@index([verificationStatus])
 }
 
@@ -1059,6 +1083,28 @@ model JobPosting {
   // Competitions linked to this job (winner-perk pipeline)
   competitionPerks CompetitionPerk[]
 
+  // Wave C — #29 facet axes for this job
+  /// Powertrain area this role lives in — Battery / BMS / Motor /
+  /// Charging / etc. Optional because non-engineering roles (sales,
+  /// HR) don't have a powertrain area.
+  powertrainArea   PowertrainArea?
+  /// Battery pack size (kWh) the role touches. Used as a numeric
+  /// filter facet — "I want roles working with packs over 50 kWh".
+  /// Null when irrelevant.
+  packSizeKwh      Int?
+  /// Charger output (kW) the role designs / installs. Same pattern as
+  /// packSizeKwh — first-class numeric filter when set.
+  chargerKw        Int?
+  /// Pulled-down filter: "Diversity hire preferred" / "Veteran-friendly" /
+  /// "Women-returner programme". Free text comma-list — small enough to
+  /// stay strings rather than another join table.
+  diversityTags    String[]   @default([])
+
+  credentials      JobCredential[]
+  hiringAssistant  HiringAssistantConfig?
+  automations      PipelineAutomation[]
+  callingSessions  CallingSession[]
+
   // FTS — see Skill.searchTsv for the rationale.
   searchTsv Unsupported("tsvector")?
 
@@ -1150,6 +1196,9 @@ model Application {
   // /jobs/[slug] applies (the bulk of traffic).
   recruitmentDriveId String?
   recruitmentDrive   RecruitmentDrive? @relation(fields: [recruitmentDriveId], references: [id], onDelete: SetNull)
+
+  // Wave C #16 — vernacular calling agent
+  callingSessions CallingSession[]
 
   @@unique([jobId, candidateId])
   @@index([jobId, stage])
@@ -1304,6 +1353,10 @@ model Assessment {
   // assessment can be reused as the challenge across multiple
   // fairs / drive-jobs without duplicating questions JSON.
   recruitmentDriveJobs RecruitmentDriveJob[] @relation("RecruitmentDriveJobChallenge")
+  // Wave C #28 — sidecar carrying EV-skill library metadata. Optional
+  // because most Assessment rows are job-scoped MCQs without
+  // skill-library framing.
+  skillMeta            SkillAssessmentMeta?
 
   @@index([jobId])
 }
@@ -4544,4 +4597,610 @@ model CvEvaluation {
 
   @@index([userId, createdAt])
   @@index([anonId, createdAt])
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Wave C — Agentic + Differentiators (#14, #16, #22, #23, #26, #28, #29)
+//
+// The "2026 bar" feature wave. These models support:
+//   - #14 EV Career Explorer (no schema needed; pure AI, but caches
+//     stored in CareerExplorationLog for the user's own history.)
+//   - #16 Vernacular AI Calling Agent (CallingSession + CallingMessage
+//     for the structured voice screen + transcript.)
+//   - #22 AI Hiring Assistant (HiringAssistantConfig + HiringAssistantRun
+//     for per-job agentic loop state.)
+//   - #23 Automation Rules (PipelineAutomation rule rows; PipelineAutomationLog
+//     for the audit trail of every rule-firing.)
+//   - #26 Best EV Employer Award (CompanyReview crowd-sourced reviews +
+//     EmployerAward computed yearly).
+//   - #28 Verified Skill Assessments (extends existing Assessment via
+//     SkillAssessmentMeta sidecar — Assessment already has `isLibrary`
+//     so we don't duplicate the core MCQ row; the sidecar adds the
+//     EV-skill metadata + badge surfacing.)
+//   - #29 EV facet filters (new fields on JobPosting + CandidateProfile;
+//     see below — separate from the new tables for visibility).
+// ═══════════════════════════════════════════════════════════════════
+
+// ─── #29 EV facet filters ───────────────────────────────────────────
+//
+// Powertrain area — a recruiter slices EV jobs by where on the EV
+// stack they live. Pulled out of free-text "skills" so /jobs and
+// /employer/candidates can render a first-class facet pill row.
+
+enum PowertrainArea {
+  BATTERY
+  BMS
+  MOTOR
+  CHARGING
+  POWER_ELECTRONICS
+  VEHICLE_INTEGRATION
+  SOFTWARE
+  MANUFACTURING
+  AFTER_SALES
+  OTHER
+}
+
+// Company tier — pulled separately from `Company.companyType` because
+// the existing enum mixes "type" (battery/charging/fleet) with "tier"
+// (OEM/startup). New filter UX wants both axes.
+enum CompanyTier {
+  OEM
+  TIER1_SUPPLIER
+  TIER2_SUPPLIER
+  STARTUP
+  CHARGING_OPERATOR
+  RESEARCH_INSTITUTE
+  CONSULTING
+  OTHER
+}
+
+// ─── #28 Verified Skill Assessments ─────────────────────────────────
+//
+// `Assessment` already supports standalone library assessments via
+// `isLibrary=true` + `jobId=null`. This sidecar adds the EV-skill
+// metadata + the "what badge does completion earn" pointer. Keeping
+// it a sidecar (rather than columns on Assessment) keeps the existing
+// job-scoped MCQ flow untouched and lets us surface skill-library
+// assessments separately in the UI.
+
+enum SkillAssessmentDifficulty {
+  FOUNDATION   // ~30 min; verifies the basics. Almost any engineer can clear.
+  INTERMEDIATE // ~45 min; hands-on practitioner level.
+  ADVANCED     // ~60 min; specialist signal. Few candidates clear.
+}
+
+model SkillAssessmentMeta {
+  id                 String                    @id @default(cuid())
+  assessmentId       String                    @unique
+  assessment         Assessment                @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  /// Stable slug for the URL — e.g. "battery-fundamentals",
+  /// "bms-architecture", "ccs-charging-protocols". Used in
+  /// `/skills/[slug]/take` + lookup keys for badge filters.
+  slug               String                    @unique
+  /// EV domain this skill assessment belongs to. Drives the browse
+  /// page's grouping ("Battery", "Charging", etc.) and powers the
+  /// recruiter filter "candidate verified in {domain}".
+  evDomainSlug       String
+  difficulty         SkillAssessmentDifficulty @default(INTERMEDIATE)
+  /// Marketing blurb for the browse card. ~140 chars.
+  blurb              String                    @db.Text
+  /// Estimated minutes — shown on the take-this-assessment card before
+  /// the candidate commits.
+  estimatedMinutes   Int                       @default(30)
+  /// Suggested prep links (3-5 URLs). Renders as "Brush up" hints
+  /// before the test starts. JSON: `[{title, url}]`.
+  prepLinks          Json?
+  /// Score % at or above which the candidate earns the badge. Defaults
+  /// to 70 — distinct from the underlying Assessment.passingScore which
+  /// may be lower for in-application MCQs.
+  badgeThreshold     Int                       @default(70)
+  /// Recruiter-visible weight — drives the boost in candidate search
+  /// rank when a recruiter filters by "verified in X". 1-5.
+  recruiterWeight    Int                       @default(3)
+  /// Public flag — admin-only assessments stay hidden from browse.
+  isPublic           Boolean                   @default(true)
+  /// Sort order in the browse page within an EV domain group.
+  sortOrder          Int                       @default(0)
+  createdAt          DateTime                  @default(now())
+  updatedAt          DateTime                  @updatedAt
+
+  earnedBadges       VerifiedSkillBadge[]
+
+  @@index([evDomainSlug, isPublic])
+  @@index([difficulty])
+}
+
+model VerifiedSkillBadge {
+  id                  String              @id @default(cuid())
+  candidateId         String
+  candidate           CandidateProfile    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  metaId              String
+  meta                SkillAssessmentMeta @relation(fields: [metaId], references: [id], onDelete: Cascade)
+  /// Source attempt — the AssessmentAttempt that earned the badge.
+  /// Lets the recruiter click through to the score breakdown.
+  attemptId           String              @unique
+  /// Snapshot of the score % at award time. Keeping it denormalised
+  /// means we don't have to JOIN AssessmentAttempt on every badge
+  /// surface render.
+  score               Int
+  /// Optional expiry — for skills where the field moves fast (e.g.
+  /// CCS protocols, OTA software) we may re-issue badges every 24 mo.
+  /// Null = never expires.
+  expiresAt           DateTime?
+  earnedAt            DateTime            @default(now())
+
+  @@unique([candidateId, metaId])
+  @@index([candidateId])
+  @@index([metaId])
+}
+
+// ─── #23 Automation Rules ───────────────────────────────────────────
+//
+// Cutshort-style "if X then Y" rules a recruiter sets per job (or
+// company-wide). Triggers run inside the Application server actions
+// (apply / stage-change) — synchronous "evaluate matching rules" pass
+// that either auto-moves the application, posts an in-app notice to the
+// recruiter team, or fires a templated message to the candidate.
+
+enum AutomationTrigger {
+  APPLICATION_RECEIVED  // fires when a new application lands
+  STAGE_CHANGED         // fires when an existing application moves
+}
+
+enum AutomationAction {
+  AUTO_MOVE_STAGE       // move the application to a given stage
+  NOTIFY_TEAM           // ping the recruiter inbox
+  SEND_TEMPLATE         // send a templated message to the candidate
+  REJECT_WITH_REASON    // move to REJECTED + send the candidate a kind note
+}
+
+model PipelineAutomation {
+  id            String             @id @default(cuid())
+  companyId     String
+  company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Nullable — when null, the rule applies to ALL jobs in the company.
+  /// When set, it scopes to one job only. Lets a recruiter say
+  /// "auto-move 80%+ matches to Shortlisted across every BMS role"
+  /// at the company level OR "for THIS senior battery role only".
+  jobId         String?
+  job           JobPosting?        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  createdById   String
+  createdBy     User               @relation("AutomationCreator", fields: [createdById], references: [id])
+  /// Human-readable name for the rules UI — "Auto-shortlist DIYguru
+  /// + 80% match".
+  label         String
+  trigger       AutomationTrigger
+  /// Conditions JSON. Shape (initial v1, can grow):
+  ///   {
+  ///     matchScoreMin?: 0..1,
+  ///     mustBeDIYguruVerified?: boolean,
+  ///     mustHaveSkills?: string[],          // skill slugs
+  ///     mustHaveVerifiedBadge?: string[],   // SkillAssessmentMeta slugs
+  ///     locationsAny?: string[],
+  ///     evDomainsAny?: string[],
+  ///     experienceMin?: number,             // months
+  ///     fromStage?: ApplicationStage,       // for STAGE_CHANGED
+  ///     toStage?: ApplicationStage,         // for STAGE_CHANGED
+  ///   }
+  /// All conditions AND together; arrays are "at least one of".
+  conditions    Json
+  action        AutomationAction
+  /// Action payload shape, again JSON:
+  ///   AUTO_MOVE_STAGE: { toStage: ApplicationStage, reason?: string }
+  ///   NOTIFY_TEAM:     { message: string }
+  ///   SEND_TEMPLATE:   { subject?: string, body: string }
+  ///   REJECT_WITH_REASON: { reason: string }
+  actionPayload Json
+  enabled       Boolean            @default(true)
+  /// Audit counters — surface "fired 14 times this week" on the rule card.
+  runCount      Int                @default(0)
+  lastRunAt     DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  logs          PipelineAutomationLog[]
+
+  @@index([companyId, enabled])
+  @@index([jobId])
+}
+
+model PipelineAutomationLog {
+  id           String             @id @default(cuid())
+  automationId String
+  automation   PipelineAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  applicationId String
+  /// Whether the rule actually fired (true) or just evaluated and
+  /// no-op'd (false). Lets us answer "how many candidates did this
+  /// rule actually touch" vs "how many did it consider".
+  fired        Boolean
+  /// JSON snapshot of the inputs used + the decision taken — for the
+  /// rule audit trail. ~1 KB / row in practice.
+  snapshot     Json
+  createdAt    DateTime           @default(now())
+
+  @@index([automationId, createdAt])
+  @@index([applicationId])
+}
+
+// ─── #22 AI Hiring Assistant ────────────────────────────────────────
+//
+// Per-job agentic configuration. The daily worker tick picks up every
+// HiringAssistantConfig with `enabled=true` and runs:
+//   1. Rank fresh applications by match score (uses #28 verified
+//      badges as a positive signal).
+//   2. Draft personalised first-touch outreach for the top N who
+//      haven't been messaged yet.
+//   3. Chase non-responders on a configurable cadence (followUpAfterDays).
+//
+// Each run produces a HiringAssistantRun row with a structured summary
+// — that's what the recruiter sees as "Your hiring assistant did X
+// yesterday" on the dashboard.
+
+model HiringAssistantConfig {
+  id                  String              @id @default(cuid())
+  jobId               String              @unique
+  job                 JobPosting          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  enabledById         String
+  enabledBy           User                @relation("HiringAssistantOwner", fields: [enabledById], references: [id])
+  enabled             Boolean             @default(true)
+  /// How many of the top-ranked candidates to draft outreach for on
+  /// each tick. Default 5 — small enough to feel curated, large enough
+  /// to keep the funnel warm.
+  draftBatchSize      Int                 @default(5)
+  /// Days to wait before the assistant chases a non-responder. Null =
+  /// no chase. Default 4 days mirrors LinkedIn Recruiter's default.
+  followUpAfterDays   Int?                @default(4)
+  /// Tone of the drafted outreach. Drives the system prompt.
+  /// FORMAL / WARM / CASUAL.
+  tone                String              @default("WARM")
+  /// Hard cap on outreach per tick — even if the model wants to
+  /// message more candidates, we never exceed this. Cost guardrail.
+  maxOutreachPerTick  Int                 @default(10)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  runs                HiringAssistantRun[]
+
+  @@index([enabled])
+}
+
+enum HiringAssistantRunStatus {
+  PENDING
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model HiringAssistantRun {
+  id            String                   @id @default(cuid())
+  configId      String
+  config        HiringAssistantConfig    @relation(fields: [configId], references: [id], onDelete: Cascade)
+  status        HiringAssistantRunStatus @default(PENDING)
+  /// Counts surfaced in the recruiter summary card.
+  rankedCount   Int                      @default(0)
+  draftedCount  Int                      @default(0)
+  chasedCount   Int                      @default(0)
+  /// Total OpenAI tokens used by this run — feeds the company-level
+  /// cost dashboard. trackAICall populates AICostLog separately; this
+  /// is the rolled-up summary shown to the recruiter.
+  tokensUsed    Int                      @default(0)
+  /// Natural-language summary the assistant generated for the
+  /// recruiter ("I drafted 5 outreach messages and chased 3
+  /// non-responders. Top candidate this round: Asha Singh (94% match,
+  /// verified BMS, 4 yrs Ola)."). 1-2 short paragraphs.
+  summary       String?                  @db.Text
+  /// Detailed breakdown JSON: per-candidate decisions, drafted message
+  /// preview, errors. ~5-10 KB.
+  detail        Json?
+  startedAt     DateTime                 @default(now())
+  finishedAt    DateTime?
+  errorMessage  String?                  @db.Text
+
+  @@index([configId, startedAt])
+}
+
+// ─── #16 Vernacular AI Calling Agent ────────────────────────────────
+//
+// Stub for the phone-screening pipeline. A recruiter triggers a
+// "screen this candidate by phone" task → the calling worker picks it
+// up → calls the candidate in their preferred language → runs a
+// structured 5-question screen → transcribes + scores → drops a
+// summary into the ATS. Provider-agnostic: the call gateway is
+// abstracted in `lib/calling/provider.ts`. Initial provider: Exotel
+// (India-first). Twilio is a drop-in alternative.
+
+enum CallingSessionStatus {
+  QUEUED          // Created, waiting for the worker to pick up
+  DIALING         // Provider has started the call
+  IN_PROGRESS     // Connected; questions in progress
+  COMPLETED       // Both parties hung up, transcript stored
+  FAILED          // Provider error, no-answer, voicemail
+  CANCELLED       // Recruiter cancelled before dial
+}
+
+enum CallingLanguage {
+  EN_IN
+  HI_IN
+  TA_IN
+  TE_IN
+  KN_IN
+  MR_IN
+  GU_IN
+  BN_IN
+  PA_IN
+  ML_IN
+}
+
+model CallingSession {
+  id            String              @id @default(cuid())
+  /// Application being screened. Nullable so a recruiter could screen
+  /// a sourced candidate before any application exists.
+  applicationId String?
+  application   Application?        @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  candidateId   String
+  candidate     CandidateProfile    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId         String?
+  job           JobPosting?         @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  triggeredById String
+  triggeredBy   User                @relation("CallingTriggerer", fields: [triggeredById], references: [id])
+  language      CallingLanguage     @default(HI_IN)
+  /// Question script the assistant follows. Each item: `{ id, text }`.
+  /// Recruiter customises per job. We auto-suggest a script from the
+  /// job description on first run.
+  script        Json
+  status        CallingSessionStatus @default(QUEUED)
+  /// Provider-specific call session ID (returned by Exotel /
+  /// Twilio's call-initiate API). Used to correlate webhook events
+  /// back to our row.
+  providerCallSid String?
+  providerName    String?   // "exotel" | "twilio" — for analytics + provider migration
+  /// Whisper/Deepgram ASR transcript — raw text. Stored alongside the
+  /// structured messages because the structured shape only captures
+  /// the per-question Q&A, not the candidate's pre-introduction or
+  /// post-thank-you remarks which can still be useful for the recruiter.
+  rawTranscript String?     @db.Text
+  /// Overall fit score 0-100 produced by a GPT-4o pass over the
+  /// transcript with the job description as context.
+  fitScore      Int?
+  /// 1-2 sentence summary the recruiter sees in their ATS.
+  summary       String?     @db.Text
+  /// Cost in USD micros, like AICostLog — call cost + ASR cost + LLM
+  /// scoring cost rolled up.
+  costUsdMicros Int         @default(0)
+  startedAt     DateTime?
+  completedAt   DateTime?
+  errorMessage  String?     @db.Text
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  messages      CallingMessage[]
+
+  @@index([candidateId, createdAt])
+  @@index([jobId, createdAt])
+  @@index([status])
+  @@index([providerCallSid])
+}
+
+enum CallingSpeaker {
+  ASSISTANT
+  CANDIDATE
+}
+
+model CallingMessage {
+  id         String         @id @default(cuid())
+  sessionId  String
+  session    CallingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  speaker    CallingSpeaker
+  /// Original spoken text in the vernacular language.
+  text       String         @db.Text
+  /// English translation — produced by the same Whisper pass via
+  /// `translate=true` flag. Lets recruiters who don't speak the
+  /// candidate's language still skim the transcript.
+  textEn     String?        @db.Text
+  /// Question ID this turn corresponds to (from CallingSession.script).
+  /// Null on free-form intro / closing turns.
+  questionId String?
+  /// Speech segment timing — milliseconds from call start. Lets us
+  /// scrub the audio at the right point if we ever surface the
+  /// recording in the recruiter UI.
+  startedMs  Int?
+  endedMs    Int?
+  createdAt  DateTime       @default(now())
+
+  @@index([sessionId, createdAt])
+}
+
+// ─── #26 Best EV Employer Award ─────────────────────────────────────
+//
+// Glassdoor-style "Best Places to Work", but EV-vertical. Two pieces:
+//   1. CompanyReview — anonymous-friendly crowd-sourced reviews
+//      contributing to the ranking signal.
+//   2. EmployerAward — the computed yearly badge, displayed on the
+//      company profile + a public /awards page.
+
+enum CompanyReviewStatus {
+  PENDING       // Submitted, awaiting moderation
+  PUBLISHED     // Live on the company profile
+  REJECTED      // Moderation rejected (spam / personal attack)
+  WITHDRAWN     // Reviewer asked to remove
+}
+
+enum ReviewerRelationship {
+  CURRENT_EMPLOYEE
+  FORMER_EMPLOYEE
+  INTERN
+  CONTRACTOR
+  INTERVIEWED      // Made it to interview, didn't join
+}
+
+model CompanyReview {
+  id                  String                @id @default(cuid())
+  companyId           String
+  company             Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Nullable — anonymous reviews are allowed but moderated more
+  /// strictly. Signed-in reviewers get a "verified employee" green
+  /// dot when their EmployerProfile.companyId matches.
+  reviewerUserId      String?
+  reviewerUser        User?                 @relation("CompanyReviewAuthor", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+  relationship        ReviewerRelationship
+  /// 1-5 each — drives the per-axis breakdown on the company profile.
+  /// All required so the aggregate ranking is consistent.
+  cultureRating       Int
+  compensationRating  Int
+  managementRating    Int
+  growthRating        Int
+  workLifeRating      Int
+  /// 1-5 overall — recommended-to-friend signal. Drives the Best
+  /// Employer award weight more than the axis scores.
+  overallRating       Int
+  /// 200-char headline + free-form body, both moderated.
+  headline            String                @db.VarChar(220)
+  pros                String                @db.Text
+  cons                String                @db.Text
+  /// Optional job title at the company. Public on the review card.
+  reviewerJobTitle    String?
+  /// Optional location of the office reviewed. Helps slice by city.
+  reviewerLocation    String?
+  status              CompanyReviewStatus   @default(PENDING)
+  /// Admin reviewer + decision audit trail.
+  moderatedById       String?
+  moderatedBy         User?                 @relation("CompanyReviewModerator", fields: [moderatedById], references: [id])
+  moderatedAt         DateTime?
+  moderationNotes     String?               @db.Text
+  /// Helpfulness counters — drive the top-review surfacing.
+  helpfulCount        Int                   @default(0)
+  reportCount         Int                   @default(0)
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+
+  @@unique([companyId, reviewerUserId])
+  @@index([companyId, status])
+  @@index([status, createdAt])
+}
+
+enum EmployerAwardCategory {
+  BEST_OVERALL              // top-of-the-list award
+  BEST_FOR_BATTERY_ROLES
+  BEST_FOR_CHARGING_ROLES
+  BEST_FOR_MOTOR_ROLES
+  BEST_FOR_SOFTWARE_ROLES
+  BEST_FOR_FRESHERS
+  BEST_REMOTE_CULTURE
+  FASTEST_RESPONDER         // best applicant response time
+  MOST_LOVED_BY_DIYGURU     // highest DIYguru-cohort retention
+}
+
+model EmployerAward {
+  id           String                @id @default(cuid())
+  companyId    String
+  company      Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  /// Year the award is for ("2026" badge stays up across 2026).
+  year         Int
+  category     EmployerAwardCategory
+  /// 1 = winner, 2 = runner-up. Top 10 in each category get badges.
+  rank         Int
+  /// Composite signal that produced the rank (rolled-up for the
+  /// award-page tooltip: "Based on 124 reviews, 4.6 avg, 87% recommend,
+  /// avg response time 6h").
+  scoreBreakdown Json
+  awardedAt    DateTime              @default(now())
+
+  @@unique([companyId, year, category])
+  @@index([year, category, rank])
+}
+
+// ─── #29 EV facet filter — sidecar tables ───────────────────────────
+//
+// New facet columns are added directly to JobPosting / Company /
+// CandidateProfile below via Prisma's `@map`-less inline additions.
+// We chose sidecar tables for `JobCertification` / `CandidateCertification`
+// over plain `String[]` columns because the same canonical certification
+// (ARAI, FAME-II, BIS, ASDC) appears across thousands of jobs/profiles
+// and a free-text array would let typos drift the recruiter filter into
+// uselessness. The canonical list is seeded; admins can add new entries.
+
+// Canonical EV-industry credential (ARAI / FAME-II / BIS / ASDC). The
+// existing `Certification` model is free-text per-candidate; this is the
+// admin-curated lookup that the filter dropdown reads from. Distinct
+// table so the recruiter facet doesn't drift on typos.
+model Credential {
+  id          String                 @id @default(cuid())
+  /// Stable slug — "arai", "fame-ii", "bis-is15129", "asdc-level-3".
+  slug        String                 @unique
+  /// Display name on chips / filter rows.
+  name        String
+  /// Long-form authority — "Automotive Research Association of India".
+  authority   String?
+  /// Optional EV domain this credential belongs to. Lets the filter UI
+  /// group "ARAI under Vehicle Engineering".
+  evDomainSlug String?
+  /// Order in the filter dropdown.
+  sortOrder   Int                    @default(0)
+  isActive    Boolean                @default(true)
+
+  jobs       JobCredential[]
+  candidates CandidateCredential[]
+
+  @@index([evDomainSlug, isActive])
+}
+
+model JobCredential {
+  jobId          String
+  credentialId   String
+  job            JobPosting @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  credential     Credential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  /// When true, the candidate MUST hold this credential for the job
+  /// to surface in their match results. When false, it's a "nice to
+  /// have" — boosts the score but doesn't gate inclusion.
+  required       Boolean    @default(false)
+
+  @@id([jobId, credentialId])
+  @@index([credentialId])
+}
+
+model CandidateCredential {
+  candidateId    String
+  credentialId   String
+  candidate      CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  credential     Credential       @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  /// When the candidate earned it. Used to highlight recent (<2y)
+  /// credentials on the profile.
+  earnedAt       DateTime?
+  /// Optional URL to the credential PDF / verification page.
+  credentialUrl  String?
+
+  @@id([candidateId, credentialId])
+  @@index([credentialId])
+}
+
+// ─── #14 EV Career Explorer ─────────────────────────────────────────
+//
+// Cached per-user exploration runs. We don't precompute the adjacency
+// graph — instead, when a user explores a role, the result is cached
+// here for ~30 days so revisits + share links don't re-burn AI tokens.
+
+model CareerExplorationLog {
+  id              String   @id @default(cuid())
+  /// Nullable — anonymous explorations are allowed (visible only via
+  /// the share link UUID).
+  userId          String?
+  user            User?    @relation("CareerExplorerUser", fields: [userId], references: [id], onDelete: SetNull)
+  /// Free-text "current role" the user entered.
+  fromRole        String
+  /// Optional EV domain slug context.
+  evDomainSlug    String?
+  /// Comma-joined skill snapshot at exploration time. Lets us
+  /// re-rank later if their skills change without re-prompting OpenAI.
+  fromSkillsCsv   String   @db.Text
+  /// AI result: an array of `{ toRole, score, skillGap[],
+  /// reason, prepLinks }`. Stored JSON for schema agility.
+  result          Json
+  /// 30-day cache key — same fromRole + evDomain + skill set returns
+  /// the cached row instead of re-prompting.
+  cacheKey        String
+  tokensUsed      Int      @default(0)
+  createdAt       DateTime @default(now())
+
+  @@index([cacheKey, createdAt])
+  @@index([userId, createdAt])
 }
