@@ -17,6 +17,11 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { recalcCompleteness } from "@/lib/profile-completeness";
 import { optionalUrl } from "@/lib/forms/zod-url";
 import {
+  snapshotFormData,
+  zodErrorsToFieldErrors,
+  type FormState,
+} from "@/lib/form-state";
+import {
   ProfileMode,
   AvailabilityStatus,
   CVVisibility,
@@ -420,41 +425,61 @@ const headerSchema = z.object({
   portfolioUrl: optionalUrl,
 });
 
-export async function saveHeader(formData: FormData) {
-  const { profile } = await requireCandidate();
-  const parsed = headerSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    // The `<form action={saveHeader}>` pattern doesn't surface a
-    // return value to the client — silent rejection looks like
-    // "Save changes does nothing", which is exactly what users
-    // reported. Log loudly so admin can diagnose from server logs
-    // until this is migrated to a useActionState client form.
-    logger.warn(
-      { userId: profile.userId, fieldErrors: parsed.error.flatten().fieldErrors },
-      "[saveHeader] validation failed — Save changes appears to do nothing on the client",
-    );
-    return;
+/**
+ * useActionState-compatible header save. Returns a `FormState`
+ * surfaced to the client form so the user actually sees "Saved" or
+ * a per-field validation error instead of the old silent no-op.
+ *
+ * The `prevValues` round-trip is intentional even on success — the
+ * page re-renders the candidate profile from DB after `revalidate`,
+ * so we don't strictly need to echo back. But leaving the helper
+ * available makes the validation-failure path identical to the
+ * other useActionState forms (EmployerJobForm, ArticleEditor, etc.)
+ * so the UI reuses one mental model.
+ */
+export async function saveHeader(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const { profile } = await requireCandidate();
+    const parsed = headerSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      const fieldErrors = zodErrorsToFieldErrors(parsed.error.flatten());
+      logger.warn(
+        { userId: profile.userId, fieldErrors },
+        "[saveHeader] validation failed",
+      );
+      return {
+        ok: false,
+        message: "Please fix the highlighted fields.",
+        fieldErrors,
+        prevValues: snapshotFormData(formData),
+      };
+    }
+    const { country, city, linkedinUrl, githubUrl, portfolioUrl, ...rest } = parsed.data;
+    await db.candidateProfile.update({
+      where: { id: profile.id },
+      data: {
+        ...rest,
+        country: country ? country.toUpperCase() : null,
+        city: city?.trim() || null,
+        linkedinUrl: linkedinUrl || null,
+        githubUrl: githubUrl || null,
+        portfolioUrl: portfolioUrl || null,
+      },
+    });
+    await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
+    await enqueueResumeDraft(profile.id);
+    await recalcCompleteness(profile.id);
+    revalidatePath("/me/profile");
+    revalidatePath(`/${profile.slug}`);
+    return { ok: true, message: "Saved." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[saveHeader] unexpected failure");
+    return { ok: false, message: "Couldn't save. Try again." };
   }
-  const { country, city, linkedinUrl, githubUrl, portfolioUrl, ...rest } = parsed.data;
-  await db.candidateProfile.update({
-    where: { id: profile.id },
-    data: {
-      ...rest,
-      country: country ? country.toUpperCase() : null,
-      city: city?.trim() || null,
-      // Empty-string URLs (user cleared the field) → null in the DB
-      // so the public profile stops rendering a broken / hashes-only
-      // anchor.
-      linkedinUrl: linkedinUrl || null,
-      githubUrl: githubUrl || null,
-      portfolioUrl: portfolioUrl || null,
-    },
-  });
-  await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
-  await enqueueResumeDraft(profile.id);
-  await recalcCompleteness(profile.id);
-  revalidatePath("/me/profile");
-  revalidatePath(`/${profile.slug}`);
 }
 
 const experienceSchema = z.object({
@@ -471,41 +496,60 @@ const experienceSchema = z.object({
   description: z.string().optional().nullable(),
 });
 
-export async function saveExperience(formData: FormData) {
-  const { profile } = await requireCandidate();
-  const parsed = experienceSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
-    );
-    return;
+export async function saveExperience(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const { profile } = await requireCandidate();
+    const parsed = experienceSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      const fieldErrors = zodErrorsToFieldErrors(parsed.error.flatten());
+      logger.warn(
+        { userId: profile.userId, fieldErrors },
+        "[saveExperience] validation failed",
+      );
+      return {
+        ok: false,
+        message: "Please fix the highlighted fields.",
+        fieldErrors,
+        prevValues: snapshotFormData(formData),
+      };
+    }
+    const { id, startDate, endDate, current, companyId, ...rest } = parsed.data;
+    const data = {
+      ...rest,
+      candidateId: profile.id,
+      // Empty string from the hidden input means "no FK" — coerce to null so
+      // Prisma doesn't try to look up an empty cuid.
+      companyId: companyId && companyId.length > 0 ? companyId : null,
+      startDate: new Date(`${startDate}-01`),
+      endDate: !current && endDate ? new Date(`${endDate}-01`) : null,
+      current: Boolean(current),
+    };
+    if (id) {
+      // Scope by candidateId so an attacker can't update another candidate's row.
+      const result = await db.experience.updateMany({
+        where: { id, candidateId: profile.id },
+        data,
+      });
+      if (result.count === 0) {
+        return { ok: false, message: "Couldn't find that experience entry." };
+      }
+    } else {
+      await db.experience.create({ data });
+    }
+    await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
+    await enqueueResumeDraft(profile.id);
+    await recalcCompleteness(profile.id);
+    revalidatePath("/me/profile");
+    revalidatePath(`/${profile.slug}`);
+    return { ok: true, message: id ? "Updated." : "Added." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[saveExperience] unexpected failure");
+    return { ok: false, message: "Couldn't save. Try again." };
   }
-  const { id, startDate, endDate, current, companyId, ...rest } = parsed.data;
-  const data = {
-    ...rest,
-    candidateId: profile.id,
-    // Empty string from the hidden input means "no FK" — coerce to null so
-    // Prisma doesn't try to look up an empty cuid.
-    companyId: companyId && companyId.length > 0 ? companyId : null,
-    startDate: new Date(`${startDate}-01`),
-    endDate: !current && endDate ? new Date(`${endDate}-01`) : null,
-    current: Boolean(current),
-  };
-  if (id) {
-    // Scope by candidateId so an attacker can't update another candidate's row.
-    const result = await db.experience.updateMany({
-      where: { id, candidateId: profile.id },
-      data,
-    });
-    if (result.count === 0) return;
-  } else {
-    await db.experience.create({ data });
-  }
-  await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
-  await enqueueResumeDraft(profile.id);
-  await recalcCompleteness(profile.id);
-  revalidatePath("/me/profile");
 }
 
 export async function deleteExperience(formData: FormData) {
@@ -531,33 +575,52 @@ const educationSchema = z.object({
   grade: z.string().optional().nullable(),
 });
 
-export async function saveEducation(formData: FormData) {
-  const { profile } = await requireCandidate();
-  const parsed = educationSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
-    );
-    return;
+export async function saveEducation(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const { profile } = await requireCandidate();
+    const parsed = educationSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      const fieldErrors = zodErrorsToFieldErrors(parsed.error.flatten());
+      logger.warn(
+        { userId: profile.userId, fieldErrors },
+        "[saveEducation] validation failed",
+      );
+      return {
+        ok: false,
+        message: "Please fix the highlighted fields.",
+        fieldErrors,
+        prevValues: snapshotFormData(formData),
+      };
+    }
+    const { id, institutionId, ...rest } = parsed.data;
+    const data = {
+      ...rest,
+      institutionId: institutionId && institutionId.length > 0 ? institutionId : null,
+    };
+    if (id) {
+      const result = await db.education.updateMany({
+        where: { id, candidateId: profile.id },
+        data,
+      });
+      if (result.count === 0) {
+        return { ok: false, message: "Couldn't find that education entry." };
+      }
+    } else {
+      await db.education.create({ data: { ...data, candidateId: profile.id } });
+    }
+    await enqueueResumeDraft(profile.id);
+    await recalcCompleteness(profile.id);
+    revalidatePath("/me/profile");
+    revalidatePath(`/${profile.slug}`);
+    return { ok: true, message: id ? "Updated." : "Added." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[saveEducation] unexpected failure");
+    return { ok: false, message: "Couldn't save. Try again." };
   }
-  const { id, institutionId, ...rest } = parsed.data;
-  const data = {
-    ...rest,
-    institutionId: institutionId && institutionId.length > 0 ? institutionId : null,
-  };
-  if (id) {
-    const result = await db.education.updateMany({
-      where: { id, candidateId: profile.id },
-      data,
-    });
-    if (result.count === 0) return;
-  } else {
-    await db.education.create({ data: { ...data, candidateId: profile.id } });
-  }
-  await enqueueResumeDraft(profile.id);
-  await recalcCompleteness(profile.id);
-  revalidatePath("/me/profile");
 }
 
 export async function deleteEducation(formData: FormData) {
@@ -751,27 +814,43 @@ const availabilitySchema = z.object({
   status: z.enum(["LOOKING", "HIRING", "NONE"]),
 });
 
-export async function saveAvailability(formData: FormData) {
-  const { profile } = await requireCandidate();
-  const parsed = availabilitySchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
-    );
-    return;
+export async function saveAvailability(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const { profile } = await requireCandidate();
+    const parsed = availabilitySchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      const fieldErrors = zodErrorsToFieldErrors(parsed.error.flatten());
+      logger.warn(
+        { userId: profile.userId, fieldErrors },
+        "[saveAvailability] validation failed",
+      );
+      return {
+        ok: false,
+        message: "Pick one of the three options.",
+        fieldErrors,
+        prevValues: snapshotFormData(formData),
+      };
+    }
+    const { status } = parsed.data;
+    await db.candidateProfile.update({
+      where: { id: profile.id },
+      data: {
+        openToWork: status === "LOOKING",
+        hiringNow: status === "HIRING",
+      },
+    });
+    revalidatePath("/me/profile");
+    revalidatePath("/me");
+    revalidatePath(`/${profile.slug}`);
+    return { ok: true, message: "Saved." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[saveAvailability] unexpected failure");
+    return { ok: false, message: "Couldn't save. Try again." };
   }
-  const { status } = parsed.data;
-  await db.candidateProfile.update({
-    where: { id: profile.id },
-    data: {
-      openToWork: status === "LOOKING",
-      hiringNow: status === "HIRING",
-    },
-  });
-  revalidatePath("/me/profile");
-  revalidatePath("/me");
-  revalidatePath(`/${profile.slug}`);
 }
 
 // ─── Custom CTA chip ───────────────────────────────────────
@@ -783,23 +862,39 @@ const customCtaSchema = z.object({
  * Save the LinkedIn-style custom-CTA chip ("Available for freelance",
  * "Open to relocate", "Fundraising", etc.). Empty / null clears it.
  */
-export async function saveCustomCta(formData: FormData) {
-  const { profile } = await requireCandidate();
-  const parsed = customCtaSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
-    );
-    return;
+export async function saveCustomCta(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const { profile } = await requireCandidate();
+    const parsed = customCtaSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      const fieldErrors = zodErrorsToFieldErrors(parsed.error.flatten());
+      logger.warn(
+        { userId: profile.userId, fieldErrors },
+        "[saveCustomCta] validation failed",
+      );
+      return {
+        ok: false,
+        message: "CTA is too long — keep it under 160 characters.",
+        fieldErrors,
+        prevValues: snapshotFormData(formData),
+      };
+    }
+    const trimmed = parsed.data.customCta?.trim() || null;
+    await db.candidateProfile.update({
+      where: { id: profile.id },
+      data: { customCta: trimmed },
+    });
+    revalidatePath("/me/profile");
+    revalidatePath(`/${profile.slug}`);
+    return { ok: true, message: trimmed ? "Saved." : "Cleared." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[saveCustomCta] unexpected failure");
+    return { ok: false, message: "Couldn't save. Try again." };
   }
-  const trimmed = parsed.data.customCta?.trim() || null;
-  await db.candidateProfile.update({
-    where: { id: profile.id },
-    data: { customCta: trimmed },
-  });
-  revalidatePath("/me/profile");
-  revalidatePath(`/${profile.slug}`);
 }
 
 // ─── Volunteer experience ──────────────────────────────────
@@ -1388,35 +1483,53 @@ const certSchema = z.object({
   credentialUrl: optionalUrl,
 });
 
-export async function saveCertification(formData: FormData) {
-  const { profile } = await requireCandidate();
-  const parsed = certSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
-    );
-    return;
+export async function saveCertification(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const { profile } = await requireCandidate();
+    const parsed = certSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      const fieldErrors = zodErrorsToFieldErrors(parsed.error.flatten());
+      logger.warn(
+        { userId: profile.userId, fieldErrors },
+        "[saveCertification] validation failed",
+      );
+      return {
+        ok: false,
+        message: "Please fix the highlighted fields.",
+        fieldErrors,
+        prevValues: snapshotFormData(formData),
+      };
+    }
+    const { id, issueDate, credentialUrl, ...rest } = parsed.data;
+    const data = {
+      ...rest,
+      issueDate: issueDate ? new Date(`${issueDate}-01`) : null,
+      credentialUrl: credentialUrl || null,
+    };
+    if (id) {
+      const r = await db.certification.updateMany({
+        where: { id, candidateId: profile.id },
+        data,
+      });
+      if (r.count === 0) {
+        return { ok: false, message: "Couldn't find that certification." };
+      }
+    } else {
+      await db.certification.create({ data: { ...data, candidateId: profile.id } });
+    }
+    await enqueueResumeDraft(profile.id);
+    await recalcCompleteness(profile.id);
+    revalidatePath("/me/profile");
+    revalidatePath(`/${profile.slug}`);
+    return { ok: true, message: id ? "Updated." : "Added." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[saveCertification] unexpected failure");
+    return { ok: false, message: "Couldn't save. Try again." };
   }
-  const { id, issueDate, credentialUrl, ...rest } = parsed.data;
-  const data = {
-    ...rest,
-    issueDate: issueDate ? new Date(`${issueDate}-01`) : null,
-    credentialUrl: credentialUrl || null,
-  };
-  if (id) {
-    const r = await db.certification.updateMany({
-      where: { id, candidateId: profile.id },
-      data,
-    });
-    if (r.count === 0) return;
-  } else {
-    await db.certification.create({ data: { ...data, candidateId: profile.id } });
-  }
-  await enqueueResumeDraft(profile.id);
-  await recalcCompleteness(profile.id);
-  revalidatePath("/me/profile");
-  revalidatePath(`/${profile.slug}`);
 }
 
 export async function deleteCertification(formData: FormData) {
@@ -1439,37 +1552,55 @@ const projectSchema = z.object({
   techStack: z.string().optional(),
 });
 
-export async function saveProject(formData: FormData) {
-  const { profile } = await requireCandidate();
-  const parsed = projectSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
-    );
-    return;
+export async function saveProject(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const { profile } = await requireCandidate();
+    const parsed = projectSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      const fieldErrors = zodErrorsToFieldErrors(parsed.error.flatten());
+      logger.warn(
+        { userId: profile.userId, fieldErrors },
+        "[saveProject] validation failed",
+      );
+      return {
+        ok: false,
+        message: "Please fix the highlighted fields.",
+        fieldErrors,
+        prevValues: snapshotFormData(formData),
+      };
+    }
+    const { id, techStack, url, ...rest } = parsed.data;
+    const data = {
+      ...rest,
+      url: url || null,
+      techStack: techStack
+        ? techStack.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20)
+        : [],
+    };
+    if (id) {
+      const r = await db.project.updateMany({
+        where: { id, candidateId: profile.id },
+        data,
+      });
+      if (r.count === 0) {
+        return { ok: false, message: "Couldn't find that project." };
+      }
+    } else {
+      await db.project.create({ data: { ...data, candidateId: profile.id } });
+    }
+    await enqueueResumeDraft(profile.id);
+    await recalcCompleteness(profile.id);
+    revalidatePath("/me/profile");
+    revalidatePath(`/${profile.slug}`);
+    return { ok: true, message: id ? "Updated." : "Added." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[saveProject] unexpected failure");
+    return { ok: false, message: "Couldn't save. Try again." };
   }
-  const { id, techStack, url, ...rest } = parsed.data;
-  const data = {
-    ...rest,
-    url: url || null,
-    techStack: techStack
-      ? techStack.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 20)
-      : [],
-  };
-  if (id) {
-    const r = await db.project.updateMany({
-      where: { id, candidateId: profile.id },
-      data,
-    });
-    if (r.count === 0) return;
-  } else {
-    await db.project.create({ data: { ...data, candidateId: profile.id } });
-  }
-  await enqueueResumeDraft(profile.id);
-  await recalcCompleteness(profile.id);
-  revalidatePath("/me/profile");
-  revalidatePath(`/${profile.slug}`);
 }
 
 export async function deleteProject(formData: FormData) {
@@ -1492,29 +1623,47 @@ const awardSchema = z.object({
   description: z.string().max(1000).optional().nullable(),
 });
 
-export async function saveAward(formData: FormData) {
-  const { profile } = await requireCandidate();
-  const parsed = awardSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
-    );
-    return;
+export async function saveAward(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const { profile } = await requireCandidate();
+    const parsed = awardSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      const fieldErrors = zodErrorsToFieldErrors(parsed.error.flatten());
+      logger.warn(
+        { userId: profile.userId, fieldErrors },
+        "[saveAward] validation failed",
+      );
+      return {
+        ok: false,
+        message: "Please fix the highlighted fields.",
+        fieldErrors,
+        prevValues: snapshotFormData(formData),
+      };
+    }
+    const { id, date, ...rest } = parsed.data;
+    const data = { ...rest, date: date ? new Date(`${date}-01`) : null };
+    if (id) {
+      const r = await db.award.updateMany({
+        where: { id, candidateId: profile.id },
+        data,
+      });
+      if (r.count === 0) {
+        return { ok: false, message: "Couldn't find that award." };
+      }
+    } else {
+      await db.award.create({ data: { ...data, candidateId: profile.id } });
+    }
+    revalidatePath("/me/profile");
+    revalidatePath(`/${profile.slug}`);
+    return { ok: true, message: id ? "Updated." : "Added." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[saveAward] unexpected failure");
+    return { ok: false, message: "Couldn't save. Try again." };
   }
-  const { id, date, ...rest } = parsed.data;
-  const data = { ...rest, date: date ? new Date(`${date}-01`) : null };
-  if (id) {
-    const r = await db.award.updateMany({
-      where: { id, candidateId: profile.id },
-      data,
-    });
-    if (r.count === 0) return;
-  } else {
-    await db.award.create({ data: { ...data, candidateId: profile.id } });
-  }
-  revalidatePath("/me/profile");
-  revalidatePath(`/${profile.slug}`);
 }
 
 export async function deleteAward(formData: FormData) {

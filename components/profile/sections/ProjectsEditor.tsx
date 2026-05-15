@@ -1,3 +1,6 @@
+"use client";
+
+import { useActionState, useEffect, useState } from "react";
 import type { Project } from "@prisma/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,8 +9,91 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Alert } from "@/components/ui/alert";
+import { FieldError } from "@/components/ui/field-error";
 import { saveProject, deleteProject } from "@/server/candidates/actions";
+import { emptyFormState, type FormState } from "@/lib/form-state";
 import { Trash2 } from "lucide-react";
+
+function ProjectForm() {
+  const [state, formAction] = useActionState<FormState, FormData>(saveProject, emptyFormState);
+  const e = state.fieldErrors ?? {};
+  const v = state.prevValues ?? {};
+
+  const [showOk, setShowOk] = useState(false);
+  useEffect(() => {
+    if (state.ok && state.message) {
+      setShowOk(true);
+      const t = setTimeout(() => setShowOk(false), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [state]);
+
+  return (
+    <>
+      {state.ok && showOk && state.message && (
+        <Alert variant="success" className="mb-3">✓ {state.message}</Alert>
+      )}
+      {!state.ok && state.message && (
+        <Alert variant="danger" className="mb-3">{state.message}</Alert>
+      )}
+      <form action={formAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2" noValidate>
+        <div className="sm:col-span-2">
+          <Label htmlFor="proj-title" required>Title</Label>
+          <Input
+            id="proj-title"
+            name="title"
+            required
+            maxLength={140}
+            defaultValue={v.title ?? ""}
+            placeholder="e.g. 50kW DC fast-charger BMS firmware"
+            aria-invalid={!!e.title}
+          />
+          <FieldError error={e.title} />
+        </div>
+        <div className="sm:col-span-2">
+          <Label htmlFor="proj-desc" optional>Description</Label>
+          <Textarea
+            id="proj-desc"
+            name="description"
+            rows={3}
+            maxLength={2000}
+            defaultValue={v.description ?? ""}
+            placeholder="What you built, scale, outcome."
+            aria-invalid={!!e.description}
+          />
+          <FieldError error={e.description} />
+        </div>
+        <div>
+          <Label htmlFor="proj-url" optional>URL (GitHub, demo, paper)</Label>
+          <Input
+            id="proj-url"
+            name="url"
+            type="url"
+            defaultValue={v.url ?? ""}
+            placeholder="github.com/you/repo (https:// auto-added)"
+            aria-invalid={!!e.url}
+          />
+          <FieldError error={e.url} />
+        </div>
+        <div>
+          <Label htmlFor="proj-tech" optional>Tech / tools (comma-separated)</Label>
+          <Input
+            id="proj-tech"
+            name="techStack"
+            defaultValue={v.techStack ?? ""}
+            placeholder="e.g. C, ARM Cortex, FreeRTOS, CAN"
+            aria-invalid={!!e.techStack}
+          />
+          <FieldError error={e.techStack} />
+        </div>
+        <div className="sm:col-span-2 flex justify-end">
+          <Button type="submit" size="sm">Add</Button>
+        </div>
+      </form>
+    </>
+  );
+}
 
 export function ProjectsEditor({ projects }: { projects: Project[] }) {
   return (
@@ -67,27 +153,9 @@ export function ProjectsEditor({ projects }: { projects: Project[] }) {
         <summary className="cursor-pointer text-sm font-bold text-emce-dark">
           + Add project
         </summary>
-        <form action={saveProject} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <Label htmlFor="proj-title">Title</Label>
-            <Input id="proj-title" name="title" required maxLength={140} placeholder="e.g. 50kW DC fast-charger BMS firmware" />
-          </div>
-          <div className="sm:col-span-2">
-            <Label htmlFor="proj-desc">Description</Label>
-            <Textarea id="proj-desc" name="description" rows={3} maxLength={2000} placeholder="What you built, scale, outcome." />
-          </div>
-          <div>
-            <Label htmlFor="proj-url">URL (GitHub, demo, paper)</Label>
-            <Input id="proj-url" name="url" type="url" placeholder="https://" />
-          </div>
-          <div>
-            <Label htmlFor="proj-tech">Tech / tools (comma-separated)</Label>
-            <Input id="proj-tech" name="techStack" placeholder="e.g. C, ARM Cortex, FreeRTOS, CAN" />
-          </div>
-          <div className="sm:col-span-2 flex justify-end">
-            <Button type="submit" size="sm">Add</Button>
-          </div>
-        </form>
+        <div className="mt-4">
+          <ProjectForm />
+        </div>
       </details>
     </Card>
   );

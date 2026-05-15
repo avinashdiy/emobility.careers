@@ -1,6 +1,11 @@
+"use client";
+
+import { useActionState, useEffect, useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Alert } from "@/components/ui/alert";
 import { saveAvailability } from "@/server/candidates/actions";
+import { emptyFormState, type FormState } from "@/lib/form-state";
 
 /**
  * LinkedIn-style availability frame picker. Three mutually-exclusive
@@ -8,12 +13,8 @@ import { saveAvailability } from "@/server/candidates/actions";
  * "Hiring" sets `openToWork=false / hiringNow=true`, "Neither" turns
  * both off and the avatar renders without a frame at all.
  *
- * The default schema state for a fresh signup is
- * `openToWork=true / hiringNow=false`, so candidates who never visit
- * this section still show up as Open to work — the form below lets
- * them flip it explicitly when that doesn't match their actual
- * situation (recruiters, founders posting on behalf of their company,
- * or anyone who just doesn't want a public broadcast).
+ * Migrated to useActionState so the save surfaces a "Saved" alert
+ * instead of the user wondering whether the click registered.
  */
 export function AvailabilityEditor({
   openToWork,
@@ -28,14 +29,32 @@ export function AvailabilityEditor({
       ? "LOOKING"
       : "NONE";
 
+  const [state, formAction] = useActionState<FormState, FormData>(saveAvailability, emptyFormState);
+  const [showOk, setShowOk] = useState(false);
+  useEffect(() => {
+    if (state.ok && state.message) {
+      setShowOk(true);
+      const t = setTimeout(() => setShowOk(false), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [state]);
+
   return (
     <Card className="p-6">
       <h2 className="text-section text-emce-text">Availability frame</h2>
       <p className="mb-4 text-hint text-emce-text-sec">
-        Sets the green "#OpenToWork" or teal "#Hiring" ring around your
+        Sets the green &ldquo;#OpenToWork&rdquo; or teal &ldquo;#Hiring&rdquo; ring around your
         profile photo. Pick one, or hide both.
       </p>
-      <form action={saveAvailability} className="space-y-3">
+
+      {state.ok && showOk && state.message && (
+        <Alert variant="success" className="mb-3">✓ {state.message}</Alert>
+      )}
+      {!state.ok && state.message && (
+        <Alert variant="danger" className="mb-3">{state.message}</Alert>
+      )}
+
+      <form action={formAction} className="space-y-3" noValidate>
         <Choice
           name="status"
           value="LOOKING"

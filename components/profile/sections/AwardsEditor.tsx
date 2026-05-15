@@ -1,3 +1,6 @@
+"use client";
+
+import { useActionState, useEffect, useState } from "react";
 import type { Award } from "@prisma/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -5,9 +8,89 @@ import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert } from "@/components/ui/alert";
+import { FieldError } from "@/components/ui/field-error";
 import { saveAward, deleteAward } from "@/server/candidates/actions";
+import { emptyFormState, type FormState } from "@/lib/form-state";
 import { formatMonthYear } from "@/lib/utils";
 import { Trash2 } from "lucide-react";
+
+function AwardForm() {
+  const [state, formAction] = useActionState<FormState, FormData>(saveAward, emptyFormState);
+  const e = state.fieldErrors ?? {};
+  const v = state.prevValues ?? {};
+
+  const [showOk, setShowOk] = useState(false);
+  useEffect(() => {
+    if (state.ok && state.message) {
+      setShowOk(true);
+      const t = setTimeout(() => setShowOk(false), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [state]);
+
+  return (
+    <>
+      {state.ok && showOk && state.message && (
+        <Alert variant="success" className="mb-3">✓ {state.message}</Alert>
+      )}
+      {!state.ok && state.message && (
+        <Alert variant="danger" className="mb-3">{state.message}</Alert>
+      )}
+      <form action={formAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2" noValidate>
+        <div className="sm:col-span-2">
+          <Label htmlFor="award-title" required>Title</Label>
+          <Input
+            id="award-title"
+            name="title"
+            required
+            maxLength={140}
+            defaultValue={v.title ?? ""}
+            aria-invalid={!!e.title}
+          />
+          <FieldError error={e.title} />
+        </div>
+        <div>
+          <Label htmlFor="award-issuer" optional>Issuer</Label>
+          <Input
+            id="award-issuer"
+            name="issuer"
+            maxLength={120}
+            defaultValue={v.issuer ?? ""}
+            aria-invalid={!!e.issuer}
+          />
+          <FieldError error={e.issuer} />
+        </div>
+        <div>
+          <Label htmlFor="award-date" optional>Date</Label>
+          <Input
+            id="award-date"
+            name="date"
+            type="month"
+            defaultValue={v.date ?? ""}
+            aria-invalid={!!e.date}
+          />
+          <FieldError error={e.date} />
+        </div>
+        <div className="sm:col-span-2">
+          <Label htmlFor="award-desc" optional>Description</Label>
+          <Textarea
+            id="award-desc"
+            name="description"
+            rows={2}
+            maxLength={1000}
+            defaultValue={v.description ?? ""}
+            aria-invalid={!!e.description}
+          />
+          <FieldError error={e.description} />
+        </div>
+        <div className="sm:col-span-2 flex justify-end">
+          <Button type="submit" size="sm">Add</Button>
+        </div>
+      </form>
+    </>
+  );
+}
 
 export function AwardsEditor({ awards }: { awards: Award[] }) {
   return (
@@ -52,27 +135,9 @@ export function AwardsEditor({ awards }: { awards: Award[] }) {
         <summary className="cursor-pointer text-sm font-bold text-emce-dark">
           + Add award
         </summary>
-        <form action={saveAward} className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <div className="sm:col-span-2">
-            <Label htmlFor="award-title">Title</Label>
-            <Input id="award-title" name="title" required maxLength={140} />
-          </div>
-          <div>
-            <Label htmlFor="award-issuer">Issuer</Label>
-            <Input id="award-issuer" name="issuer" maxLength={120} />
-          </div>
-          <div>
-            <Label htmlFor="award-date">Date</Label>
-            <Input id="award-date" name="date" type="month" />
-          </div>
-          <div className="sm:col-span-2">
-            <Label htmlFor="award-desc">Description</Label>
-            <Textarea id="award-desc" name="description" rows={2} maxLength={1000} />
-          </div>
-          <div className="sm:col-span-2 flex justify-end">
-            <Button type="submit" size="sm">Add</Button>
-          </div>
-        </form>
+        <div className="mt-4">
+          <AwardForm />
+        </div>
       </details>
     </Card>
   );
