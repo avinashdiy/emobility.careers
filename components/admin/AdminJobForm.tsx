@@ -45,6 +45,7 @@ interface ExistingJob {
   experienceMax: number | null;
   salaryMin: string | null; // Decimal serialised
   salaryMax: string | null;
+  salaryPeriod: string;
   salaryHidden: boolean;
   applicationUrl: string | null;
   applicationEmail: string | null;
@@ -342,7 +343,7 @@ export function AdminJobForm({ companies, evDomains, existingJob }: Props) {
           <FieldError error={e.experienceMax} />
         </div>
         <div>
-          <Label htmlFor="salaryMin">Salary min (INR/yr)</Label>
+          <Label htmlFor="salaryMin">Salary min (INR)</Label>
           <Input
             id="salaryMin"
             name="salaryMin"
@@ -356,7 +357,7 @@ export function AdminJobForm({ companies, evDomains, existingJob }: Props) {
           <FieldError error={e.salaryMin} />
         </div>
         <div>
-          <Label htmlFor="salaryMax">Salary max (INR/yr)</Label>
+          <Label htmlFor="salaryMax">Salary max (INR)</Label>
           <Input
             id="salaryMax"
             name="salaryMax"
@@ -368,6 +369,17 @@ export function AdminJobForm({ companies, evDomains, existingJob }: Props) {
             aria-invalid={!!e.salaryMax}
           />
           <FieldError error={e.salaryMax} />
+        </div>
+        <div className="sm:col-span-2">
+          <Label htmlFor="salaryPeriod">Salary period</Label>
+          <NativeSelect
+            id="salaryPeriod"
+            name="salaryPeriod"
+            defaultValue={v.salaryPeriod ?? "YEARLY"}
+          >
+            <option value="YEARLY">Per year (full-time roles)</option>
+            <option value="MONTHLY">Per month (internships / stipends)</option>
+          </NativeSelect>
         </div>
         <label className="sm:col-span-2 flex items-center gap-2 text-sm text-emce-text-sec">
           <input
@@ -529,6 +541,7 @@ function jobToFormMap(job: ExistingJob): Record<string, string> {
     experienceMax: job.experienceMax?.toString() ?? "",
     salaryMin: job.salaryMin ?? "",
     salaryMax: job.salaryMax ?? "",
+    salaryPeriod: job.salaryPeriod ?? "YEARLY",
     salaryHidden: job.salaryHidden ? "true" : "",
     applicationUrl: job.applicationUrl ?? "",
     applicationEmail: job.applicationEmail ?? "",

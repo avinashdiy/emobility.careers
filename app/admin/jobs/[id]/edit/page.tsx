@@ -67,6 +67,7 @@ export default async function EditJobPage({
     experienceMax: job.experienceMax,
     salaryMin: job.salaryMin?.toString() ?? null,
     salaryMax: job.salaryMax?.toString() ?? null,
+    salaryPeriod: job.salaryPeriod,
     salaryHidden: job.salaryHidden,
     applicationUrl: job.applicationUrl,
     applicationEmail: job.applicationEmail,

@@ -8,6 +8,7 @@ import { AdminShell } from "@/components/layout/admin-shell";
 import { getPayoutLedger } from "@/server/mentorship/queries";
 import { MentorPayoutForm } from "@/components/mentorship/MentorReviewActions";
 import { formatMinor } from "@/components/mentorship/PriceLabel";
+import { htmlOrFallback } from "@/lib/cms/job-sanitize";
 
 export default async function AdminMentorDetail({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -39,7 +40,10 @@ export default async function AdminMentorDetail({ params }: { params: Promise<{ 
             <span className="text-sm text-emce-text-sec">{mentor.user.email}</span>
           </div>
           <p className="mt-3 text-sm text-emce-text">{mentor.headline}</p>
-          <p className="mt-1 whitespace-pre-line text-sm text-emce-text-sec">{mentor.bio}</p>
+          <div
+            className="prose prose-sm mt-1 max-w-none text-sm text-emce-text-sec"
+            dangerouslySetInnerHTML={{ __html: htmlOrFallback(mentor.bio) }}
+          />
         </Card>
 
         <Card>

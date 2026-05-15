@@ -23,17 +23,32 @@ export function formatINR(amount: number | null | undefined): string {
   return `₹${amount}`;
 }
 
+/**
+ * Render a salary band for display on job cards / detail pages.
+ *
+ * `period` is the cadence the band is quoted against:
+ *   - "YEARLY" → suffix "/yr" (default — matches the pre-migration
+ *     assumption that every row in the DB was annual).
+ *   - "MONTHLY" → suffix "/mo" (used for internships, contract
+ *     stipends, part-time gigs).
+ *
+ * Pass `null`/`undefined` to skip the suffix entirely (e.g. when the
+ * caller renders its own "per month / per year" label nearby).
+ */
 export function formatSalaryRange(
   min?: number | null,
   max?: number | null,
   currency: string = "INR",
+  period?: "YEARLY" | "MONTHLY" | null,
 ): string {
   if (!min && !max) return "Not disclosed";
+  const suffix =
+    period === "MONTHLY" ? " /mo" : period === "YEARLY" ? " /yr" : "";
   if (currency === "INR") {
-    if (min && max) return `${formatINR(min)} – ${formatINR(max)}`;
-    return formatINR(min ?? max);
+    if (min && max) return `${formatINR(min)} – ${formatINR(max)}${suffix}`;
+    return `${formatINR(min ?? max)}${suffix}`;
   }
-  return `${currency} ${min ?? max}`;
+  return `${currency} ${min ?? max}${suffix}`;
 }
 
 export function relativeTime(date: Date | string): string {

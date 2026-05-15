@@ -8,6 +8,7 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { Calendar, MapPin, Video } from "lucide-react";
 import { env } from "@/lib/env";
+import { stripHtml } from "@/lib/cms/job-sanitize";
 
 export const metadata: Metadata = {
   title: "Events & Webinars",
@@ -176,7 +177,7 @@ function EventCard({ event, live = false }: { event: EventForCard; live?: boolea
           {event.title}
         </h3>
         <p className="mt-1 line-clamp-2 text-hint text-emce-text-sec">
-          {event.description}
+          {stripHtml(event.description)}
         </p>
         <div className="mt-3 flex items-center justify-between text-xs">
           <span className="font-semibold text-emce-text">

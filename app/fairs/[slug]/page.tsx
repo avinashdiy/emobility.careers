@@ -119,6 +119,7 @@ export default async function FairLandingPage({
               salaryMin: true,
               salaryMax: true,
               salaryCurrency: true,
+              salaryPeriod: true,
               salaryHidden: true,
               status: true,
               audience: true,
@@ -354,6 +355,7 @@ export default async function FairLandingPage({
                                       dj.job.salaryMin ? Number(dj.job.salaryMin) : null,
                                       dj.job.salaryMax ? Number(dj.job.salaryMax) : null,
                                       dj.job.salaryCurrency,
+                                      dj.job.salaryPeriod,
                                     )}
                                   </Badge>
                                 )}

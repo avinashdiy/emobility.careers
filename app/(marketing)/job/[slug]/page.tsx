@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { htmlOrFallback } from "@/lib/cms/job-sanitize";
+import { htmlOrFallback, stripHtml } from "@/lib/cms/job-sanitize";
 import { logger } from "@/lib/logger";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -51,7 +51,10 @@ export async function generateMetadata({
   }
   const fullTitle = `${job.title} at ${job.company.name}`;
   const cityPart = job.locations.length > 0 ? ` · ${job.locations.slice(0, 2).join(", ")}` : (job.workMode === "REMOTE" ? " · Remote" : "");
-  const description = job.description.replace(/\s+/g, " ").slice(0, 200);
+  // Strip HTML before slicing — description is now rich text, so raw
+  // `<p>` / `<strong>` markup would otherwise leak into the meta tag
+  // and OG / Twitter cards.
+  const description = stripHtml(job.description).slice(0, 200);
   const url = `${env.NEXT_PUBLIC_APP_URL}/job/${slug}`;
   return {
     title: `${fullTitle}${cityPart}`,
@@ -322,6 +325,7 @@ export default async function PublicJobDetail({
                     job.salaryMin ? Number(job.salaryMin) : null,
                     job.salaryMax ? Number(job.salaryMax) : null,
                     job.salaryCurrency,
+                    job.salaryPeriod,
                   )}
                 </Badge>
               )}

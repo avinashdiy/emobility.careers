@@ -86,6 +86,29 @@ export function plainTextLength(html: string | null | undefined): number {
 }
 
 /**
+ * Strip all HTML tags and collapse whitespace. Used by surfaces that
+ * need a *plain-text* version of a rich-text field — list-card
+ * previews (`line-clamp-2`), meta-description tags, OG / Twitter
+ * cards, SMS digests, etc.
+ *
+ * Do NOT use for trusted render — pair with `htmlOrFallback` +
+ * `dangerouslySetInnerHTML` for full rendering instead.
+ */
+export function stripHtml(html: string | null | undefined): string {
+  if (!html) return "";
+  return html
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Render-time helper for any field that USED TO BE plain text and
  * is now stored as sanitised HTML.
  *

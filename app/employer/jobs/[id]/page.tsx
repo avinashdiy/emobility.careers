@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import { formatSalaryRange, relativeTime } from "@/lib/utils";
+import { htmlOrFallback } from "@/lib/cms/job-sanitize";
 
 export default async function EmployerJobDetail({
   params,
@@ -41,9 +42,12 @@ export default async function EmployerJobDetail({
           <Link href="/employer/jobs" className="text-sm font-bold text-emce-text-sec hover:text-emce-dark">
             ← All jobs
           </Link>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline" size="sm">
               <Link href={`/jobs/${job.id}`}>View public</Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/employer/jobs/${job.id}/edit`}>Edit</Link>
             </Button>
             <Button asChild size="sm">
               <Link href={`/employer/jobs/${job.id}/ats`}>Open ATS ({job._count.applications})</Link>
@@ -71,6 +75,7 @@ export default async function EmployerJobDetail({
               job.salaryMin ? Number(job.salaryMin) : null,
               job.salaryMax ? Number(job.salaryMax) : null,
               job.salaryCurrency,
+              job.salaryPeriod,
             )} />
             <Stat label="Updated" value={relativeTime(job.updatedAt)} />
           </div>
@@ -78,20 +83,29 @@ export default async function EmployerJobDetail({
 
         <Card className="mt-4 p-6">
           <h2 className="text-section text-emce-text">Description</h2>
-          <p className="mt-2 whitespace-pre-line text-body text-emce-text-sec">{job.description}</p>
+          <div
+            className="prose prose-sm mt-2 max-w-none text-body text-emce-text-sec"
+            dangerouslySetInnerHTML={{ __html: htmlOrFallback(job.description) }}
+          />
         </Card>
 
         {job.responsibilities && (
           <Card className="mt-4 p-6">
             <h2 className="text-section text-emce-text">Responsibilities</h2>
-            <p className="mt-2 whitespace-pre-line text-body text-emce-text-sec">{job.responsibilities}</p>
+            <div
+              className="prose prose-sm mt-2 max-w-none text-body text-emce-text-sec"
+              dangerouslySetInnerHTML={{ __html: htmlOrFallback(job.responsibilities) }}
+            />
           </Card>
         )}
 
         {job.requirements && (
           <Card className="mt-4 p-6">
             <h2 className="text-section text-emce-text">Requirements</h2>
-            <p className="mt-2 whitespace-pre-line text-body text-emce-text-sec">{job.requirements}</p>
+            <div
+              className="prose prose-sm mt-2 max-w-none text-body text-emce-text-sec"
+              dangerouslySetInnerHTML={{ __html: htmlOrFallback(job.requirements) }}
+            />
           </Card>
         )}
 

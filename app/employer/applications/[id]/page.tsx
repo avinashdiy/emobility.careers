@@ -20,6 +20,35 @@ import { getResumeDownloadUrl } from "@/server/candidates/actions";
 import { ApplicationStage } from "@prisma/client";
 import { relativeTime } from "@/lib/utils";
 
+/**
+ * Order applications appear in the sibling sidebar — same flow as
+ * the kanban board, then REJECTED / WITHDRAWN appended so they're
+ * still reachable for review but de-emphasised.
+ */
+const STAGE_ORDER: ApplicationStage[] = [
+  "APPLIED",
+  "SCREENED",
+  "SHORTLISTED",
+  "ASSESSMENT",
+  "INTERVIEW",
+  "OFFER",
+  "HIRED",
+  "REJECTED",
+  "WITHDRAWN",
+];
+
+const STAGE_PILL: Record<ApplicationStage, string> = {
+  APPLIED: "bg-emce-light-soft text-emce-dark",
+  SCREENED: "bg-blue-50 text-blue-800",
+  SHORTLISTED: "bg-emce-light-soft text-[#1e5a32]",
+  ASSESSMENT: "bg-emce-orange-light text-[#8a4a1a]",
+  INTERVIEW: "bg-amber-50 text-amber-900",
+  OFFER: "bg-emerald-50 text-emerald-900",
+  HIRED: "bg-emerald-100 text-emerald-900",
+  REJECTED: "bg-rose-50 text-rose-800",
+  WITHDRAWN: "bg-slate-100 text-slate-700",
+};
+
 export default async function ApplicationDetail({
   params,
 }: {
@@ -78,15 +107,169 @@ export default async function ApplicationDetail({
     select: { id: true, title: true, type: true, passingScore: true },
   });
 
+  // Sibling applications for the same job — drives the left sidebar
+  // and the prev/next nav at the top of the main column. Capped at
+  // 500 to keep the page snappy on very large pipelines; an enterprise
+  // recruiter reviewing #501 should narrow first via the ATS board.
+  const siblings = await db.application.findMany({
+    where: { jobId: application.job.id },
+    orderBy: [{ appliedAt: "asc" }],
+    take: 500,
+    select: {
+      id: true,
+      stage: true,
+      matchScore: true,
+      candidate: {
+        select: {
+          firstName: true,
+          lastName: true,
+          profilePhotoUrl: true,
+          isDIYguruVerified: true,
+          headline: true,
+        },
+      },
+    },
+  });
+  // Stable, stage-ordered list used for prev/next navigation. Inside
+  // a stage we preserve appliedAt order (oldest application first)
+  // so review marches forward the same way the kanban renders.
+  const orderedSiblings = STAGE_ORDER.flatMap((stage) =>
+    siblings.filter((s) => s.stage === stage),
+  );
+  const currentIndex = orderedSiblings.findIndex((s) => s.id === application.id);
+  const prevSibling =
+    currentIndex > 0 ? orderedSiblings[currentIndex - 1] : null;
+  const nextSibling =
+    currentIndex >= 0 && currentIndex < orderedSiblings.length - 1
+      ? orderedSiblings[currentIndex + 1]
+      : null;
+  const groupedSiblings = STAGE_ORDER.map((stage) => ({
+    stage,
+    apps: siblings.filter((s) => s.stage === stage),
+  })).filter((g) => g.apps.length > 0);
+
   return (
     <EmployerShell>
-      <div className="container max-w-5xl py-6">
-        <div className="mb-4 flex items-center justify-between">
-          <Link href={`/employer/jobs/${application.job.id}/ats`} className="text-hint font-bold text-emce-text-sec hover:text-emce-dark">
-            ← Back to ATS
-          </Link>
-          <Badge variant="default">{application.stage}</Badge>
-        </div>
+      <div className="container max-w-7xl py-6">
+        {/* Two-column shell — left sidebar lists every applicant on
+            this job so the recruiter can step through them without
+            bouncing back to the kanban board. The sidebar is hidden
+            below lg; on mobile we fall back to the prev/next buttons
+            in the main column. */}
+        <div className="grid gap-6 lg:grid-cols-[18rem_1fr]">
+          <aside className="hidden lg:block">
+            <div className="sticky top-20">
+              <Link
+                href={`/employer/jobs/${application.job.id}/ats`}
+                className="inline-flex items-center text-hint font-bold text-emce-text-sec hover:text-emce-dark"
+              >
+                ← Back to ATS
+              </Link>
+              <p className="mt-3 text-hint font-bold uppercase tracking-wide text-emce-text-muted">
+                {application.job.title}
+              </p>
+              <p className="text-hint text-emce-text-muted">
+                {siblings.length} applicant{siblings.length === 1 ? "" : "s"}
+              </p>
+              <nav className="mt-3 max-h-[calc(100vh-10rem)] overflow-y-auto pr-1">
+                {groupedSiblings.map(({ stage, apps }) => (
+                  <div key={stage} className="mb-3">
+                    <div className="mb-1 flex items-center justify-between">
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide ${STAGE_PILL[stage]}`}>
+                        {stage}
+                      </span>
+                      <span className="text-hint text-emce-text-muted">{apps.length}</span>
+                    </div>
+                    <ul className="space-y-0.5">
+                      {apps.map((s) => {
+                        const isCurrent = s.id === application.id;
+                        const sName = [s.candidate.firstName, s.candidate.lastName]
+                          .filter(Boolean)
+                          .join(" ");
+                        return (
+                          <li key={s.id}>
+                            <Link
+                              href={`/employer/applications/${s.id}`}
+                              aria-current={isCurrent ? "page" : undefined}
+                              className={`flex items-center gap-2 rounded-md p-1.5 text-sm transition ${
+                                isCurrent
+                                  ? "bg-emce-light-soft font-bold text-emce-darkest ring-1 ring-emce-mid"
+                                  : "text-emce-text hover:bg-emce-light-soft/60"
+                              }`}
+                            >
+                              <Avatar
+                                src={s.candidate.profilePhotoUrl}
+                                name={sName}
+                                size="sm"
+                              />
+                              <span className="min-w-0 flex-1 truncate">{sName}</span>
+                              {s.candidate.isDIYguruVerified && (
+                                <span title="DIYguru verified" className="text-[10px]">⭐</span>
+                              )}
+                              {s.matchScore != null && (
+                                <span className="text-[10px] font-bold text-emce-dark">
+                                  {Math.round(s.matchScore * 100)}%
+                                </span>
+                              )}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
+              </nav>
+            </div>
+          </aside>
+
+          <div className="min-w-0">
+            {/* Header: mobile back-link + prev/next sibling navigation.
+                On desktop the back-link lives in the sidebar; we keep
+                it inline here as well so mobile users have a way out. */}
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+              <Link
+                href={`/employer/jobs/${application.job.id}/ats`}
+                className="text-hint font-bold text-emce-text-sec hover:text-emce-dark lg:hidden"
+              >
+                ← Back to ATS
+              </Link>
+              <div className="ml-auto flex items-center gap-2">
+                {prevSibling ? (
+                  <Button asChild variant="outline" size="sm">
+                    <Link
+                      href={`/employer/applications/${prevSibling.id}`}
+                      aria-label="Previous candidate"
+                    >
+                      ← Prev
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="sm" disabled>
+                    ← Prev
+                  </Button>
+                )}
+                <span className="text-hint text-emce-text-muted">
+                  {currentIndex >= 0
+                    ? `${currentIndex + 1} / ${orderedSiblings.length}`
+                    : "—"}
+                </span>
+                {nextSibling ? (
+                  <Button asChild variant="outline" size="sm">
+                    <Link
+                      href={`/employer/applications/${nextSibling.id}`}
+                      aria-label="Next candidate"
+                    >
+                      Next →
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button variant="outline" size="sm" disabled>
+                    Next →
+                  </Button>
+                )}
+                <Badge variant="default">{application.stage}</Badge>
+              </div>
+            </div>
 
         <Card className="p-4 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
@@ -419,6 +602,8 @@ export default async function ApplicationDetail({
               </ul>
             </Card>
           </aside>
+        </div>
+          </div>
         </div>
       </div>
     </EmployerShell>

@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { env } from "@/lib/env";
+import { htmlOrFallback, stripHtml } from "@/lib/cms/job-sanitize";
 
 /**
  * JobPosting structured data conforming to Google for Jobs requirements.
@@ -78,11 +79,17 @@ export function jobPostingJsonLd(job: JobForSchema) {
   // Default to 60 days from publish if no closesAt is set.
   const validThrough = (job.closesAt ?? new Date((job.publishedAt ?? job.updatedAt).getTime() + 60 * 24 * 3600 * 1000)).toISOString();
 
-  // Description: structured, HTML-rich (Google prefers HTML for better rendering)
-  const descriptionParts: string[] = [`<p>${escapeHtml(job.description)}</p>`];
-  if (job.responsibilities) descriptionParts.push(`<h3>Responsibilities</h3>${plainToHtml(job.responsibilities)}`);
-  if (job.requirements) descriptionParts.push(`<h3>Requirements</h3>${plainToHtml(job.requirements)}`);
-  if (job.benefits) descriptionParts.push(`<h3>Benefits</h3>${plainToHtml(job.benefits)}`);
+  // Description: structured, HTML-rich (Google prefers HTML for better
+  // rendering). Post rich-text migration these fields ARE HTML already,
+  // sanitised at write time. `htmlOrFallback` passes them through if
+  // they contain tags, or wraps legacy plain-text rows in a `<p>` so
+  // pre-migration rows still produce valid HTML. The previous code
+  // ran `escapeHtml` over the description which double-escaped the
+  // now-HTML content (Google saw `&lt;p&gt;...` literal markup).
+  const descriptionParts: string[] = [htmlOrFallback(job.description)];
+  if (job.responsibilities) descriptionParts.push(`<h3>Responsibilities</h3>${htmlOrFallback(job.responsibilities)}`);
+  if (job.requirements) descriptionParts.push(`<h3>Requirements</h3>${htmlOrFallback(job.requirements)}`);
+  if (job.benefits) descriptionParts.push(`<h3>Benefits</h3>${htmlOrFallback(job.benefits)}`);
   const description = descriptionParts.join("");
 
   // Job location: structured PostalAddress for each city; for remote, also set
@@ -169,26 +176,13 @@ export function jobPostingJsonLd(job: JobForSchema) {
   }
 
   if (skillsArr.length > 0) schema.skills = skillsArr.join(", ");
-  if (job.benefits) schema.jobBenefits = job.benefits;
+  // jobBenefits is a plain-text Google field — strip the rich-text
+  // markup so `<p><strong>` doesn't end up in the structured data.
+  if (job.benefits) {
+    const benefitsText = stripHtml(job.benefits);
+    if (benefitsText) schema.jobBenefits = benefitsText;
+  }
 
   return schema;
 }
 
-function plainToHtml(text: string): string {
-  // Convert bullet-style plain text to a simple <ul>; otherwise keep paragraphs.
-  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
-  const isBulletList = lines.length > 1 && lines.every((l) => /^[-•*]/.test(l));
-  if (isBulletList) {
-    return `<ul>${lines.map((l) => `<li>${escapeHtml(l.replace(/^[-•*]\s*/, ""))}</li>`).join("")}</ul>`;
-  }
-  return lines.map((l) => `<p>${escapeHtml(l)}</p>`).join("");
-}
-
-function escapeHtml(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}

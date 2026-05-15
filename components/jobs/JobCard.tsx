@@ -17,6 +17,7 @@ export interface JobCardData {
   salaryMin: Prisma.Decimal | number | string | null;
   salaryMax: Prisma.Decimal | number | string | null;
   salaryCurrency: string;
+  salaryPeriod?: "YEARLY" | "MONTHLY" | null;
   salaryHidden: boolean;
   publishedAt: Date | null;
   company: {
@@ -83,6 +84,7 @@ export function JobCard({ job, matchScore }: { job: JobCardData; matchScore?: nu
                   job.salaryMin ? Number(job.salaryMin) : null,
                   job.salaryMax ? Number(job.salaryMax) : null,
                   job.salaryCurrency,
+                  job.salaryPeriod,
                 )}
               </Badge>
             )}

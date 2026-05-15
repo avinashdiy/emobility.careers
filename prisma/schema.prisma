@@ -971,6 +971,16 @@ enum WorkMode {
   HYBRID
 }
 
+/// Period the salary range is quoted against. Internships /
+/// part-time gigs are typically quoted MONTHLY (a stipend), full-
+/// time roles are typically YEARLY. Defaulting to YEARLY preserves
+/// the meaning of every row that existed before this column was
+/// added (which was implicitly annual).
+enum SalaryPeriod {
+  YEARLY
+  MONTHLY
+}
+
 enum SeniorityLevel {
   ENTRY
   JUNIOR
@@ -1002,6 +1012,13 @@ model JobPosting {
   salaryMin        Decimal?       @db.Decimal(12, 2)
   salaryMax        Decimal?       @db.Decimal(12, 2)
   salaryCurrency   String         @default("INR")
+  // Period the salary band is quoted against. YEARLY is the
+  // overwhelming majority case (full-time roles). MONTHLY lets
+  // recruiters post internships / contract stipends naturally —
+  // "₹10,000/month" is how candidates think about a stipend, not
+  // "₹120,000/year". Existing rows pre-migration default to YEARLY,
+  // preserving their original meaning.
+  salaryPeriod     SalaryPeriod   @default(YEARLY)
   // Salary disclosure rule: `salaryHidden` is opt-in by default for
   // PUBLIC jobs. For DIYGURU_ONLY jobs the createJob/updateJob server
   // actions force this to `false` regardless of what the form sends —

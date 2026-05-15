@@ -22,6 +22,7 @@ import {
   ProfileMode,
   JobStatus,
   JobAudience,
+  SalaryPeriod,
   CompanyTeamRole,
 } from "@prisma/client";
 
@@ -345,6 +346,7 @@ const jobSchema = z.object({
   salaryMin: z.coerce.number().min(0).optional(),
   salaryMax: z.coerce.number().min(0).optional(),
   salaryCurrency: z.string().default("INR"),
+  salaryPeriod: z.nativeEnum(SalaryPeriod).default(SalaryPeriod.YEARLY),
   salaryHidden: z.coerce.boolean().optional(),
   audience: z.nativeEnum(JobAudience).default(JobAudience.PUBLIC),
   publishNow: z.coerce.boolean().optional(),
@@ -466,6 +468,7 @@ export async function createJob(
             salaryMin: data.salaryMin ? new Prisma.Decimal(data.salaryMin) : null,
             salaryMax: data.salaryMax ? new Prisma.Decimal(data.salaryMax) : null,
             salaryCurrency: data.salaryCurrency,
+            salaryPeriod: data.salaryPeriod,
             salaryHidden: disclosure.salaryHidden,
             audience: disclosure.audience,
             status: data.publishNow ? JobStatus.OPEN : JobStatus.DRAFT,
@@ -544,6 +547,189 @@ export async function createJob(
 
   revalidatePath("/employer/jobs");
   redirect(`/employer/jobs/${job.id}`);
+}
+
+// ─── Edit job ──────────────────────────────────────────────
+
+/**
+ * Recruiter-side update for an existing job posting. Same schema +
+ * validation flow as createJob — only the persistence differs:
+ *   • Title slug is left alone (changing it would break inbound /job/<slug>
+ *     links + Google's existing index). Recruiters who genuinely need a
+ *     new slug should close + repost.
+ *   • EV-domain + skill links are wiped and rewritten — simpler than a
+ *     three-way diff and the link tables are tiny per job.
+ *   • `publishNow` keeps its meaning: "Save as draft" sets status=DRAFT,
+ *     "Publish job" flips DRAFT → OPEN (or keeps OPEN if already open) and
+ *     stamps publishedAt on the first publish.
+ */
+export async function updateJob(
+  _prev: CreateJobFormState & { jobId?: string },
+  formData: FormData,
+): Promise<CreateJobFormState & { jobId?: string }> {
+  const { session, employer } = await requireEmployerWithCompany();
+  const jobId = String(formData.get("jobId") ?? "");
+  if (!jobId) {
+    return { ok: false, message: "Missing job id." };
+  }
+
+  const existing = await db.jobPosting.findUnique({
+    where: { id: jobId },
+    select: { id: true, companyId: true, status: true, publishedAt: true, slug: true },
+  });
+  if (!existing) return { ok: false, message: "Job not found." };
+  if (existing.companyId !== employer.companyId) {
+    return { ok: false, message: "You can't edit a job from a different company." };
+  }
+
+  const parsed = jobSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    const flat = parsed.error.flatten();
+    const fieldErrors: Record<string, string> = {};
+    for (const [k, v] of Object.entries(flat.fieldErrors)) {
+      if (v && v[0]) fieldErrors[k] = v[0];
+    }
+    const firstField = Object.keys(fieldErrors)[0];
+    return {
+      ok: false,
+      message:
+        firstField === "description"
+          ? "Description can't be empty."
+          : firstField !== undefined
+            ? `Couldn't save: "${firstField}" failed validation. Check the highlighted field.`
+            : "Couldn't save. Check the highlighted fields.",
+      fieldErrors,
+      prevValues: snapshotJobForm(formData),
+      jobId,
+    };
+  }
+  const data = parsed.data;
+
+  const descriptionHtml = sanitizeJobHtml(data.description);
+  const responsibilitiesHtml = sanitizeJobHtml(data.responsibilities);
+  const requirementsHtml = sanitizeJobHtml(data.requirements);
+  const benefitsHtml = sanitizeJobHtml(data.benefits);
+  if (plainTextLength(descriptionHtml) < 20) {
+    return {
+      ok: false,
+      message:
+        "Description is too short. After formatting is removed, it needs at least 20 readable characters.",
+      fieldErrors: { description: "Add at least 20 characters of body text." },
+      prevValues: snapshotJobForm(formData),
+      jobId,
+    };
+  }
+
+  const locations = data.locations
+    ? data.locations.split(",").map((s) => s.trim()).filter(Boolean)
+    : [];
+  const disclosure = resolveSalaryDisclosure(data.audience, data.salaryHidden);
+
+  // First-publish stamps `publishedAt`; re-publishing an already-open job
+  // leaves the original publish date intact (so the URL keeps a stable
+  // date for SEO + the "posted X days ago" badge stays sensible).
+  const willBePublished = Boolean(data.publishNow);
+  const nextStatus = willBePublished ? JobStatus.OPEN : JobStatus.DRAFT;
+  const nextPublishedAt =
+    willBePublished && !existing.publishedAt ? new Date() : existing.publishedAt;
+
+  await db.$transaction(
+    async (tx) => {
+      await tx.jobPosting.update({
+        where: { id: existing.id },
+        data: {
+          title: data.title,
+          description: descriptionHtml,
+          responsibilities: responsibilitiesHtml || null,
+          requirements: requirementsHtml || null,
+          benefits: benefitsHtml || null,
+          profileMode: data.profileMode,
+          employmentType: data.employmentType,
+          workMode: data.workMode,
+          seniorityLevel: data.seniorityLevel,
+          locations,
+          experienceMin: data.experienceMin ?? null,
+          experienceMax: data.experienceMax ?? null,
+          salaryMin: data.salaryMin ? new Prisma.Decimal(data.salaryMin) : null,
+          salaryMax: data.salaryMax ? new Prisma.Decimal(data.salaryMax) : null,
+          salaryCurrency: data.salaryCurrency,
+          salaryPeriod: data.salaryPeriod,
+          salaryHidden: disclosure.salaryHidden,
+          audience: disclosure.audience,
+          status: nextStatus,
+          publishedAt: nextPublishedAt,
+        },
+      });
+
+      // Rewrite EV-domain links.
+      await tx.jobEVDomain.deleteMany({ where: { jobId: existing.id } });
+      if (data.evDomainSlugs) {
+        const slugs = data.evDomainSlugs.split(",").map((s) => s.trim()).filter(Boolean);
+        if (slugs.length > 0) {
+          const domains = await tx.eVDomain.findMany({
+            where: { slug: { in: slugs } },
+            select: { id: true },
+          });
+          if (domains.length > 0) {
+            await tx.jobEVDomain.createMany({
+              data: domains.map((d) => ({ jobId: existing.id, evDomainId: d.id })),
+              skipDuplicates: true,
+            });
+          }
+        }
+      }
+
+      // Rewrite skill links.
+      await tx.jobSkill.deleteMany({ where: { jobId: existing.id } });
+      if (data.skillNames) {
+        const names = data.skillNames.split(",").map((s) => s.trim()).filter(Boolean);
+        if (names.length > 0) {
+          const skills = await Promise.all(
+            names.map((name) => {
+              const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+              return tx.skill.upsert({
+                where: { slug },
+                create: { slug, name, category: "Imported" },
+                update: {},
+                select: { id: true },
+              });
+            }),
+          );
+          await tx.jobSkill.createMany({
+            data: skills.map((s) => ({ jobId: existing.id, skillId: s.id, required: true })),
+            skipDuplicates: true,
+          });
+        }
+      }
+    },
+    { timeout: 15_000 },
+  );
+
+  await audit({
+    actorId: session.user.id,
+    action: "employer.job.update",
+    entity: "JobPosting",
+    entityId: existing.id,
+  });
+
+  // Re-embed the job so matching reflects the new description.
+  await embeddingsQueue.add("job", { kind: "job", jobId: existing.id });
+
+  if (willBePublished) {
+    const { pingIndexNow, pingGoogleIndexing } = await import("@/lib/seo/indexnow");
+    const url = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "")}/job/${existing.slug}`;
+    void pingIndexNow(url);
+    void pingGoogleIndexing(url, "URL_UPDATED");
+    revalidatePath("/jobs.xml");
+    revalidatePath("/sitemap-jobs.xml");
+    revalidateTag("pulse");
+  }
+
+  revalidatePath("/employer/jobs");
+  revalidatePath(`/employer/jobs/${existing.id}`);
+  revalidatePath(`/job/${existing.slug}`);
+  revalidatePath(`/jobs/${existing.id}`);
+  redirect(`/employer/jobs/${existing.id}`);
 }
 
 // ─── Company brand uploads (logo / banner) ─────────────────

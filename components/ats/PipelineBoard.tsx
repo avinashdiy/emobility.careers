@@ -250,6 +250,14 @@ function Card({ app, jobId, selected, onToggle }: { app: PipelineApp; jobId: str
         <div className="min-w-0 flex-1">
           <Link
             href={`/employer/applications/${app.id}`}
+            // Open in a new tab — recruiters review the candidate in
+            // one tab while keeping the kanban board open in the
+            // original tab to drag cards between stages. The detail
+            // page also surfaces a sibling-candidate sidebar so
+            // walking through every applicant doesn't need a round-
+            // trip back to the board.
+            target="_blank"
+            rel="noopener noreferrer"
             className="block truncate font-bold text-emce-text hover:underline"
             onClick={(e) => e.stopPropagation()}
           >

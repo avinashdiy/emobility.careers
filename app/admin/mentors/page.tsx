@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { getMentorKycQueue } from "@/server/mentorship/queries";
 import { MentorKycRowActions } from "@/components/mentorship/MentorReviewActions";
+import { stripHtml } from "@/lib/cms/job-sanitize";
 
 export const metadata = { title: "Mentor KYC queue" };
 
@@ -61,7 +62,7 @@ export default async function AdminMentorsPage({
                         )}
                       </div>
                       <p className="mt-1 line-clamp-2 text-sm text-emce-text">{m.headline}</p>
-                      <p className="mt-1 line-clamp-3 text-hint text-emce-text-sec">{m.bio}</p>
+                      <p className="mt-1 line-clamp-3 text-hint text-emce-text-sec">{stripHtml(m.bio)}</p>
                       <p className="mt-1 text-hint text-emce-text-sec">
                         {m.yearsExperience}y exp · {m.expertiseTags.slice(0, 5).join(", ")} · {m.languages.join(", ")}
                       </p>

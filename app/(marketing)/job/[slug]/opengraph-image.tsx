@@ -50,6 +50,7 @@ export default async function OG({ params }: { params: { slug: string } }) {
           job.salaryMin ? Number(job.salaryMin) : null,
           job.salaryMax ? Number(job.salaryMax) : null,
           job.salaryCurrency,
+          job.salaryPeriod,
         )
       : null;
 

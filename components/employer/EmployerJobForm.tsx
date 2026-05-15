@@ -10,6 +10,7 @@ import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { JDAssistant } from "@/components/jobs/JDAssistant";
 import {
   createJob,
+  updateJob,
   type CreateJobFormState,
 } from "@/server/employer/actions";
 
@@ -21,21 +22,58 @@ interface DomainOption {
   name: string;
 }
 
+/// Existing values for the edit flow. All optional — the new-job
+/// surface still mounts this form with no `initial` prop and the
+/// form falls back to the regular blank defaults.
+export interface EmployerJobInitial {
+  title?: string | null;
+  description?: string | null;
+  responsibilities?: string | null;
+  requirements?: string | null;
+  benefits?: string | null;
+  profileMode?: string | null;
+  seniorityLevel?: string | null;
+  employmentType?: string | null;
+  workMode?: string | null;
+  audience?: string | null;
+  locations?: string[] | null;
+  experienceMin?: number | null;
+  experienceMax?: number | null;
+  salaryMin?: number | string | null;
+  salaryMax?: number | string | null;
+  salaryPeriod?: string | null;
+  salaryHidden?: boolean | null;
+  evDomainSlugs?: string[] | null;
+  skillNames?: string[] | null;
+  status?: string | null;
+}
+
 interface Props {
   evDomains: DomainOption[];
+  /// Present → edit mode (dispatches updateJob); absent → create mode.
+  jobId?: string;
+  initial?: EmployerJobInitial;
 }
 
 /**
- * Recruiter-facing "Post a job" form. Same useActionState shape as
- * the admin form so a validation failure preserves the recruiter's
- * typing and surfaces per-field errors instead of silently
+ * Recruiter-facing "Post a job" / "Edit job" form. Same useActionState
+ * shape on both surfaces so a validation failure preserves the
+ * recruiter's typing and surfaces per-field errors instead of silently
  * round-tripping through `?error=...`.
  *
  * The form sits inside an EmployerShell + Card on the page.
  */
-export function EmployerJobForm({ evDomains }: Props) {
-  const [state, formAction] = useActionState(createJob, INITIAL);
-  const v = state.prevValues ?? {};
+export function EmployerJobForm({ evDomains, jobId, initial }: Props) {
+  const isEdit = Boolean(jobId);
+  const [state, formAction] = useActionState(
+    isEdit ? updateJob : createJob,
+    INITIAL,
+  );
+  // On a validation-failure round-trip we re-fill from prevValues (the
+  // user's last typing). On a fresh edit-page mount we re-fill from
+  // the saved job (`initial`). Create-mode with no prevValues falls
+  // through to "".
+  const v = state.prevValues ?? buildInitialPrev(initial);
   const e = state.fieldErrors ?? {};
 
   return (
@@ -65,6 +103,7 @@ export function EmployerJobForm({ evDomains }: Props) {
       )}
 
       <form action={formAction} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {jobId && <input type="hidden" name="jobId" value={jobId} />}
         <div className="sm:col-span-2">
           <Label htmlFor="title">Job title</Label>
           <Input
@@ -176,29 +215,48 @@ export function EmployerJobForm({ evDomains }: Props) {
           <FieldError error={e.experienceMax} />
         </div>
 
-        <div>
-          <Label htmlFor="salaryMin">Salary min (₹/yr)</Label>
-          <Input
-            id="salaryMin"
-            name="salaryMin"
-            type="number"
-            min="0"
-            defaultValue={v.salaryMin ?? ""}
-            aria-invalid={!!e.salaryMin}
-          />
-          <FieldError error={e.salaryMin} />
-        </div>
-        <div>
-          <Label htmlFor="salaryMax">Salary max (₹/yr)</Label>
-          <Input
-            id="salaryMax"
-            name="salaryMax"
-            type="number"
-            min="0"
-            defaultValue={v.salaryMax ?? ""}
-            aria-invalid={!!e.salaryMax}
-          />
-          <FieldError error={e.salaryMax} />
+        <div className="sm:col-span-2 grid grid-cols-1 gap-3 sm:grid-cols-[1fr_1fr_auto]">
+          <div>
+            <Label htmlFor="salaryMin">Salary min</Label>
+            <Input
+              id="salaryMin"
+              name="salaryMin"
+              type="number"
+              min="0"
+              defaultValue={v.salaryMin ?? ""}
+              aria-invalid={!!e.salaryMin}
+              placeholder="e.g. 10000"
+            />
+            <FieldError error={e.salaryMin} />
+          </div>
+          <div>
+            <Label htmlFor="salaryMax">Salary max</Label>
+            <Input
+              id="salaryMax"
+              name="salaryMax"
+              type="number"
+              min="0"
+              defaultValue={v.salaryMax ?? ""}
+              aria-invalid={!!e.salaryMax}
+              placeholder="e.g. 25000"
+            />
+            <FieldError error={e.salaryMax} />
+          </div>
+          <div>
+            <Label htmlFor="salaryPeriod">Period</Label>
+            <NativeSelect
+              id="salaryPeriod"
+              name="salaryPeriod"
+              defaultValue={v.salaryPeriod ?? "YEARLY"}
+            >
+              <option value="YEARLY">Per year</option>
+              <option value="MONTHLY">Per month</option>
+            </NativeSelect>
+            <p className="mt-1 text-hint text-emce-text-muted">
+              Stipends are usually <strong>monthly</strong>; full-time roles{" "}
+              <strong>yearly</strong>.
+            </p>
+          </div>
         </div>
 
         <label className="sm:col-span-2 flex items-center gap-2 rounded-md bg-emce-light-soft p-2.5 text-sm font-bold text-emce-text">
@@ -305,10 +363,14 @@ export function EmployerJobForm({ evDomains }: Props) {
 
         <div className="sm:col-span-2 flex flex-wrap justify-end gap-2 border-t pt-4">
           <Button type="submit" name="publishNow" value="" variant="outline">
-            Save as draft
+            {isEdit ? "Save as draft" : "Save as draft"}
           </Button>
           <Button type="submit" name="publishNow" value="true">
-            Publish job
+            {isEdit
+              ? initial?.status === "OPEN"
+                ? "Save changes"
+                : "Publish job"
+              : "Publish job"}
           </Button>
           <p className="basis-full text-right text-hint text-emce-text-sec">
             <em>Save as draft</em> stores the job but it stays hidden from candidates until
@@ -318,4 +380,51 @@ export function EmployerJobForm({ evDomains }: Props) {
       </form>
     </>
   );
+}
+
+/**
+ * Convert a job record (from Prisma → page → form props) into the
+ * flat string-keyed prevValues shape the form's input `defaultValue`
+ * expressions read from. Matches the FormData keys the create / update
+ * actions read on submit.
+ */
+function buildInitialPrev(
+  initial: EmployerJobInitial | undefined,
+): Record<string, string> {
+  if (!initial) return {};
+  const out: Record<string, string> = {};
+  if (initial.title) out.title = initial.title;
+  if (initial.description) out.description = initial.description;
+  if (initial.responsibilities) out.responsibilities = initial.responsibilities;
+  if (initial.requirements) out.requirements = initial.requirements;
+  if (initial.benefits) out.benefits = initial.benefits;
+  if (initial.profileMode) out.profileMode = initial.profileMode;
+  if (initial.seniorityLevel) out.seniorityLevel = initial.seniorityLevel;
+  if (initial.employmentType) out.employmentType = initial.employmentType;
+  if (initial.workMode) out.workMode = initial.workMode;
+  if (initial.audience) out.audience = initial.audience;
+  if (initial.locations && initial.locations.length > 0) {
+    out.locations = initial.locations.join(", ");
+  }
+  if (initial.experienceMin !== null && initial.experienceMin !== undefined) {
+    out.experienceMin = String(initial.experienceMin);
+  }
+  if (initial.experienceMax !== null && initial.experienceMax !== undefined) {
+    out.experienceMax = String(initial.experienceMax);
+  }
+  if (initial.salaryMin !== null && initial.salaryMin !== undefined) {
+    out.salaryMin = String(initial.salaryMin);
+  }
+  if (initial.salaryMax !== null && initial.salaryMax !== undefined) {
+    out.salaryMax = String(initial.salaryMax);
+  }
+  if (initial.salaryPeriod) out.salaryPeriod = initial.salaryPeriod;
+  if (initial.salaryHidden) out.salaryHidden = "true";
+  if (initial.evDomainSlugs && initial.evDomainSlugs.length > 0) {
+    out.evDomainSlugs = initial.evDomainSlugs.join(", ");
+  }
+  if (initial.skillNames && initial.skillNames.length > 0) {
+    out.skillNames = initial.skillNames.join(", ");
+  }
+  return out;
 }
