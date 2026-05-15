@@ -222,6 +222,7 @@ model User {
   profileViewsReceived        ProfileView[]             @relation("ProfileViewed")
   profileViewsMade            ProfileView[]             @relation("ProfileViewer")
   wordpressImportBatches      WordPressImportBatch[]    @relation("WordPressImporter")
+  interviewSessions           InterviewSession[]        @relation("InterviewSessionUser")
 
   // TPO / placement
   cohortsCreated Cohort[]
@@ -4430,4 +4431,77 @@ model WordPressImportBatch {
   createdAt     DateTime @default(now())
 
   @@index([uploadedById, createdAt])
+}
+
+// ─── AI Interview Practice ─────────────────────────────────────
+// Candidate-facing mock-interview tools — "Embedded Mock Interview"
+// (open-ended practice) and "EV Interview Simulator" (role-play
+// against a specific company + role). Both share the same engine;
+// the only on-disk difference is `kind` + the scenario fields.
+
+enum InterviewSessionKind {
+  /// Open-ended technical / behavioural practice. Candidate picks
+  /// role + experience level; the AI plays a generic interviewer.
+  MOCK
+  /// Scenario role-play. Candidate picks a target company + role;
+  /// the AI plays a named interviewer persona at that company.
+  SIMULATOR
+}
+
+enum InterviewSessionStatus {
+  ACTIVE
+  COMPLETED
+  ABANDONED
+}
+
+model InterviewSession {
+  id              String                 @id @default(cuid())
+  /// Null for anonymous practice runs — the page lets signed-out
+  /// visitors try the tool before signing up. On signup we don't
+  /// claim back anon sessions (transient practice content).
+  userId          String?
+  user            User?                  @relation("InterviewSessionUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  kind            InterviewSessionKind
+  status          InterviewSessionStatus @default(ACTIVE)
+
+  /// Target role string. Free-form so we can index whatever the
+  /// user types ("Battery Engineer", "BMS Firmware Lead").
+  targetRole      String
+  /// Experience tier the interviewer should pitch the questions at.
+  /// Matches SeniorityLevel values but stored as a free-form string
+  /// to avoid a coupling that would force us to migrate when one
+  /// side changes.
+  seniorityLevel  String                 @default("MID")
+  /// EV domain slug (battery-tech, motor-control, …). Optional —
+  /// when set, the system prompt nudges the AI to ask domain-
+  /// specific questions instead of generic EV-industry ones.
+  evDomainSlug    String?
+
+  /// SIMULATOR-only: company being role-played + interviewer
+  /// persona ("tough technical lead", "warm HR generalist"). MOCK
+  /// sessions leave both null.
+  targetCompany   String?
+  interviewerPersona String?
+
+  /// Transcript. JSON array of { role: "user" | "assistant",
+  /// content: string, ts: ISO string } messages, oldest-first.
+  /// Kept in-row instead of a separate Message table because
+  /// practice sessions are short and never queried out-of-order.
+  messages        Json                   @default("[]")
+
+  /// Filled by the summarise pass after the candidate ends the
+  /// session. Mirrors the RoastResult shape so the same UI
+  /// components can render both.
+  scoreOverall    Int?
+  scoreBreakdown  Json?
+  feedback        Json?
+  summary         String?                @db.Text
+
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  completedAt     DateTime?
+
+  @@index([userId, createdAt])
+  @@index([status, updatedAt])
 }

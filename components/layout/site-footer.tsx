@@ -46,6 +46,10 @@ export async function SiteFooter() {
             { href: "/jobs", label: "Browse jobs" },
             { href: "/signup", label: "Create profile" },
             { href: "/me", label: "My applications" },
+            { href: "/ai-tools", label: "AI tools" },
+            { href: "/ai-tools/mock-interview", label: "Mock interview" },
+            { href: "/ai-tools/interview-simulator", label: "Interview simulator" },
+            { href: "/roast", label: "Roast my resume" },
           ]}
         />
         <FooterCol

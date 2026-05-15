@@ -46,6 +46,7 @@ const LINKS = [
   { href: "/privacy", label: "Privacy & Terms" },
   { href: "/jobs", label: "Browse jobs" },
   { href: "/companies", label: "Companies" },
+  { href: "/ai-tools", label: "AI tools" },
   { href: "/diyguru", label: "DIYguru" },
   { href: "/employer", label: "For employers" },
 ];

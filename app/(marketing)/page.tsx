@@ -72,6 +72,11 @@ const ACTION_PILLS: { href: string; emoji: string; label: string; tone: "primary
   { href: "/salaries", emoji: "💰", label: "Check a salary", tone: "secondary" },
   { href: "/pulse", emoji: "📊", label: "Read the pulse", tone: "secondary" },
   { href: "/roast", emoji: "🔥", label: "Roast my resume", tone: "secondary" },
+  // Hub link — drives candidates to the full AI-tools shelf
+  // (mock interview + simulator + roast + future tools). Lives at
+  // the end of the row so the established primary CTAs stay in
+  // the first-glance positions.
+  { href: "/ai-tools", emoji: "🤖", label: "AI tools", tone: "secondary" },
 ];
 
 // Hand-curated topic tiles — kept as a small browse-by-domain shelf.
