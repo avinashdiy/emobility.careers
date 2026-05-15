@@ -140,6 +140,17 @@ export default async function TalentSearch({
     : [];
   const appliedSet = new Set(candidatesWithApplication.map((a) => a.candidateId));
 
+  // Wave A #10 — record search appearances so candidates see "you
+  // appeared in N recruiter searches this week" on their dashboard.
+  // Fire-and-forget — failures absorbed inside the helper so a
+  // tracker hiccup never blocks the recruiter's search render.
+  if (candidateIds.length > 0) {
+    const { recordSearchAppearances } = await import("@/lib/profile-performance");
+    // No await — let it run alongside the page render. The recruiter
+    // doesn't care about the tracker's latency.
+    void recordSearchAppearances(candidateIds, session.user.id);
+  }
+
   const [evDomains, skillOptions, credentialOptions] = await Promise.all([
     db.eVDomain.findMany({ orderBy: { order: "asc" } }),
     // Wave C #28 — populate the verified-skill dropdown

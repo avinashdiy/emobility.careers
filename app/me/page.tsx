@@ -22,6 +22,8 @@ import {
   loadProfileQualityInputs,
 } from "@/lib/profile-quality";
 import { ProfileQualityCard } from "@/components/profile/ProfileQualityCard";
+import { getProfilePerformanceStats } from "@/lib/profile-performance";
+import { ProfilePerformanceCard } from "@/components/profile/ProfilePerformanceCard";
 import { getCandidateApplicationStats } from "@/lib/applications-stats";
 import { relativeTime } from "@/lib/utils";
 
@@ -211,6 +213,12 @@ export default async function MeDashboard() {
   // dashboard render; involves a couple of count() round-trips for
   // the activity axis.
   const quality = evaluateProfileQuality(await loadProfileQualityInputs(profile.id));
+  // Wave A #10 — Profile Performance stats. Recent-weeks counts from
+  // ProfileSearchAppearance, returns null-safe shape so a brand-new
+  // candidate without any impressions still renders the page; the
+  // card itself self-suppresses when both this-week + last-week are
+  // zero.
+  const performance = await getProfilePerformanceStats(profile.id);
 
   return (
     <div className="container max-w-6xl space-y-6 py-6 md:py-8">
@@ -413,6 +421,11 @@ export default async function MeDashboard() {
                 aside so a new candidate sees what to fix before the
                 share / coming-up cards. */}
             <ProfileQualityCard result={quality} />
+
+            {/* Wave A #10 — Profile Performance card. Self-suppresses
+                when both this-week + last-week impressions are zero
+                (so brand-new profiles don't see a "0 searches" pill). */}
+            <ProfilePerformanceCard stats={performance} />
 
             {/* Wave A #4 — WhatsApp share card. Renders only when the
                 candidate's profile has enough content to share (50%
