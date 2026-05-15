@@ -297,7 +297,7 @@ export default async function FeedPage({
             </div>
           </div>
 
-          <div className="mt-2 space-y-2">
+          <div className="emce-stagger mt-2 space-y-2">
             {posts.length === 0 ? (
               activeTab === "for-you" ? (
                 <EmptyState

@@ -147,6 +147,23 @@ const config: Config = {
       backgroundImage: {
         "emce-hero":
           "linear-gradient(160deg, #1e2d2a 0%, #374a47 40%, #3d5e58 100%)",
+        // Animated multi-stop mesh used by the landing hero and dashboard
+        // greeting card. Movement comes from `bg-[length:200%_200%]` +
+        // `animate-emce-mesh` which slides the gradient slowly so the
+        // surface feels alive without competing with content above it.
+        "emce-mesh":
+          "radial-gradient(at 12% 18%, rgba(143, 210, 153, 0.35) 0px, transparent 38%), radial-gradient(at 88% 22%, rgba(193, 255, 180, 0.30) 0px, transparent 42%), radial-gradient(at 50% 88%, rgba(61, 94, 88, 0.22) 0px, transparent 50%), linear-gradient(135deg, #1e2d2a 0%, #2a3a37 55%, #3d5e58 100%)",
+        "emce-mesh-light":
+          "radial-gradient(at 14% 12%, rgba(143, 210, 153, 0.20) 0px, transparent 40%), radial-gradient(at 92% 28%, rgba(193, 255, 180, 0.18) 0px, transparent 45%), radial-gradient(at 48% 94%, rgba(143, 210, 153, 0.12) 0px, transparent 50%), linear-gradient(135deg, #f5f6f3 0%, #eef2eb 100%)",
+        // Shimmer sweep for skeletons + premium-badge highlights.
+        "emce-shimmer":
+          "linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.45) 50%, transparent 100%)",
+        // Verified-skill gradient — runs cooler than the DIYguru amber so
+        // the two read distinctly when stacked side-by-side on a profile.
+        "emce-verified-grad":
+          "linear-gradient(135deg, #fff8e1 0%, #ffe066 100%)",
+        "emce-diyguru-grad":
+          "linear-gradient(135deg, #fff4eb 0%, #e8833a 100%)",
       },
       keyframes: {
         "accordion-down": {
@@ -157,10 +174,86 @@ const config: Config = {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
+        // ─── motion primitives ─────────────────────────────────────
+        // `fade-up` — entry animation for cards / sections sliding in
+        // from below by 8px. Pairs with `motion-reduce:` so users with
+        // prefers-reduced-motion get the final state instantly. The
+        // 4–8px translate is deliberately small — bigger movement reads
+        // as "this is loading" rather than "this is arriving".
+        "fade-up": {
+          from: { opacity: "0", transform: "translateY(8px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
+        },
+        "fade-in": {
+          from: { opacity: "0" },
+          to: { opacity: "1" },
+        },
+        "scale-in": {
+          from: { opacity: "0", transform: "scale(0.96)" },
+          to: { opacity: "1", transform: "scale(1)" },
+        },
+        // Slow background-position cycle for animated mesh gradients.
+        "mesh-shift": {
+          "0%, 100%": { backgroundPosition: "0% 50%" },
+          "50%": { backgroundPosition: "100% 50%" },
+        },
+        // Skeleton shimmer — replaces Tailwind's `animate-pulse` which
+        // just toggles opacity. A sweeping gradient reads as "content
+        // streaming in" rather than "this element is broken".
+        "shimmer": {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
+        },
+        // Soft ping for "new notification" / "live update" dots — half
+        // the alpha of Tailwind's default `animate-ping` so it doesn't
+        // strobe-flash next to dense type.
+        "ping-soft": {
+          "0%": { transform: "scale(1)", opacity: "0.6" },
+          "75%, 100%": { transform: "scale(1.8)", opacity: "0" },
+        },
+        // Single-shot sparkle — used by the verified-badge reveal and
+        // the "first application submitted" confetti animation. 600ms
+        // because anything longer overstays its welcome on every render.
+        "sparkle": {
+          "0%, 100%": { transform: "scale(1) rotate(0deg)", opacity: "0" },
+          "30%, 60%": { transform: "scale(1) rotate(180deg)", opacity: "1" },
+        },
+        // Press feedback — paired with `active:animate-press` on
+        // interactive buttons. Tiny scale-down on click that reads as
+        // "I felt that" without slowing the action perceptibly.
+        "press": {
+          "0%": { transform: "scale(1)" },
+          "50%": { transform: "scale(0.97)" },
+          "100%": { transform: "scale(1)" },
+        },
+        // Floating motion for hero illustration accents (orbs, dots).
+        "float": {
+          "0%, 100%": { transform: "translateY(0) translateX(0)" },
+          "50%": { transform: "translateY(-6px) translateX(2px)" },
+        },
+        // Subtle pulsing ring around live counters / open-to-work avatar.
+        "ring-pulse": {
+          "0%, 100%": { boxShadow: "0 0 0 0 rgba(143, 210, 153, 0.4)" },
+          "50%": { boxShadow: "0 0 0 6px rgba(143, 210, 153, 0)" },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
+        "fade-up": "fade-up 0.5s cubic-bezier(0.21, 1.02, 0.73, 1) both",
+        "fade-up-fast": "fade-up 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) both",
+        "fade-in": "fade-in 0.4s ease-out both",
+        "scale-in": "scale-in 0.3s cubic-bezier(0.21, 1.02, 0.73, 1) both",
+        // 18s mesh cycle — slow enough that the eye registers warmth
+        // rather than motion. Anything under ~12s starts to feel busy.
+        "emce-mesh": "mesh-shift 18s ease-in-out infinite",
+        // 1.6s shimmer matches what GitHub and Linear use for skeletons.
+        "shimmer": "shimmer 1.8s ease-in-out infinite",
+        "ping-soft": "ping-soft 1.6s cubic-bezier(0, 0, 0.2, 1) infinite",
+        "sparkle": "sparkle 0.6s ease-in-out",
+        "press": "press 0.18s ease-out",
+        "float": "float 4s ease-in-out infinite",
+        "ring-pulse": "ring-pulse 2.4s ease-in-out infinite",
       },
     },
   },

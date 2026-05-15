@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/empty-state";
+import { GradientHero } from "@/components/ui/gradient-hero";
+import { StatTile } from "@/components/ui/stat-tile";
 import { VerifyEmailBanner } from "@/components/auth/VerifyEmailBanner";
 import { ProfileCompletenessCard } from "@/components/profile/ProfileCompletenessCard";
 import { ProductTour } from "@/components/onboarding/ProductTour";
@@ -199,49 +201,102 @@ export default async function MeDashboard() {
       {!profile.user.productTourCompletedAt && <ProductTour />}
       {!profile.user.emailVerifiedAt && <VerifyEmailBanner email={profile.user.email} />}
 
-        {/* Hero greeting */}
-        <Card>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex items-start gap-4">
-              <Avatar src={profile.profilePhotoUrl} name={fullName} size="lg" />
-              <div>
-                <h1 className="text-dashboard text-emce-text md:text-3xl">Hi {profile.firstName} 👋</h1>
-                {profile.headline && <p className="mt-1 text-sm text-emce-text-sec">{profile.headline}</p>}
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {profile.isDIYguruVerified && <Badge variant="verified">⭐ DIYguru Verified</Badge>}
-                  <Badge variant="default">{profile.profileMode}</Badge>
-                  {profile.openToWork && <Badge variant="success">Open to work</Badge>}
+        {/* Hero greeting — animated mesh-gradient panel with stat tiles
+            embedded directly into the hero so the dashboard reads as
+            "this is your control centre" rather than "here is a small
+            welcome card followed by a row of numbers". */}
+        <GradientHero className="rounded-lg shadow-emce-lg" size="comfortable">
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-4">
+                <Avatar
+                  src={profile.profilePhotoUrl}
+                  name={fullName}
+                  size="lg"
+                  openToWork={profile.openToWork}
+                  hiring={profile.hiringNow}
+                  className="ring-white/40"
+                />
+                <div>
+                  <h1 className="text-2xl font-extrabold leading-tight text-white sm:text-3xl">
+                    Hi {profile.firstName} <span className="inline-block animate-float">👋</span>
+                  </h1>
+                  {profile.headline && (
+                    <p className="mt-1 text-sm text-white/75">{profile.headline}</p>
+                  )}
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {profile.isDIYguruVerified && (
+                      <Badge variant="diyguru">⭐ DIYguru Verified</Badge>
+                    )}
+                    <Badge
+                      variant="outline"
+                      className="border-white/30 text-white/85 bg-white/5"
+                    >
+                      {profile.profileMode}
+                    </Badge>
+                    {profile.openToWork && <Badge variant="live">Open to work</Badge>}
+                  </div>
                 </div>
               </div>
+              <div className="flex flex-wrap gap-2">
+                <Button asChild variant="outline" size="sm" className="border-white/40 bg-white/5 text-white hover:bg-white/15">
+                  <Link href={`/${profile.slug}`}>Preview public profile</Link>
+                </Button>
+                <Button asChild size="sm" variant="glow">
+                  <Link href="/me/profile">Edit profile</Link>
+                </Button>
+              </div>
             </div>
-            <div className="flex flex-wrap gap-2">
-              <Button asChild variant="outline" size="sm">
-                <Link href={`/${profile.slug}`}>Preview public profile</Link>
-              </Button>
-              <Button asChild size="sm">
-                <Link href="/me/profile">Edit profile</Link>
-              </Button>
+
+            {/* Stat strip lives inside the hero so the eye lands "name → at-a-glance numbers"
+                in one visual unit. Tiles use the `hero` variant — translucent cards over
+                the mesh that still pop on dark. */}
+            <div className="emce-stagger grid grid-cols-2 gap-3 sm:grid-cols-4">
+              <Link href="/me/applications" className="block">
+                <StatTile
+                  label="Applications"
+                  value={profile._count.applications}
+                  icon={<Briefcase className="h-4 w-4" />}
+                  variant="hero"
+                />
+              </Link>
+              <Link href="/me/sessions" className="block">
+                <StatTile
+                  label="Mentor sessions"
+                  value={pastMentorshipCount + (upcomingMentorshipSession ? 1 : 0)}
+                  icon={<GraduationCap className="h-4 w-4" />}
+                  variant="hero"
+                />
+              </Link>
+              <Link href="/me/competitions" className="block">
+                <StatTile
+                  label="Competitions"
+                  value={activeCompetitions.length}
+                  icon={<Trophy className="h-4 w-4" />}
+                  variant="hero"
+                />
+              </Link>
+              <Link href="/me/network" className="block">
+                <StatTile
+                  label="Connections"
+                  value={profile.connectionsCount}
+                  icon={<Users className="h-4 w-4" />}
+                  variant="hero"
+                />
+              </Link>
             </div>
           </div>
+        </GradientHero>
 
-          {completeness.pct < 100 && (
-            <div className="mt-5">
-              <ProfileCompletenessCard result={completeness} variant="inline" />
-            </div>
-          )}
-        </Card>
+        {completeness.pct < 100 && (
+          <Card animate>
+            <ProfileCompletenessCard result={completeness} variant="inline" />
+          </Card>
+        )}
 
         {/* Application tracker — LinkedIn-style "Applied · Interviewed ·
             Offers · Hired · Active" strip. Hidden when zero applications. */}
         {applicationStats.applied > 0 && <ApplicationTracker stats={applicationStats} />}
-
-        {/* At-a-glance counters */}
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat icon={<Briefcase className="h-4 w-4" />} label="Applications" value={profile._count.applications} href="/me/applications" />
-          <Stat icon={<GraduationCap className="h-4 w-4" />} label="Mentor sessions" value={pastMentorshipCount + (upcomingMentorshipSession ? 1 : 0)} href="/me/sessions" />
-          <Stat icon={<Trophy className="h-4 w-4" />} label="Competitions" value={activeCompetitions.length} href="/me/competitions" />
-          <Stat icon={<Users className="h-4 w-4" />} label="Connections" value={profile.connectionsCount} href="/me/network" />
-        </div>
 
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
@@ -466,15 +521,6 @@ export default async function MeDashboard() {
           </aside>
         </div>
     </div>
-  );
-}
-
-function Stat({ icon, label, value, href }: { icon: React.ReactNode; label: string; value: number; href: string }) {
-  return (
-    <Link href={href} className="block rounded-lg border border-emce-border bg-white p-3 hover:border-emce-mid">
-      <div className="flex items-center gap-2 text-emce-text-sec">{icon}<span className="text-[10px] uppercase tracking-wide">{label}</span></div>
-      <div className="mt-1 text-xl font-extrabold text-emce-text">{value}</div>
-    </Link>
   );
 }
 

@@ -2,9 +2,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { Briefcase, Inbox, Sparkles } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { GradientHero } from "@/components/ui/gradient-hero";
+import { StatTile } from "@/components/ui/stat-tile";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import { VerifyEmailBanner } from "@/components/auth/VerifyEmailBanner";
 
@@ -40,30 +43,68 @@ export default async function EmployerHome() {
 
   return (
     <EmployerShell>
-      <div className="container max-w-6xl py-10">
+      <div className="container max-w-6xl space-y-6 py-10">
         {!employer.user.emailVerifiedAt && <VerifyEmailBanner email={employer.user.email} />}
-        <div className="mb-6 flex items-end justify-between">
-          <div>
-            <h1 className="text-dashboard text-emce-text">Welcome to {employer.company.name}</h1>
-            <p className="mt-1 text-sm text-emce-text-sec">
-              {employer.designation}
-              {employer.company.verificationStatus !== "VERIFIED" && (
-                <Badge variant="warning" className="ml-3">{employer.company.verificationStatus} verification</Badge>
-              )}
-            </p>
+
+        <GradientHero className="rounded-lg shadow-emce-lg" size="comfortable">
+          <div className="flex flex-col gap-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <Badge variant="outline" className="border-white/30 text-white/85 bg-white/5">
+                  Recruiter dashboard
+                </Badge>
+                <h1 className="mt-2 text-2xl font-extrabold leading-tight text-white sm:text-3xl">
+                  Welcome to <span className="emce-text-gradient">{employer.company.name}</span>
+                </h1>
+                <p className="mt-1 text-sm text-white/75">
+                  {employer.designation}
+                  {employer.company.verificationStatus !== "VERIFIED" && (
+                    <Badge variant="warning" className="ml-3">
+                      {employer.company.verificationStatus} verification
+                    </Badge>
+                  )}
+                </p>
+              </div>
+              <Button asChild size="lg" variant="glow">
+                <Link href="/employer/jobs/new">+ Post a job</Link>
+              </Button>
+            </div>
+
+            <div className="emce-stagger grid gap-3 sm:grid-cols-3">
+              <Link href="/employer/jobs" className="block">
+                <StatTile
+                  label="Open jobs"
+                  value={openJobs}
+                  icon={<Briefcase className="h-4 w-4" />}
+                  variant="hero"
+                />
+              </Link>
+              <Link href="/employer/jobs" className="block">
+                <StatTile
+                  label="Total applications"
+                  value={totalApplications}
+                  icon={<Inbox className="h-4 w-4" />}
+                  variant="hero"
+                />
+              </Link>
+              <Link href="/employer/jobs" className="block">
+                <StatTile
+                  label="New this week"
+                  value={newThisWeek}
+                  icon={<Sparkles className="h-4 w-4" />}
+                  variant="hero"
+                  trend={
+                    newThisWeek > 0
+                      ? { tone: "up", label: `${newThisWeek} new` }
+                      : undefined
+                  }
+                />
+              </Link>
+            </div>
           </div>
-          <Button asChild size="lg">
-            <Link href="/employer/jobs/new">+ Post a job</Link>
-          </Button>
-        </div>
+        </GradientHero>
 
-        <div className="grid gap-4 md:grid-cols-3">
-          <Stat value={openJobs} label="Open jobs" />
-          <Stat value={totalApplications} label="Total applications" />
-          <Stat value={newThisWeek} label="New this week" />
-        </div>
-
-        <div className="mt-8 grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-2 p-6">
             <h2 className="text-section text-emce-text">Recent jobs</h2>
             <RecentJobs companyId={employer.companyId} />
@@ -85,15 +126,6 @@ export default async function EmployerHome() {
         </div>
       </div>
     </EmployerShell>
-  );
-}
-
-function Stat({ value, label }: { value: number; label: string }) {
-  return (
-    <Card className="p-5">
-      <div className="text-3xl font-extrabold text-emce-dark">{value}</div>
-      <div className="mt-1 text-xs uppercase tracking-wide text-emce-text-muted">{label}</div>
-    </Card>
   );
 }
 

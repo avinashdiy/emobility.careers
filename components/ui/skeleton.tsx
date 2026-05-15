@@ -33,7 +33,12 @@ export function Skeleton({
       aria-live="polite"
       aria-busy="true"
       className={cn(
-        "animate-pulse bg-emce-light-soft",
+        // Vibe pass: `emce-shimmer` replaces the legacy opacity-toggle
+        // `animate-pulse` with a sweeping gradient highlight. Reads as
+        // "content is streaming in" rather than "this element is
+        // broken". Respects `prefers-reduced-motion` automatically via
+        // the utility class.
+        "emce-shimmer",
         variant === "circle" ? "rounded-full" : "rounded-md",
         className,
       )}

@@ -149,8 +149,24 @@ export default async function HomePage() {
   return (
     <>
       {/* ─── Hero — editorial masthead ─── */}
-      <section className="emce-hero-gradient text-white">
-        <div className="container py-16 md:py-20">
+      <section className="emce-mesh-hero relative text-white">
+        {/* Soft floating orbs add ambient warmth to the mesh gradient
+            without competing with the headline. Hidden on mobile so they
+            don't fight the hero copy in a narrow viewport. */}
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -left-16 top-10 hidden h-56 w-56 rounded-full bg-emce-mid/25 blur-3xl animate-float md:block"
+        />
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -right-12 top-32 hidden h-64 w-64 rounded-full bg-emce-light/20 blur-3xl animate-float md:block"
+          style={{ animationDelay: "1.6s" }}
+        />
+        <div
+          aria-hidden
+          className="emce-dot-grid pointer-events-none absolute inset-0 opacity-25"
+        />
+        <div className="container relative py-16 md:py-20">
           {/* Live ticker pill — sets tone before any copy. The
               animated dot reads as "this page is alive". The full
               date + "added today" segments are hidden on phones so
@@ -186,15 +202,21 @@ export default async function HomePage() {
             <span aria-hidden className="shrink-0">→</span>
           </Link>
 
-          <div className="text-[11px] font-extrabold uppercase tracking-[0.2em] text-emce-mid">
+          <div className="animate-fade-up text-[11px] font-extrabold uppercase tracking-[0.2em] text-emce-mid">
             ✦ The address of EV in India
           </div>
-          <h1 className="mt-3 max-w-4xl text-4xl font-extrabold leading-[1.05] tracking-tight text-white md:text-5xl lg:text-6xl">
+          <h1
+            className="animate-fade-up mt-3 max-w-4xl text-4xl font-extrabold leading-[1.05] tracking-tight text-white md:text-5xl lg:text-6xl"
+            style={{ animationDelay: "80ms" }}
+          >
             Where the EV industry{" "}
-            <span className="text-emce-mid">hires, gets hired,</span>
+            <span className="emce-text-gradient">hires, gets hired,</span>
             <br className="hidden md:block" /> and reads what&apos;s happening.
           </h1>
-          <p className="mt-5 max-w-2xl text-base text-white/85 md:text-lg">
+          <p
+            className="animate-fade-up mt-5 max-w-2xl text-base text-white/85 md:text-lg"
+            style={{ animationDelay: "160ms" }}
+          >
             A daily snapshot of India&apos;s EV industry — jobs across battery,
             charging, motors, vehicles and software; salaries you can
             actually verify; the people moving the work; the signal you
@@ -204,13 +226,16 @@ export default async function HomePage() {
           {/* "What brings you here" action row — replaces the "Find a job"
               hard CTA. Five intents, equal weight visually so candidates,
               employers and curious browsers all see themselves. */}
-          <div className="mt-8 flex flex-wrap gap-2">
-            {ACTION_PILLS.map((p) => (
+          <div
+            className="animate-fade-up mt-8 flex flex-wrap gap-2"
+            style={{ animationDelay: "240ms" }}
+          >
+            {ACTION_PILLS.map((p, i) => (
               <Button
                 key={p.href}
                 asChild
                 size="lg"
-                variant={p.tone === "primary" ? "accent" : "outline"}
+                variant={p.tone === "primary" ? (i === 0 ? "glow" : "accent") : "outline"}
                 className={
                   p.tone === "primary"
                     ? ""

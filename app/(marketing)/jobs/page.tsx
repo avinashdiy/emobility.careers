@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
+import { EmptyState } from "@/components/ui/empty-state";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { rankJobsForCandidate } from "@/server/matching/candidate-match";
 
 export const metadata = { title: "Browse EV jobs" };
@@ -87,11 +89,20 @@ export default async function JobsPage({
   return (
     <div className="container py-10">
       <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <Badge variant="default">EV Jobs</Badge>
-          <h1 className="mt-2 text-dashboard text-emce-text md:text-3xl">
-            {total > 0 ? `${total.toLocaleString()} EV jobs` : "EV jobs"}
+        <div className="animate-fade-up">
+          <Badge variant="live">Live across India</Badge>
+          <h1 className="mt-2 text-dashboard font-extrabold text-emce-text md:text-3xl">
+            {total > 0 ? (
+              <>
+                <AnimatedNumber to={total} className="emce-text-gradient" /> EV jobs
+              </>
+            ) : (
+              "EV jobs"
+            )}
           </h1>
+          <p className="mt-1 text-hint text-emce-text-sec">
+            Battery · Charging · Powertrain · Software · Manufacturing — refreshed daily.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           {(filter.q || filter.location || filter.domain) && (
@@ -195,10 +206,10 @@ export default async function JobsPage({
           the section credible: an empty page or a page of long-shots
           shouldn't get a "best matches" headline. */}
       {bestMatches.length > 0 && (
-        <Card className="mb-6 border-emce-mid/40 bg-emce-light-soft/40 p-4">
+        <Card variant="glow" className="mb-6 animate-fade-up">
           <div className="mb-3 flex items-baseline justify-between gap-3">
             <div>
-              <Badge variant="success">For you</Badge>
+              <Badge variant="glow">✨ For you</Badge>
               <h2 className="mt-1 text-section text-emce-text">
                 Best matches based on your profile
               </h2>
@@ -208,7 +219,7 @@ export default async function JobsPage({
               </p>
             </div>
           </div>
-          <ul className="space-y-2">
+          <ul className="emce-stagger space-y-2">
             {bestMatches.map(({ job, score }) => (
               <li key={job.id}>
                 <JobCard job={job} matchScore={score} />
@@ -219,13 +230,19 @@ export default async function JobsPage({
       )}
 
       {jobs.length === 0 ? (
-        <Card className="p-10 text-center">
-          <div className="text-4xl">🔎</div>
-          <h2 className="mt-3 text-section text-emce-text">No jobs match your filters</h2>
-          <p className="mt-1 text-hint text-emce-text-sec">Try removing a filter or browsing by domain.</p>
-        </Card>
+        <EmptyState
+          variant="mesh"
+          icon="🔎"
+          title="No jobs match your filters"
+          body="Try removing a filter, broadening the location, or browsing by domain below."
+          action={
+            <Button asChild variant="accent" size="sm">
+              <Link href="/jobs">Clear all filters</Link>
+            </Button>
+          }
+        />
       ) : (
-        <ul className="space-y-3">
+        <ul className="emce-stagger space-y-3">
           {jobs.map((j) => (
             <li key={j.id}>
               <JobCard job={j} matchScore={scoreByJobId.get(j.id) ?? null} />

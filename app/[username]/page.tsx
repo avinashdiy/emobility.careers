@@ -683,13 +683,24 @@ export default async function PublicCandidateProfile({
               LinkedIn pattern. */}
           {profile.bannerUrl ? (
             <div
-              className="h-28 bg-cover bg-center sm:h-40"
+              className="relative h-32 bg-cover bg-center sm:h-44"
               style={{ backgroundImage: `url(${profile.bannerUrl})` }}
               role="img"
               aria-label={`${fullName} cover photo`}
-            />
+            >
+              {/* Subtle bottom gradient so the avatar disc stays legible
+                  even when the uploaded banner is light at the base. */}
+              <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/15 to-transparent" />
+            </div>
           ) : (
-            <div className="emce-hero-gradient h-28 sm:h-40" />
+            // No upload — show the animated mesh instead of a flat
+            // gradient so an empty profile still feels alive.
+            <div className="emce-mesh-hero relative h-32 sm:h-44">
+              <div
+                aria-hidden
+                className="emce-dot-grid pointer-events-none absolute inset-0 opacity-25"
+              />
+            </div>
           )}
 
           <div className="relative px-4 pb-4 sm:px-6 sm:pb-5">

@@ -126,4 +126,135 @@
   .emce-card:hover {
     @apply -translate-y-0.5 shadow-emce-hover;
   }
+
+  /* ─── Vibe-pass primitives ─────────────────────────────────────────
+     A small set of opinionated helpers that lift the platform from
+     "competent" to "alive". They are class-utility wrappers (NOT
+     React components) so they propagate freely — sprinkle them into
+     existing Card/Button/section JSX without re-architecting layouts. */
+
+  /* `emce-card-interactive` — Card variant for clickable/linked cards.
+     The lift + shadow change is enough to feel responsive on hover but
+     small enough to never displace siblings in a list. Reduced-motion
+     users still see the shadow change (the colour cue is preserved). */
+  .emce-card-interactive {
+    @apply emce-card cursor-pointer transition-all duration-200;
+  }
+  .emce-card-interactive:hover {
+    @apply -translate-y-0.5 border-emce-mid/40 shadow-emce-hover;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .emce-card-interactive:hover { transform: none; }
+  }
+
+  /* `emce-card-glow` — Premium variant. Gradient border via a
+     pseudo-mask + a soft radial sheen. Use sparingly: featured-job
+     cards, "Top match" tiles on /me, the DIYguru-verified profile
+     callout. Over-using kills the signal. */
+  .emce-card-glow {
+    @apply emce-card relative overflow-hidden;
+    background:
+      linear-gradient(white, white) padding-box,
+      linear-gradient(135deg, rgba(143, 210, 153, 0.5) 0%, rgba(193, 255, 180, 0.25) 100%) border-box;
+    border: 1px solid transparent;
+  }
+  .emce-card-glow::before {
+    content: "";
+    @apply pointer-events-none absolute -right-12 -top-12 h-40 w-40 rounded-full opacity-50 blur-3xl;
+    background: radial-gradient(circle, rgba(143, 210, 153, 0.55) 0%, transparent 70%);
+  }
+
+  /* `emce-mesh-hero` — Animated mesh-gradient hero. Used by /me,
+     marketing landing, and the employer dashboard greeting card. The
+     `bg-[length:200%_200%]` + `animate-emce-mesh` combo gives a slow
+     drift; the inner content uses `relative z-10` to sit above. */
+  .emce-mesh-hero {
+    @apply relative overflow-hidden text-white;
+    background-image: theme("backgroundImage.emce-mesh");
+    background-size: 200% 200%;
+    animation: mesh-shift 18s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .emce-mesh-hero { animation: none; }
+  }
+
+  /* Light-mode mesh variant for surfaces that need warmth without
+     going full-dark (signin card, empty-state hero, onboarding step). */
+  .emce-mesh-soft {
+    @apply relative overflow-hidden;
+    background-image: theme("backgroundImage.emce-mesh-light");
+    background-size: 200% 200%;
+    animation: mesh-shift 24s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .emce-mesh-soft { animation: none; }
+  }
+
+  /* `emce-shimmer` — Skeleton shimmer that sweeps a soft highlight
+     across a tinted base. Replaces `animate-pulse` everywhere we want
+     skeletons to feel like "data streaming in". */
+  .emce-shimmer {
+    background-color: theme("colors.emce.light-soft");
+    background-image: theme("backgroundImage.emce-shimmer");
+    background-size: 200% 100%;
+    animation: shimmer 1.8s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .emce-shimmer { animation: none; }
+  }
+
+  /* `emce-press` — Tactile button press. Apply alongside the button's
+     own variant classes; the active:scale-[0.97] adds the tap-feel
+     without overriding hover/focus visuals. */
+  .emce-press {
+    @apply transition-transform duration-150 active:scale-[0.97];
+  }
+
+  /* `emce-glass` — Frosted backdrop for sticky bars, mobile-bottom
+     CTAs, and floating chips. Falls back to opaque background where
+     backdrop-filter isn't supported. */
+  .emce-glass {
+    background-color: rgba(255, 255, 255, 0.78);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+  }
+  @supports not (backdrop-filter: blur(1px)) {
+    .emce-glass { background-color: rgba(255, 255, 255, 0.96); }
+  }
+
+  /* `emce-text-gradient` — Brand gradient on inline text. Use for hero
+     headlines + stat tile numbers. Keep the wrapping element non-block
+     so the gradient doesn't get clipped at descender ascender lines. */
+  .emce-text-gradient {
+    background: linear-gradient(135deg, #8fd299 0%, #c1ffb4 60%, #8fd299 100%);
+    background-clip: text;
+    -webkit-background-clip: text;
+    color: transparent;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* `emce-dot-grid` — Subtle dot-pattern background. Used behind the
+     marketing hero and the empty-state hero to break up the flat
+     surface without competing with content. */
+  .emce-dot-grid {
+    background-image: radial-gradient(circle, rgba(143, 210, 153, 0.20) 1px, transparent 1px);
+    background-size: 18px 18px;
+  }
+
+  /* `emce-stagger > *` — Auto-stagger children with `fade-up` so a
+     list of cards/posts/jobs animates in sequentially without
+     hand-rolling delay classes everywhere. Caps at 8 children — past
+     that the staircase becomes visible scrolling latency. */
+  .emce-stagger > * { animation: fade-up 0.5s cubic-bezier(0.21, 1.02, 0.73, 1) both; }
+  .emce-stagger > *:nth-child(1) { animation-delay: 0ms; }
+  .emce-stagger > *:nth-child(2) { animation-delay: 60ms; }
+  .emce-stagger > *:nth-child(3) { animation-delay: 120ms; }
+  .emce-stagger > *:nth-child(4) { animation-delay: 180ms; }
+  .emce-stagger > *:nth-child(5) { animation-delay: 240ms; }
+  .emce-stagger > *:nth-child(6) { animation-delay: 300ms; }
+  .emce-stagger > *:nth-child(7) { animation-delay: 360ms; }
+  .emce-stagger > *:nth-child(8) { animation-delay: 420ms; }
+  @media (prefers-reduced-motion: reduce) {
+    .emce-stagger > * { animation: none; }
+  }
 }
