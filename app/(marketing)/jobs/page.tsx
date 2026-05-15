@@ -78,10 +78,8 @@ export default async function JobsPage({
   // Score the visible page of results for the logged-in candidate so
   // each card can carry an "X% match" pill. We pass the IDs through
   // `rankJobsForCandidate` which prefers the cache and bounds live
-  // computes per request — no risk of N concurrent embed calls. The
-  // map is keyed by job id so the JobCard render stays a flat lookup.
+  // computes per request — no risk of N concurrent embed calls.
   let scoreByJobId: Map<string, number> = new Map();
-  let bestMatchesAbove60: { id: string; score: number }[] = [];
   if (candidateProfileId && jobs.length > 0) {
     try {
       const ranked = await rankJobsForCandidate(
@@ -90,25 +88,36 @@ export default async function JobsPage({
         jobs.length, // score everything on the page (rank takes top-K)
       );
       scoreByJobId = new Map(ranked.map((r) => [r.jobId, r.score]));
-      // "Best matches for you" only highlights jobs that are
-      // genuinely worth flagging. 0.6+ = decent or strong match per
-      // MatchScoreCard's tone bands; below that we'd be promoting
-      // weak fits and the section loses trust fast.
-      bestMatchesAbove60 = ranked
-        .filter((r) => r.score >= 0.6)
-        .slice(0, 3)
-        .map((r) => ({ id: r.jobId, score: r.score }));
     } catch {
       // Scoring is non-essential — let the page render.
     }
   }
-  // Resolve the JobCard rows for the highlighted "Best matches" strip
-  // (if any). We already have these objects in `jobs`, so a Map
-  // lookup beats a second DB roundtrip.
-  const jobsById = new Map(jobs.map((j) => [j.id, j]));
-  const bestMatches = bestMatchesAbove60
-    .map((b) => ({ job: jobsById.get(b.id), score: b.score }))
-    .filter((x): x is { job: NonNullable<typeof x.job>; score: number } => Boolean(x.job));
+
+  // Wave A #9 — Curated tiered job feed. Bucket the scored jobs into
+  // three explicit tiers so candidates see "Exact match / Strong /
+  // Adjacent" headers instead of a single "Best matches" stripe that
+  // doesn't explain its own ranking. Each tier renders only when it
+  // contains at least one job. Bucketed jobs are STILL shown in the
+  // full list below — the tiers are a curation lens, not a filter, so
+  // there's no confusion about "where did the other matches go?".
+  const tieredJobs: {
+    tier: "exact" | "strong" | "adjacent";
+    job: (typeof jobs)[number];
+    score: number;
+  }[] = [];
+  if (scoreByJobId.size > 0) {
+    for (const j of jobs) {
+      const s = scoreByJobId.get(j.id);
+      if (s === undefined) continue;
+      if (s >= 0.85) tieredJobs.push({ tier: "exact", job: j, score: s });
+      else if (s >= 0.7) tieredJobs.push({ tier: "strong", job: j, score: s });
+      else if (s >= 0.55) tieredJobs.push({ tier: "adjacent", job: j, score: s });
+    }
+    tieredJobs.sort((a, b) => b.score - a.score);
+  }
+  const exactMatches = tieredJobs.filter((t) => t.tier === "exact").slice(0, 4);
+  const strongMatches = tieredJobs.filter((t) => t.tier === "strong").slice(0, 4);
+  const adjacentMatches = tieredJobs.filter((t) => t.tier === "adjacent").slice(0, 4);
 
   return (
     <div className="container py-10">
@@ -294,26 +303,78 @@ export default async function JobsPage({
         </div>
       </Card>
 
-      {/* "Best matches for you" — surfaces only when at least one job
-          on the visible page scores 60%+ for this candidate. Keeps
-          the section credible: an empty page or a page of long-shots
-          shouldn't get a "best matches" headline. */}
-      {bestMatches.length > 0 && (
+      {/* Wave A #9 — Curated tiered job feed. Three explicit tiers
+          when the viewer is signed in + scored:
+            - Exact match (≥85%)   — top, glow card, "this fits you"
+            - Strong match (70-85%) — regular card
+            - Adjacent (55-70%)     — softer card, "worth a look"
+          Each tier renders only when at least one job qualifies.
+          The full list below STILL includes these jobs — the tiers
+          are a curation lens, not a filter. Caps at 4 per tier so
+          the rest of the page doesn't get pushed below the fold. */}
+      {exactMatches.length > 0 && (
         <Card variant="glow" className="mb-6 animate-fade-up">
           <div className="mb-3 flex items-baseline justify-between gap-3">
             <div>
-              <Badge variant="glow">✨ For you</Badge>
+              <Badge variant="glow">✨ Exact match</Badge>
               <h2 className="mt-1 text-section text-emce-text">
-                Best matches based on your profile
+                These jobs fit you almost perfectly
               </h2>
               <p className="text-hint text-emce-text-sec">
                 Picked from the {jobs.length} jobs on this page using your
-                skills, experience, and EV domains.
+                skills, experience, verified badges, and EV domains. Apply soon
+                — exact matches go fast.
               </p>
             </div>
           </div>
           <ul className="emce-stagger space-y-2">
-            {bestMatches.map(({ job, score }) => (
+            {exactMatches.map(({ job, score }) => (
+              <li key={job.id}>
+                <JobCard job={job} matchScore={score} />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {strongMatches.length > 0 && (
+        <Card className="mb-6 animate-fade-up border-emce-mid/40 bg-emce-light-soft/40">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <div>
+              <Badge variant="success">For you · Strong fit</Badge>
+              <h2 className="mt-1 text-section text-emce-text">
+                These come close — apply with a tailored cover letter
+              </h2>
+              <p className="text-hint text-emce-text-sec">
+                Most of the required skills overlap; closing the small gap on
+                your apply is straightforward.
+              </p>
+            </div>
+          </div>
+          <ul className="emce-stagger space-y-2">
+            {strongMatches.map(({ job, score }) => (
+              <li key={job.id}>
+                <JobCard job={job} matchScore={score} />
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
+      {adjacentMatches.length > 0 && (
+        <Card className="mb-6 animate-fade-up">
+          <div className="mb-3 flex items-baseline justify-between gap-3">
+            <div>
+              <Badge variant="default">Adjacent</Badge>
+              <h2 className="mt-1 text-section text-emce-text">
+                A bit of a stretch — worth a look if you&apos;re exploring
+              </h2>
+              <p className="text-hint text-emce-text-sec">
+                Some skill overlap. Great if you&apos;re open to a slight pivot
+                in your EV career.
+              </p>
+            </div>
+          </div>
+          <ul className="emce-stagger space-y-2">
+            {adjacentMatches.map(({ job, score }) => (
               <li key={job.id}>
                 <JobCard job={job} matchScore={score} />
               </li>
