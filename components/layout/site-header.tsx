@@ -67,6 +67,10 @@ export async function SiteHeader() {
     { href: "/events", label: "Events" },
     { href: "/mentors", label: t("nav.mentors", locale) },
     { href: "/people", label: t("nav.people", locale) },
+    // Wave A #5 — EV community groups (battery, charging, BMS, etc.).
+    // Sits between People (who) and Companies (where) since groups are
+    // the "what topics are people talking about" axis.
+    { href: "/groups", label: "Groups" },
     { href: "/companies", label: t("nav.companies", locale) },
     { href: "/employer", label: t("nav.forEmployers", locale) },
     { href: "/diyguru", label: t("nav.diyguru", locale) },
