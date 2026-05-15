@@ -31,9 +31,14 @@ export default async function NewJobPage() {
   return (
     <EmployerShell>
       <div className="container max-w-3xl py-10">
-        <div className="flex items-end justify-between">
+        <div className="flex items-end justify-between animate-fade-up">
           <div>
-            <h1 className="text-dashboard text-emce-text">Post a new job</h1>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+              📝 New role
+            </p>
+            <h1 className="mt-1 text-2xl font-extrabold leading-tight tracking-tight text-emce-text md:text-[28px]">
+              Post a <span className="emce-text-gradient">new job</span>
+            </h1>
             <p className="mt-1 text-sm text-emce-text-sec">
               Fill in the basics — or paste rough notes and let AI structure them into a polished JD.
             </p>

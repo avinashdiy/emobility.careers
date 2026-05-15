@@ -77,9 +77,12 @@ export default async function EventsListPage() {
     <>
       <SiteHeader />
       <main className="container max-w-4xl py-8">
-        <header className="mb-6">
-          <h1 className="text-2xl font-extrabold text-emce-text md:text-3xl">
-            Events &amp; Webinars
+        <header className="mb-6 animate-fade-up">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+            📅 What&apos;s happening
+          </p>
+          <h1 className="mt-1 text-2xl font-extrabold leading-tight tracking-tight text-emce-text md:text-[28px]">
+            Events &amp; <span className="emce-text-gradient">Webinars</span>
           </h1>
           <p className="mt-2 text-emce-text-sec">
             Live and upcoming events from EV companies hiring on the platform — product
@@ -89,10 +92,14 @@ export default async function EventsListPage() {
 
         {ongoing.length > 0 && (
           <section className="mb-8">
-            <h2 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-emce-orange-deep">
-              🔴 Live now
+            <h2 className="mb-3 inline-flex items-center gap-1.5 text-xs font-extrabold uppercase tracking-wider text-emce-orange-deep">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-emce-orange animate-ping-soft" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emce-orange" />
+              </span>
+              Live now
             </h2>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="emce-stagger grid gap-3 sm:grid-cols-2">
               {ongoing.map((e) => (
                 <EventCard key={e.id} event={e} live />
               ))}
@@ -116,7 +123,7 @@ export default async function EventsListPage() {
               </p>
             </Card>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="emce-stagger grid gap-3 sm:grid-cols-2">
               {upcoming.map((e) => (
                 <EventCard key={e.id} event={e} />
               ))}

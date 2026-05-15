@@ -45,7 +45,7 @@ export default async function EmployerMessages() {
             <p className="mt-3 text-section text-emce-text">No conversations yet</p>
           </Card>
         ) : (
-          <ul className="mt-6 space-y-2">
+          <ul className="emce-stagger mt-6 space-y-2">
             {threads.map((t) => (
               <li key={t.id}>
                 <Link href={`/employer/messages/${t.id}`}>

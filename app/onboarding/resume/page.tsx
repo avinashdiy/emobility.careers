@@ -20,10 +20,12 @@ export default async function ResumeUploadStep() {
   const hasExisting = Boolean(profile?.resumeUrl);
   const isReupload = hasExisting && Boolean(profile?.onboardingCompletedAt);
   return (
-    <Card className="p-8">
+    <Card animate className="p-8">
       <Badge variant="default" className="mb-2">{isReupload ? "Update" : "Step 2 of 5"}</Badge>
       <h1 className="text-2xl font-extrabold text-emce-text">
-        {isReupload ? "Re-upload your resume" : "Upload your resume"}
+        {isReupload ? "Re-upload your resume" : (
+          <>Upload your <span className="emce-text-gradient">resume</span></>
+        )}
       </h1>
       <p className="mt-1 text-sm text-emce-text-sec">
         {isReupload
@@ -34,7 +36,7 @@ export default async function ResumeUploadStep() {
       <form action={uploadAndParseResume} className="mt-6 space-y-4" encType="multipart/form-data">
         <label className="block">
           <div className="rounded-lg border-2 border-dashed border-emce-border bg-emce-light-soft/30 p-8 text-center transition hover:border-emce-mid hover:bg-emce-light-soft">
-            <div className="text-4xl">📄</div>
+            <div className="text-4xl animate-float">📄</div>
             <div className="mt-3 font-bold text-emce-text">Drop your resume or click to browse</div>
             <div className="mt-1 text-hint text-emce-text-sec">PDF or DOCX · max 10MB</div>
           </div>

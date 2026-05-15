@@ -71,10 +71,11 @@ export default async function OnboardingTopicsStep() {
   }
 
   return (
-    <Card className="p-8">
+    <Card animate className="p-8">
       <Badge variant="default" className="mb-2">Step 5 of 5 · Optional</Badge>
       <h1 className="text-2xl font-extrabold text-emce-text">
-        What do you want to read about?
+        What do you want to{" "}
+        <span className="emce-text-gradient">read about?</span>
       </h1>
       <p className="mt-1 text-sm text-emce-text-sec">
         Pick a few topics — your <strong>For-you feed</strong> will fill up with posts

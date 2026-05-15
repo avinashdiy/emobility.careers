@@ -136,16 +136,36 @@ export default async function ArticlesIndexPage({
     <>
       <SiteHeader />
       <main className="min-h-screen bg-emce-light-bg">
-        <section className="emce-hero-gradient text-white">
-          <div className="container max-w-5xl py-10 md:py-14">
-            <div className="emce-pill mb-3">
+        <section className="emce-mesh-hero relative text-white">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -left-10 top-10 hidden h-48 w-48 rounded-full bg-emce-mid/30 blur-3xl animate-float md:block"
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-10 bottom-2 hidden h-56 w-56 rounded-full bg-emce-light/20 blur-3xl animate-float md:block"
+            style={{ animationDelay: "1.6s" }}
+          />
+          <div
+            aria-hidden
+            className="emce-dot-grid pointer-events-none absolute inset-0 opacity-25"
+          />
+          <div className="container relative max-w-5xl py-10 md:py-14">
+            <div className="emce-pill mb-3 animate-fade-up">
               <span aria-hidden>📚</span>
               <span>EV knowledge</span>
             </div>
-            <h1 className="text-2xl font-extrabold leading-tight tracking-tight md:text-4xl">
-              Explainers, deep dives, and career guides for EV.
+            <h1
+              className="animate-fade-up text-2xl font-extrabold leading-tight tracking-tight md:text-4xl"
+              style={{ animationDelay: "80ms" }}
+            >
+              Explainers, deep dives, and{" "}
+              <span className="emce-text-gradient">career guides for EV.</span>
             </h1>
-            <p className="mt-3 max-w-2xl text-white/85 md:text-lg">
+            <p
+              className="animate-fade-up mt-3 max-w-2xl text-white/85 md:text-lg"
+              style={{ animationDelay: "160ms" }}
+            >
               Curated reading on battery, charging, motor, software, and the
               people making electric mobility happen.
             </p>
@@ -202,7 +222,7 @@ export default async function ArticlesIndexPage({
               <p className="text-hint font-bold uppercase tracking-wide text-emce-text-muted">
                 Featured
               </p>
-              <div className="mt-2 grid gap-3 md:grid-cols-3">
+              <div className="emce-stagger mt-2 grid gap-3 md:grid-cols-3">
                 {featured.map((a) => (
                   <Link key={a.id} href={`/articles/${a.slug}`} className="block">
                     <Card className="h-full overflow-hidden p-0 transition hover:border-emce-mid hover:shadow-emce-hover">
@@ -260,7 +280,7 @@ export default async function ArticlesIndexPage({
                 }
               />
             ) : (
-              <ul className="grid gap-3 md:grid-cols-2">
+              <ul className="emce-stagger grid gap-3 md:grid-cols-2">
                 {articles.map((a) => (
                   <li key={a.id}>
                     <Link href={`/articles/${a.slug}`} className="block">

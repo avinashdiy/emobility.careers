@@ -12,6 +12,7 @@ import {
   type ProfileViewerRow,
 } from "@/server/profile/views";
 import { setViewerVisibility } from "@/server/profile/view-actions";
+import { PageHeader } from "@/components/ui/page-header";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "Who viewed your profile" };
@@ -52,11 +53,10 @@ export default async function MyProfileViewsPage() {
 
   return (
     <div className="container max-w-3xl py-10">
-      <h1 className="text-dashboard text-emce-text">Who viewed your profile</h1>
-      <p className="mt-1 text-sm text-emce-text-sec">
-        Anyone who opens your public profile is counted here. Refreshes within
-        24 hours don&apos;t double-count.
-      </p>
+      <PageHeader
+        title="Who viewed your profile"
+        subtitle="Anyone who opens your public profile is counted here. Refreshes within 24 hours don't double-count."
+      />
 
       {/* Privacy banner — VISIBLE-mode users see "you're visible";
           ANONYMOUS-mode users see a warning that they only get

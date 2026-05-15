@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { EmployerShell } from "@/components/layout/employer-shell";
+import { PageHeader } from "@/components/ui/page-header";
 import { createStage, deleteStage, toggleStageActive } from "@/server/employer/pipeline-actions";
 
 export const metadata = { title: "Custom pipeline stages" };
@@ -31,10 +32,10 @@ export default async function PipelinePage() {
   return (
     <EmployerShell>
       <div className="container max-w-3xl py-10">
-        <h1 className="text-dashboard text-emce-text">Custom pipeline stages</h1>
-        <p className="mt-1 text-sm text-emce-text-sec">
-          Add company-specific stages on top of the default ATS flow (Applied → Hired). Set SLAs to flag stuck applications.
-        </p>
+        <PageHeader
+          title="Custom pipeline stages"
+          subtitle="Add company-specific stages on top of the default ATS flow (Applied → Hired). Set SLAs to flag stuck applications."
+        />
 
         <Card className="mt-4 p-6">
           <h2 className="text-section text-emce-text">Add a stage</h2>

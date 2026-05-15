@@ -40,7 +40,7 @@ export default async function MessagesInbox() {
           </p>
         </Card>
       ) : (
-        <ul className="mt-6 space-y-2">
+        <ul className="emce-stagger mt-6 space-y-2">
           {threads.map((t) => (
             <li key={t.id}>
               <Link href={`/me/messages/${t.id}`}>

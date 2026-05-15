@@ -68,21 +68,41 @@ export default async function SalariesPage({
     <>
       <SiteHeader />
       <main className="min-h-screen bg-emce-light-bg">
-        <section className="emce-hero-gradient text-white">
-          <div className="container max-w-5xl py-12 md:py-16">
-            <div className="emce-pill mb-4">
+        <section className="emce-mesh-hero relative text-white">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -left-10 top-10 hidden h-56 w-56 rounded-full bg-emce-mid/30 blur-3xl animate-float md:block"
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-8 bottom-4 hidden h-64 w-64 rounded-full bg-emce-orange/20 blur-3xl animate-float md:block"
+            style={{ animationDelay: "1.6s" }}
+          />
+          <div
+            aria-hidden
+            className="emce-dot-grid pointer-events-none absolute inset-0 opacity-25"
+          />
+          <div className="container relative max-w-5xl py-12 md:py-16">
+            <div className="emce-pill mb-4 animate-fade-up">
               <span aria-hidden>💰</span>
               <span>Anonymous · India-only · EV-only</span>
             </div>
-            <h1 className="text-3xl font-extrabold leading-tight tracking-tight md:text-5xl">
-              What India's EV industry actually pays.
+            <h1
+              className="animate-fade-up text-3xl font-extrabold leading-tight tracking-tight md:text-5xl"
+              style={{ animationDelay: "80ms" }}
+            >
+              What India&apos;s EV industry{" "}
+              <span className="emce-text-gradient">actually pays.</span>
             </h1>
-            <p className="mt-3 max-w-2xl text-white/85 md:text-lg">
+            <p
+              className="animate-fade-up mt-3 max-w-2xl text-white/85 md:text-lg"
+              style={{ animationDelay: "160ms" }}
+            >
               Crowd-sourced from {counters.totalApproved.toLocaleString()} verified submissions across{" "}
               {counters.companiesCovered.toLocaleString()} companies and {counters.rolesCovered.toLocaleString()} roles. Submit yours anonymously to unlock the database for 30 days.
             </p>
 
-            <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <div className="emce-stagger mt-8 grid grid-cols-2 gap-3 sm:grid-cols-4">
               <HeroCounter value={counters.totalApproved} label="Verified salaries" />
               <HeroCounter value={counters.companiesCovered} label="Companies" />
               <HeroCounter value={counters.rolesCovered} label="Roles" />

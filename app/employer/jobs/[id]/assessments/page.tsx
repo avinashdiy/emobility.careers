@@ -74,7 +74,7 @@ export default async function JobAssessmentsPage({
         )}
 
         {job.assessments.length > 0 ? (
-          <ul className="mt-6 space-y-3">
+          <ul className="emce-stagger mt-6 space-y-3">
             {job.assessments.map((a) => (
               <li key={a.id}>
                 <Card>

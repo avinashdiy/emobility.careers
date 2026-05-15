@@ -108,7 +108,7 @@ export default async function AlertsPage() {
           <p className="text-hint text-emce-text-sec">No alerts yet — create one above.</p>
         </Card>
       ) : (
-        <ul className="mt-3 space-y-2">
+        <ul className="emce-stagger mt-3 space-y-2">
           {alerts.map((a) => (
             <li key={a.id}>
               <Card className="p-4">

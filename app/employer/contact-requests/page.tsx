@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { EmployerShell } from "@/components/layout/employer-shell";
+import { PageHeader } from "@/components/ui/page-header";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "Contact requests" };
@@ -90,13 +91,10 @@ export default async function EmployerContactRequestsPage({
   return (
     <EmployerShell>
       <div className="container max-w-4xl py-10">
-        <h1 className="text-dashboard text-emce-text">Contact requests</h1>
-        <p className="mt-1 text-sm text-emce-text-sec">
-          Candidates you've asked to share their email and phone. Granted rows
-          unlock contact across the talent search, ATS, and public profile —
-          but only for you, not your teammates. Pending rows expire after 30
-          days if the candidate doesn't respond.
-        </p>
+        <PageHeader
+          title="Contact requests"
+          subtitle="Candidates you've asked to share their email and phone. Granted rows unlock contact across the talent search, ATS, and public profile — but only for you, not your teammates. Pending rows expire after 30 days if the candidate doesn't respond."
+        />
 
         <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Filter by status">
           {TABS.map((t) => (
@@ -146,7 +144,7 @@ export default async function EmployerContactRequestsPage({
             </div>
           </Card>
         ) : (
-          <ul className="mt-6 space-y-3">
+          <ul className="emce-stagger mt-6 space-y-3">
             {rows.map((r) => {
               const cp = r.target.candidateProfile;
               const fullName = cp

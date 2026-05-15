@@ -194,7 +194,7 @@ export default async function NetworkPage() {
                 You haven&apos;t connected with anyone yet — start with the suggestions below.
               </p>
             ) : (
-              <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+              <ul className="emce-stagger mt-3 grid gap-3 sm:grid-cols-2">
                 {accepted.map((c) => {
                   const otherUserId = c.requesterId === session.user.id ? c.recipientId : c.requesterId;
                   const otherProfile = c.requesterId === session.user.id ? c.recipient.candidateProfile : c.requester.candidateProfile;
@@ -228,7 +228,7 @@ export default async function NetworkPage() {
                 We&apos;ll show suggestions based on your EV domain as more people join.
               </p>
             ) : (
-              <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+              <ul className="emce-stagger mt-3 grid gap-3 sm:grid-cols-2">
                 {suggestions.map((s) => {
                   const fullName = `${s.firstName} ${s.lastName ?? ""}`.trim();
                   return (

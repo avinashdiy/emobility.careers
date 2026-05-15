@@ -33,9 +33,14 @@ export default async function MentorsPage({
     <>
       <SiteHeader />
       <div className="container max-w-6xl py-8">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-wrap items-end justify-between gap-3 animate-fade-up">
           <div>
-            <h1 className="text-dashboard text-emce-text md:text-3xl">Find an EV mentor</h1>
+            <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+              🎓 Mentorship
+            </p>
+            <h1 className="mt-1 text-2xl font-extrabold leading-tight tracking-tight text-emce-text md:text-[28px]">
+              Find an <span className="emce-text-gradient">EV mentor</span>
+            </h1>
             <p className="mt-1 max-w-2xl text-sm text-emce-text-sec">
               Book 1:1 sessions with EV professionals, DIYguru trainers, faculty, and industry experts. Free or paid — your call.
             </p>
@@ -73,7 +78,7 @@ export default async function MentorsPage({
 
         <p className="mt-4 text-sm text-emce-text-sec">{mentors.length} mentors</p>
 
-        <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="emce-stagger mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {mentors.map((m) => {
             const cp = m.user.candidateProfile;
             const fullName = cp ? `${cp.firstName} ${cp.lastName ?? ""}`.trim() : "Mentor";

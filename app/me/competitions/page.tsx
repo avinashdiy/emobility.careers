@@ -23,7 +23,7 @@ export default async function MyCompetitionsPage() {
           </Button>
         </div>
 
-        <div className="space-y-3">
+        <div className="emce-stagger space-y-3">
           {regs.length === 0 && (
             <Card className="p-10 text-center text-sm text-emce-text-sec">
               You haven't registered for any competitions yet.

@@ -90,13 +90,18 @@ export default async function ATSPage({
   return (
     <EmployerShell>
       <div className="container max-w-7xl py-6">
-        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="mb-4 flex flex-col gap-3 animate-fade-up sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <Link href={`/employer/jobs/${id}`} className="text-hint font-bold text-emce-text-sec hover:text-emce-dark">
               ← Job detail
             </Link>
-            <h1 className="mt-1 text-dashboard text-emce-text">{job.title} — ATS</h1>
-            <p className="text-hint text-emce-text-sec">
+            <p className="mt-1 text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+              📥 Applicant tracking
+            </p>
+            <h1 className="mt-0.5 text-2xl font-extrabold leading-tight tracking-tight text-emce-text md:text-[28px]">
+              {job.title}
+            </h1>
+            <p className="mt-1 text-hint text-emce-text-sec">
               {job._count.applications} applications · drag cards across stages on desktop, or use the checkbox + bulk-move bar on mobile.
             </p>
           </div>
@@ -104,13 +109,13 @@ export default async function ATSPage({
             <Button asChild variant="outline" size="sm">
               <Link href={`/employer/jobs/${id}/matches`}>AI matches</Link>
             </Button>
-            <Badge variant={job.status === "OPEN" ? "success" : "outline"}>{job.status}</Badge>
+            <Badge variant={job.status === "OPEN" ? "live" : "outline"}>{job.status}</Badge>
           </div>
         </div>
 
         {applications.length === 0 ? (
-          <Card className="p-10 text-center">
-            <div className="text-4xl">📭</div>
+          <Card variant="glow" className="p-10 text-center">
+            <div className="text-4xl animate-float">📭</div>
             <h2 className="mt-3 text-section text-emce-text">No applications yet</h2>
             <p className="mt-1 text-hint text-emce-text-sec">
               Once candidates apply, they&apos;ll show up here. Use AI matches to invite candidates manually.

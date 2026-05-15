@@ -40,17 +40,37 @@ export default async function RoastUploadPage({
     <>
       <SiteHeader />
       <main className="min-h-screen bg-emce-light-bg">
-        <section className="emce-hero-gradient text-white">
-          <div className="container max-w-3xl py-14 md:py-20">
-            <div className="emce-pill mb-4">
+        <section className="emce-mesh-hero relative text-white">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -left-8 top-8 hidden h-48 w-48 rounded-full bg-emce-orange/30 blur-3xl animate-float md:block"
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-10 bottom-4 hidden h-56 w-56 rounded-full bg-emce-mid/25 blur-3xl animate-float md:block"
+            style={{ animationDelay: "1.6s" }}
+          />
+          <div
+            aria-hidden
+            className="emce-dot-grid pointer-events-none absolute inset-0 opacity-25"
+          />
+          <div className="container relative max-w-3xl py-14 md:py-20">
+            <div className="emce-pill mb-4 animate-fade-up">
               <span aria-hidden>🔥</span>
               <span>Free · No signup required</span>
             </div>
-            <h1 className="text-3xl font-extrabold leading-tight tracking-tight md:text-5xl">
-              How EV-ready is your resume?
+            <h1
+              className="animate-fade-up text-3xl font-extrabold leading-tight tracking-tight md:text-5xl"
+              style={{ animationDelay: "80ms" }}
+            >
+              How EV-ready is your{" "}
+              <span className="emce-text-gradient">resume?</span>
             </h1>
-            <p className="mt-4 max-w-xl text-white/85 md:text-lg">
-              Upload a PDF or DOCX. We'll score your CV on six EV-industry dimensions, point out the three biggest fixes, and give you a card you can post on LinkedIn.
+            <p
+              className="animate-fade-up mt-4 max-w-xl text-white/85 md:text-lg"
+              style={{ animationDelay: "160ms" }}
+            >
+              Upload a PDF or DOCX. We&apos;ll score your CV on six EV-industry dimensions, point out the three biggest fixes, and give you a card you can post on LinkedIn.
             </p>
           </div>
         </section>

@@ -42,11 +42,12 @@ export default async function ConfirmStep() {
   }
 
   return (
-    <div className="space-y-4">
-      <Card className="p-8">
+    <div className="emce-stagger space-y-4">
+      <Card animate className="p-8">
         <Badge variant="default" className="mb-2">Step 3 of 5</Badge>
         <h1 className="text-2xl font-extrabold text-emce-text">
-          Here&apos;s what we extracted
+          Here&apos;s what we{" "}
+          <span className="emce-text-gradient">extracted</span>
         </h1>
         <p className="mt-1 text-sm text-emce-text-sec">
           Review and continue. You can edit anything from your profile page later.

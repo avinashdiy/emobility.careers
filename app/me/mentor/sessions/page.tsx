@@ -58,7 +58,7 @@ export default async function MentorSessionsPage() {
 
         <div>
           <h2 className="text-section text-emce-text">Upcoming</h2>
-          <div className="mt-2 space-y-3">
+          <div className="emce-stagger mt-2 space-y-3">
             {upcoming.length === 0 && (
               <Card className="p-6 text-center text-sm text-emce-text-sec">No upcoming sessions.</Card>
             )}
@@ -93,7 +93,7 @@ export default async function MentorSessionsPage() {
 
         <div>
           <h2 className="text-section text-emce-text">Past</h2>
-          <div className="mt-2 space-y-3">
+          <div className="emce-stagger mt-2 space-y-3">
             {past.length === 0 && (
               <Card className="p-6 text-center text-sm text-emce-text-sec">No past sessions.</Card>
             )}

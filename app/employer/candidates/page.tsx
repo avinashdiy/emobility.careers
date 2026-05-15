@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { NativeSelect } from "@/components/ui/select";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import { CandidateSearchList, type SearchCandidate } from "@/components/employer/CandidateSearchList";
+import { PageHeader } from "@/components/ui/page-header";
 import { parseBooleanQuery } from "@/lib/search/boolean";
 
 export const metadata = { title: "Search candidates" };
@@ -149,10 +150,10 @@ export default async function TalentSearch({
   return (
     <EmployerShell>
       <div className="container max-w-6xl py-10">
-        <h1 className="text-dashboard text-emce-text">Candidate search</h1>
-        <p className="mt-1 text-sm text-emce-text-sec">
-          Search the public talent network. Tick candidates to message a shortlist in one click. Use AI matching from a job for ranked recommendations.
-        </p>
+        <PageHeader
+          title="Candidate search"
+          subtitle="Search the public talent network. Tick candidates to message a shortlist in one click. Use AI matching from a job for ranked recommendations."
+        />
 
         <Card className="mt-6 p-4">
           <form className="grid gap-3 sm:grid-cols-12">

@@ -46,18 +46,40 @@ export default function DIYguruPage() {
   return (
     <>
       <SiteHeader />
-      <section className="emce-hero-gradient pb-16 pt-16 text-white">
-        <div className="container max-w-4xl">
-          <div className="emce-pill mb-4">⭐ Verified</div>
-          <h1 className="text-hero text-white">
-            Trained at <span className="text-emce-mid">DIYguru?</span>
+      <section className="emce-mesh-hero relative pb-16 pt-16 text-white">
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -left-10 top-10 hidden h-56 w-56 rounded-full bg-emce-mid/30 blur-3xl animate-float md:block"
+        />
+        <span
+          aria-hidden
+          className="pointer-events-none absolute -right-12 bottom-4 hidden h-64 w-64 rounded-full bg-emce-orange/20 blur-3xl animate-float md:block"
+          style={{ animationDelay: "1.6s" }}
+        />
+        <div
+          aria-hidden
+          className="emce-dot-grid pointer-events-none absolute inset-0 opacity-25"
+        />
+        <div className="container relative max-w-4xl">
+          <div className="emce-pill mb-4 animate-fade-up">⭐ Verified</div>
+          <h1
+            className="animate-fade-up text-hero text-white"
+            style={{ animationDelay: "80ms" }}
+          >
+            Trained at <span className="emce-text-gradient">DIYguru?</span>
           </h1>
-          <p className="mt-4 max-w-2xl text-base text-white/85 md:text-lg">
+          <p
+            className="animate-fade-up mt-4 max-w-2xl text-base text-white/85 md:text-lg"
+            style={{ animationDelay: "160ms" }}
+          >
             DIYguru graduates carry a verified badge on eMobility Careers — the strongest signal
             of hands-on EV training in India. Here&apos;s how verification works.
           </p>
-          <div className="mt-6 flex flex-wrap gap-3">
-            <Button asChild variant="accent" size="lg">
+          <div
+            className="animate-fade-up mt-6 flex flex-wrap gap-3"
+            style={{ animationDelay: "240ms" }}
+          >
+            <Button asChild variant="glow" size="lg">
               <Link href="/signup?role=CANDIDATE">Create your profile →</Link>
             </Button>
             <Button asChild variant="outline" size="lg" className="border-white text-white hover:bg-white/10 hover:text-white">
@@ -70,7 +92,7 @@ export default function DIYguruPage() {
       <div className="container max-w-4xl py-12">
         <Badge variant="default" className="mb-2">How verification works</Badge>
         <h2 className="text-dashboard text-emce-text md:text-3xl">Four steps to verified</h2>
-        <ol className="mt-6 space-y-4">
+        <ol className="emce-stagger mt-6 space-y-4">
           {HOW.map((s) => (
             <li key={s.step}>
               <Card className="p-5">
@@ -90,7 +112,7 @@ export default function DIYguruPage() {
 
         <Card className="mt-10 border-emce-mid bg-emce-light-soft p-6">
           <h2 className="text-section text-emce-text">What you get as a verified candidate</h2>
-          <ul className="mt-3 space-y-2">
+          <ul className="emce-stagger mt-3 space-y-2">
             {PERKS.map((p) => (
               <li key={p} className="text-body text-emce-text-sec">{p}</li>
             ))}

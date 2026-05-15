@@ -80,10 +80,17 @@ export default async function PeoplePage({
     <>
       <SiteHeader />
       <div className="container max-w-5xl py-8">
-        <h1 className="text-dashboard text-emce-text md:text-3xl">Discover people in EV</h1>
-        <p className="mt-1 text-sm text-emce-text-sec">
-          Connect with engineers, researchers, students, faculty, and industry experts across the EV ecosystem.
-        </p>
+        <div className="animate-fade-up">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+            👥 Network
+          </p>
+          <h1 className="mt-1 text-2xl font-extrabold leading-tight tracking-tight text-emce-text md:text-[28px]">
+            Discover <span className="emce-text-gradient">people in EV</span>
+          </h1>
+          <p className="mt-1 text-sm text-emce-text-sec">
+            Connect with engineers, researchers, students, faculty, and industry experts across the EV ecosystem.
+          </p>
+        </div>
 
         <Card className="mt-6">
           <form className="grid gap-3 sm:grid-cols-12">
@@ -113,7 +120,7 @@ export default async function PeoplePage({
 
         <p className="mt-4 text-sm text-emce-text-sec">{people.length} people</p>
 
-        <ul className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <ul className="emce-stagger mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {await Promise.all(people.map(async (p) => {
             const fullName = `${p.firstName} ${p.lastName ?? ""}`.trim();
             const status = session?.user

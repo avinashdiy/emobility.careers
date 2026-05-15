@@ -39,17 +39,36 @@ export default async function DigestPage({
     <>
       <SiteHeader />
       <main className="min-h-screen bg-emce-light-bg">
-        <section className="emce-hero-gradient text-white">
-          <div className="container max-w-3xl py-14 md:py-20">
-            <div className="emce-pill mb-4">
+        <section className="emce-mesh-hero relative text-white">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -left-10 top-10 hidden h-56 w-56 rounded-full bg-emce-mid/30 blur-3xl animate-float md:block"
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-8 bottom-4 hidden h-60 w-60 rounded-full bg-emce-light/20 blur-3xl animate-float md:block"
+            style={{ animationDelay: "1.8s" }}
+          />
+          <div
+            aria-hidden
+            className="emce-dot-grid pointer-events-none absolute inset-0 opacity-25"
+          />
+          <div className="container relative max-w-3xl py-14 md:py-20">
+            <div className="emce-pill mb-4 animate-fade-up">
               <span aria-hidden>📱</span>
               <span>Free · WhatsApp · Unsubscribe in one tap</span>
             </div>
-            <h1 className="text-3xl font-extrabold leading-tight tracking-tight md:text-5xl">
+            <h1
+              className="animate-fade-up text-3xl font-extrabold leading-tight tracking-tight md:text-5xl"
+              style={{ animationDelay: "80ms" }}
+            >
               5 fresh EV jobs<br />
-              <span className="text-emce-mid">every morning. On WhatsApp.</span>
+              <span className="emce-text-gradient">every morning. On WhatsApp.</span>
             </h1>
-            <p className="mt-4 max-w-xl text-white/85 md:text-lg">
+            <p
+              className="animate-fade-up mt-4 max-w-xl text-white/85 md:text-lg"
+              style={{ animationDelay: "160ms" }}
+            >
               India runs on WhatsApp. Skip the inbox — get curated EV jobs delivered to the app you already check 100 times a day. Filter by domain and location.
             </p>
           </div>

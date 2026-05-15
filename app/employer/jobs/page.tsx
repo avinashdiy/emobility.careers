@@ -44,18 +44,19 @@ export default async function EmployerJobsPage() {
 
         {jobs.length === 0 ? (
           <EmptyState
+            variant="mesh"
             icon="📝"
             title="No jobs yet"
             body="Post your first job to start matching with candidates."
             action={
-              <Button asChild>
+              <Button asChild variant="glow">
                 <Link href="/employer/jobs/new">Post a job →</Link>
               </Button>
             }
           />
         ) : (
           <Card className="p-0">
-            <ul className="divide-y divide-emce-border">
+            <ul className="emce-stagger divide-y divide-emce-border">
               {jobs.map((j) => (
                 <li key={j.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                   <div>

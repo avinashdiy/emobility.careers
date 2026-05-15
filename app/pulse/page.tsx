@@ -4,6 +4,7 @@ import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import {
@@ -76,21 +77,44 @@ export default async function PulsePage() {
       <SiteHeader />
       <main className="min-h-screen bg-emce-light-bg">
         {/* ─── Hero with live counters ─── */}
-        <section className="emce-hero-gradient text-white">
-          <div className="container max-w-6xl py-12 md:py-16">
-            <div className="emce-pill mb-4">
-              <span aria-hidden>⚡</span>
+        <section className="emce-mesh-hero relative text-white">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -left-12 top-14 hidden h-56 w-56 rounded-full bg-emce-mid/30 blur-3xl animate-float md:block"
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-10 -top-4 hidden h-64 w-64 rounded-full bg-emce-light/20 blur-3xl animate-float md:block"
+            style={{ animationDelay: "1.8s" }}
+          />
+          <div
+            aria-hidden
+            className="emce-dot-grid pointer-events-none absolute inset-0 opacity-25"
+          />
+          <div className="container relative max-w-6xl py-12 md:py-16">
+            <div className="emce-pill mb-4 animate-fade-up">
+              <span aria-hidden className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping-soft rounded-full bg-emce-mid" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-emce-mid" />
+              </span>
               <span>Live · {new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "short" })}</span>
             </div>
-            <h1 className="text-2xl font-extrabold leading-tight tracking-tight md:text-4xl">
-              The live heartbeat of India's EV industry.
+            <h1
+              className="animate-fade-up text-2xl font-extrabold leading-tight tracking-tight md:text-4xl"
+              style={{ animationDelay: "80ms" }}
+            >
+              The live heartbeat of{" "}
+              <span className="emce-text-gradient">India&apos;s EV industry.</span>
             </h1>
-            <p className="mt-3 max-w-2xl text-white/85 md:text-lg">
+            <p
+              className="animate-fade-up mt-3 max-w-2xl text-white/85 md:text-lg"
+              style={{ animationDelay: "160ms" }}
+            >
               Where the people building electric mobility hire, get hired, and trade notes. Updated every minute.
             </p>
 
             {/* Counter strip — large numbers + tiny labels in LinkedIn density */}
-            <div className="mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
+            <div className="emce-stagger mt-8 grid grid-cols-2 gap-3 sm:grid-cols-5">
               <Counter value={counters.openJobs} label="Open EV jobs" big />
               <Counter
                 value={counters.jobsAddedToday}
@@ -136,7 +160,7 @@ export default async function PulsePage() {
             {companies.length === 0 ? (
               <Skeleton text="No active employers right now — check back soon." />
             ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="emce-stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {companies.map((c) => (
                   <Link
                     key={c.slug}
@@ -199,7 +223,7 @@ export default async function PulsePage() {
             {hires.length === 0 ? (
               <Skeleton text="Hires will appear here as recruiters mark their candidates HIRED." />
             ) : (
-              <ul className="grid gap-2 sm:grid-cols-2">
+              <ul className="emce-stagger grid gap-2 sm:grid-cols-2">
                 {hires.map((h, i) => (
                   <li
                     key={i}
@@ -342,11 +366,11 @@ function Counter({
   return (
     <div className={big ? "col-span-2 sm:col-span-1" : ""}>
       <p
-        className={`font-extrabold leading-none ${
+        className={`font-extrabold leading-none tabular-nums ${
           big ? "text-4xl md:text-5xl" : "text-2xl md:text-3xl"
         } ${accent ? "text-emce-mid" : "text-white"}`}
       >
-        {value.toLocaleString()}
+        <AnimatedNumber to={value} />
       </p>
       <p className="mt-1.5 text-[11px] font-bold uppercase tracking-wide text-white/70">
         {label}

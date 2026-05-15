@@ -89,7 +89,7 @@ export default async function MyTeamsPage() {
               <h2 className="text-hint font-bold uppercase tracking-wide text-emce-text-muted">
                 Teams you captain
               </h2>
-              <ul className="space-y-2">
+              <ul className="emce-stagger space-y-2">
                 {ledTeams.map((t) => {
                   const accepted = t.members.filter((m) => m.status === "ACCEPTED").length;
                   const pending = t.members.filter((m) => m.status === "INVITED").length;
@@ -135,7 +135,7 @@ export default async function MyTeamsPage() {
               <h2 className="text-hint font-bold uppercase tracking-wide text-emce-text-muted">
                 Teams you joined
               </h2>
-              <ul className="space-y-2">
+              <ul className="emce-stagger space-y-2">
                 {memberTeams.map((m) => {
                   const t = m.registration;
                   // Member rows link to: public page if published, else

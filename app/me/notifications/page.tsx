@@ -169,7 +169,7 @@ export default async function NotificationsPage({
           body="You'll see updates here as people react to your work, jobs change stage, or your mentor sessions approach."
         />
       ) : (
-        <ul className="mt-6 space-y-2">
+        <ul className="emce-stagger mt-6 space-y-2">
           {filtered.map((n) => {
             const Icon = iconFor(n.type);
             const unread = !n.readAt && !unseenIds.includes(n.id);

@@ -44,7 +44,7 @@ export default async function SavedCandidates() {
             <Button asChild className="mt-4"><Link href="/employer/candidates">Browse candidates →</Link></Button>
           </Card>
         ) : (
-          <ul className="mt-6 space-y-3">
+          <ul className="emce-stagger mt-6 space-y-3">
             {saved.map((s) => {
               const fullName = [s.candidate.firstName, s.candidate.lastName].filter(Boolean).join(" ");
               return (

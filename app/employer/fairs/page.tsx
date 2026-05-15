@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
 
 export const metadata: Metadata = { title: "Recruitment drives" };
 export const dynamic = "force-dynamic";
@@ -59,12 +60,10 @@ export default async function EmployerFairsPage() {
   return (
     <EmployerShell>
       <div className="container max-w-5xl space-y-6 py-6 md:py-8">
-        <div>
-          <h1 className="text-dashboard text-emce-text">Recruitment drives</h1>
-          <p className="mt-1 text-hint text-emce-text-sec">
-            Multi-company job fairs your company is invited to or participating in.
-          </p>
-        </div>
+        <PageHeader
+          title="Recruitment drives"
+          subtitle="Multi-company job fairs your company is invited to or participating in."
+        />
 
         {participations.length === 0 ? (
           <EmptyState
@@ -76,7 +75,7 @@ export default async function EmployerFairsPage() {
           <>
             {pending.length > 0 && (
               <Section title="Pending invitations" hint="Confirm to set up your booth.">
-                <ul className="space-y-2">
+                <ul className="emce-stagger space-y-2">
                   {pending.map((p) => (
                     <ParticipationRow key={p.id} p={p} />
                   ))}
@@ -85,7 +84,7 @@ export default async function EmployerFairsPage() {
             )}
             {confirmed.length > 0 && (
               <Section title="Active booths" hint="Attach jobs, edit your booth pitch, review applicants.">
-                <ul className="space-y-2">
+                <ul className="emce-stagger space-y-2">
                   {confirmed.map((p) => (
                     <ParticipationRow key={p.id} p={p} />
                   ))}
@@ -94,7 +93,7 @@ export default async function EmployerFairsPage() {
             )}
             {past.length > 0 && (
               <Section title="Past fairs" hint="Applicant queues stay accessible after the fair closes.">
-                <ul className="space-y-2">
+                <ul className="emce-stagger space-y-2">
                   {past.map((p) => (
                     <ParticipationRow key={p.id} p={p} />
                   ))}

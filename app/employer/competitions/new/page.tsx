@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import { CompetitionDraftForm } from "@/components/competitions/CompetitionDraftForm";
+import { PageHeader } from "@/components/ui/page-header";
 
 export const metadata = { title: "New competition" };
 
@@ -19,12 +20,10 @@ export default async function NewCompetitionPage() {
   return (
     <EmployerShell>
       <div className="container max-w-3xl space-y-4 py-6">
-        <div>
-          <h1 className="text-dashboard text-emce-text md:text-3xl">Draft a new competition</h1>
-          <p className="mt-1 text-sm text-emce-text-sec">
-            Save a draft, then add stages and prizes before submitting for admin review.
-          </p>
-        </div>
+        <PageHeader
+          title="Draft a new competition"
+          subtitle="Save a draft, then add stages and prizes before submitting for admin review."
+        />
         <CompetitionDraftForm hostCompanyId={employer.companyId} evDomains={evDomains} />
       </div>
     </EmployerShell>

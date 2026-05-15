@@ -44,7 +44,7 @@ export default async function SavedJobsPage() {
           </p>
         </Card>
       ) : (
-        <ul className="mt-6 space-y-3">
+        <ul className="emce-stagger mt-6 space-y-3">
           {saved.map((s) => (
             <li key={s.id} className="flex items-start gap-2">
               <div className="flex-1">

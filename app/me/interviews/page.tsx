@@ -38,7 +38,7 @@ export default async function MyInterviews() {
       {upcoming.length > 0 && (
         <>
           <h2 className="mt-6 text-section text-emce-text">Upcoming</h2>
-          <ul className="mt-3 space-y-3">
+          <ul className="emce-stagger mt-3 space-y-3">
             {upcoming.map((i) => (
               <li key={i.id}>
                 <Card>
@@ -75,7 +75,7 @@ export default async function MyInterviews() {
       {past.length > 0 && (
         <>
           <h2 className="mt-8 text-section text-emce-text">Past</h2>
-          <ul className="mt-3 space-y-3">
+          <ul className="emce-stagger mt-3 space-y-3">
             {past.map((i) => (
               <li key={i.id}>
                 <Card>

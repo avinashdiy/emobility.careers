@@ -154,15 +154,35 @@ export default function AIToolsHub() {
     <>
       <SiteHeader />
       <main className="min-h-screen bg-emce-light-bg">
-        <section className="emce-hero-gradient text-white">
-          <div className="container max-w-4xl py-12 md:py-16">
-            <p className="text-hint font-bold uppercase tracking-wide text-emce-mid">
-              AI tools, built for the EV industry
+        <section className="emce-mesh-hero relative text-white">
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -left-10 top-10 hidden h-56 w-56 rounded-full bg-emce-mid/30 blur-3xl animate-float md:block"
+          />
+          <span
+            aria-hidden
+            className="pointer-events-none absolute -right-12 bottom-2 hidden h-60 w-60 rounded-full bg-emce-light/20 blur-3xl animate-float md:block"
+            style={{ animationDelay: "1.6s" }}
+          />
+          <div
+            aria-hidden
+            className="emce-dot-grid pointer-events-none absolute inset-0 opacity-25"
+          />
+          <div className="container relative max-w-4xl py-12 md:py-16">
+            <p className="animate-fade-up text-hint font-bold uppercase tracking-[0.2em] text-emce-mid">
+              ✦ AI tools, built for the EV industry
             </p>
-            <h1 className="mt-2 text-3xl font-extrabold leading-tight md:text-4xl">
-              Get the unfair edge on your next EV interview
+            <h1
+              className="animate-fade-up mt-2 text-3xl font-extrabold leading-tight md:text-4xl"
+              style={{ animationDelay: "80ms" }}
+            >
+              Get the unfair edge on your next{" "}
+              <span className="emce-text-gradient">EV interview</span>
             </h1>
-            <p className="mt-3 max-w-2xl text-white/85">
+            <p
+              className="animate-fade-up mt-3 max-w-2xl text-white/85"
+              style={{ animationDelay: "160ms" }}
+            >
               Free, no-signup tools designed for India&apos;s EV hiring loops.
               Every tool is tuned to the battery / charging / motors / software
               hiring bar — not the generic SaaS one.
@@ -171,7 +191,7 @@ export default function AIToolsHub() {
         </section>
 
         <div className="container max-w-4xl py-8 md:py-10">
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="emce-stagger grid gap-4 sm:grid-cols-2">
             {TOOLS.map((t) => (
               <Link
                 key={t.href}

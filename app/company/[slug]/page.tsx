@@ -416,7 +416,7 @@ export default async function PublicCompanyPage({
                         See all {company._count.jobs}
                       </Link>
                     </div>
-                    <ul className="mt-3 space-y-2">
+                    <ul className="emce-stagger mt-3 space-y-2">
                       {company.jobs.slice(0, 3).map((j) => (
                         <li key={j.id}><JobCard job={j} /></li>
                       ))}
@@ -437,7 +437,7 @@ export default async function PublicCompanyPage({
                     body="Follow the company to be notified when new roles open."
                   />
                 ) : (
-                  <ul className="mt-3 space-y-2">
+                  <ul className="emce-stagger mt-3 space-y-2">
                     {company.jobs.map((j) => (
                       <li key={j.id}><JobCard job={j} /></li>
                     ))}
@@ -463,7 +463,7 @@ export default async function PublicCompanyPage({
                       body={`Follow ${company.name} to be notified when they host one.`}
                     />
                   ) : (
-                    <ul className="mt-3 space-y-2">
+                    <ul className="emce-stagger mt-3 space-y-2">
                       {upcomingEvents.map((e) => (
                         <li key={e.id}>
                           <Link
@@ -500,7 +500,7 @@ export default async function PublicCompanyPage({
                 {pastEvents.length > 0 && (
                   <Card>
                     <h2 className="text-section text-emce-text">Past events</h2>
-                    <ul className="mt-3 space-y-2">
+                    <ul className="emce-stagger mt-3 space-y-2">
                       {pastEvents.map((e) => (
                         <li key={e.id}>
                           <Link
@@ -540,7 +540,7 @@ export default async function PublicCompanyPage({
                     body="Once employees link this company in their experience, they'll show up here."
                   />
                 ) : (
-                  <ul className="mt-3 grid gap-3 sm:grid-cols-2">
+                  <ul className="emce-stagger mt-3 grid gap-3 sm:grid-cols-2">
                     {uniquePeople.map((p) => {
                       const c = p.candidate;
                       const name = `${c.firstName} ${c.lastName ?? ""}`.trim();

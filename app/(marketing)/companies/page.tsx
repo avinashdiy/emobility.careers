@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Card } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeader } from "@/components/ui/page-header";
+import { AnimatedNumber } from "@/components/ui/animated-number";
 
 export const metadata = { title: "EV companies hiring" };
 
@@ -14,26 +17,32 @@ export default async function CompaniesPage() {
 
   return (
     <div className="container py-10">
-      <Badge variant="default">Companies</Badge>
-      <h1 className="mt-2 text-dashboard text-emce-text md:text-3xl">
-        EV companies hiring on emobility.careers
-      </h1>
-      <p className="mt-1 text-sm text-emce-text-sec">
-        Explore verified EV-industry employers — from startups to OEMs to charging operators.
-      </p>
+      <PageHeader
+        eyebrow="Companies"
+        title={`EV companies hiring on emobility.careers`}
+        accent="hiring"
+        subtitle={
+          <>
+            <AnimatedNumber to={companies.length} />{" "}
+            verified EV-industry employers — from startups to OEMs to charging operators.
+          </>
+        }
+      />
 
       {companies.length === 0 ? (
-        <Card className="mt-6 p-10 text-center">
-          <div className="text-4xl">🏢</div>
-          <p className="mt-3 text-section text-emce-text">No verified companies yet</p>
-          <p className="mt-1 text-hint text-emce-text-sec">Check back soon!</p>
-        </Card>
+        <EmptyState
+          variant="mesh"
+          icon="🏢"
+          title="No verified companies yet"
+          body="Check back soon — verified EV employers are landing every week."
+          className="mt-6"
+        />
       ) : (
-        <ul className="mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+        <ul className="emce-stagger mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {companies.map((c) => (
             <li key={c.id}>
               <Link href={`/company/${c.slug}`}>
-                <Card className="h-full">
+                <Card variant="interactive" className="h-full">
                   <div className="flex items-center gap-3">
                     <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-md bg-emce-light-soft text-base font-extrabold text-emce-dark">
                       {c.logoUrl ? (

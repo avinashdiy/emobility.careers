@@ -19,6 +19,13 @@ import { cn } from "@/lib/utils";
  * Density follows the LinkedIn pattern at md+ (3xl title, single line of
  * subtitle), tightening on mobile so it doesn't crowd the rest of the
  * page.
+ *
+ * Vibe pass: PageHeader now animates in by default (one-shot
+ * fade-up) and the title font moves to `font-extrabold` with a tighter
+ * tracking. The eyebrow gets the brand `emce-mid` colour so it pops
+ * against the neutral body text without us touching every consuming
+ * page. Pass `animate={false}` to opt out (use case: pages where the
+ * header is below an animated hero that's already drawing the eye).
  */
 export function PageHeader({
   title,
@@ -28,6 +35,14 @@ export function PageHeader({
   backLabel,
   actions,
   className,
+  animate = true,
+  /**
+   * Optional accent gradient applied to specific words in the title —
+   * pass a substring that exists inside `title` and it'll be rendered
+   * with `emce-text-gradient`. Single accent per header — keep it
+   * scarce so it stays a signal, not noise.
+   */
+  accent,
 }: {
   title: string;
   subtitle?: React.ReactNode;
@@ -39,9 +54,30 @@ export function PageHeader({
   /** Right-aligned slot — buttons, status pills, etc. */
   actions?: React.ReactNode;
   className?: string;
+  /** One-shot fade-up entry. Default true. */
+  animate?: boolean;
+  /** Substring of `title` to render in the brand gradient. */
+  accent?: string;
 }) {
+  const titleNode =
+    accent && title.includes(accent) ? (
+      <>
+        {title.split(accent)[0]}
+        <span className="emce-text-gradient">{accent}</span>
+        {title.split(accent)[1]}
+      </>
+    ) : (
+      title
+    );
+
   return (
-    <header className={cn("flex flex-wrap items-start justify-between gap-3", className)}>
+    <header
+      className={cn(
+        "flex flex-wrap items-start justify-between gap-3",
+        animate && "animate-fade-up",
+        className,
+      )}
+    >
       <div className="min-w-0 flex-1">
         {backHref && (
           <Link
@@ -52,12 +88,12 @@ export function PageHeader({
           </Link>
         )}
         {eyebrow && (
-          <p className="text-[10px] font-bold uppercase tracking-wide text-emce-text-sec">
+          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
             {eyebrow}
           </p>
         )}
         <h1 className="text-2xl font-extrabold leading-tight tracking-tight text-emce-text md:text-[28px]">
-          {title}
+          {titleNode}
         </h1>
         {subtitle && (
           <p className="mt-1 text-sm text-emce-text-sec">{subtitle}</p>

@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Avatar } from "@/components/ui/avatar";
 import { ContactShareActions } from "@/components/profile/ContactShareActions";
+import { PageHeader } from "@/components/ui/page-header";
 import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "Contact shares" };
@@ -63,18 +64,16 @@ export default async function ContactSharesInbox() {
 
   return (
     <div className="container max-w-3xl py-10">
-      <h1 className="text-dashboard text-emce-text">Contact shares</h1>
-      <p className="mt-1 text-sm text-emce-text-sec">
-        Recruiters who've asked to see your email and phone. Approve to share
-        with that recruiter only — not their company, not the platform, just
-        them. You can revoke any time.
-      </p>
+      <PageHeader
+        title="Contact shares"
+        subtitle="Recruiters who've asked to see your email and phone. Approve to share with that recruiter only — not their company, not the platform, just them. You can revoke any time."
+      />
 
       {/* Pending — call to action */}
       {pending.length > 0 && (
         <section className="mt-6">
           <h2 className="text-section text-emce-text">Awaiting your response</h2>
-          <ul className="mt-3 space-y-3">
+          <ul className="emce-stagger mt-3 space-y-3">
             {pending.map((r) => (
               <li key={r.id}>
                 <Card className="border-emce-orange/40 bg-emce-orange-light/30 p-4">
@@ -100,7 +99,7 @@ export default async function ContactSharesInbox() {
             Nobody currently has access to your contact via this flow.
           </p>
         ) : (
-          <ul className="mt-3 space-y-3">
+          <ul className="emce-stagger mt-3 space-y-3">
             {granted.map((r) => (
               <li key={r.id}>
                 <Card className="border-emce-mid/40 p-4">
@@ -125,7 +124,7 @@ export default async function ContactSharesInbox() {
       {history.length > 0 && (
         <section className="mt-8">
           <h2 className="text-section text-emce-text">History</h2>
-          <ul className="mt-3 space-y-2">
+          <ul className="emce-stagger mt-3 space-y-2">
             {history.map((r) => (
               <li
                 key={r.id}

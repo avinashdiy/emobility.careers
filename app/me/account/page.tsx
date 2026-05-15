@@ -13,6 +13,7 @@ import { softDeleteAccount } from "@/server/account/data-rights";
 import { humanReason } from "@/lib/strikes";
 import { relativeTime } from "@/lib/utils";
 import { DataExportButton } from "@/components/profile/DataExportButton";
+import { PageHeader } from "@/components/ui/page-header";
 
 export const metadata = { title: "Account & data rights" };
 
@@ -43,11 +44,10 @@ export default async function AccountPage() {
   return (
     <>
       <div className="container max-w-2xl py-10">
-        <h1 className="text-dashboard text-emce-text">Account &amp; data rights</h1>
-        <p className="mt-1 text-sm text-emce-text-sec">
-          Your DPDPA / GDPR rights — download a copy of your data, or close
-          your account and erase your record.
-        </p>
+        <PageHeader
+          title="Account & data rights"
+          subtitle="Your DPDPA / GDPR rights — download a copy of your data, or close your account and erase your record."
+        />
 
         {/* Account standing — strikes + state. Visible at 0 strikes too
             so the user gets confirmation their record is clean. */}

@@ -40,7 +40,7 @@ export default async function EmployerCompetitionsList() {
           </p>
         </Card>
 
-        <div className="space-y-2">
+        <div className="emce-stagger space-y-2">
           {competitions.length === 0 && (
             <Card className="p-10 text-center text-sm text-emce-text-sec">
               No competitions yet. Click + New competition to draft one.

@@ -106,7 +106,7 @@ export default async function EmployerEventsList() {
             </Button>
           </Card>
         ) : (
-          <ul className="space-y-3">
+          <ul className="emce-stagger space-y-3">
             {events.map((e) => (
               <li key={e.id}>
                 <Card className="p-4">
