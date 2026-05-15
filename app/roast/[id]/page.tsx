@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
+import { auth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -65,8 +66,12 @@ export default async function RoastResultPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const roast = await db.resumeRoast.findUnique({ where: { id } });
+  const [roast, session] = await Promise.all([
+    db.resumeRoast.findUnique({ where: { id } }),
+    auth(),
+  ]);
   if (!roast) notFound();
+  const isSignedIn = !!session?.user;
 
   const breakdown = roast.scoreBreakdown as unknown as RoastBreakdown;
   const feedback = (roast.feedback as unknown as FeedbackItem[]) ?? [];
@@ -204,18 +209,33 @@ export default async function RoastResultPage({
             </Card>
           )}
 
-          {/* Conversion CTA */}
+          {/* Conversion CTA — copy + destination switch based on
+              sign-in state. Anonymous viewers see the signup-funnel
+              CTA; already-signed-in users (e.g. recruiters and
+              candidates who roasted their own resume while logged in)
+              see a direct "Apply suggestions" link instead of being
+              routed back through /signup, which previously felt like
+              a "Sign in to access your upgraded resume" gate even
+              though they were already logged in. */}
           <Card className="emce-hero-gradient text-white">
             <p className="text-section text-white">
               💡 Fix all of this in one place
             </p>
             <p className="mt-2 text-white/80">
-              Build a verified profile in 3 minutes. We'll auto-import from your resume, surface the gaps, and match you to {`{X}`} live EV roles. Free.
+              {isSignedIn
+                ? "Apply these fixes to your profile in 3 minutes. The resume parser will pull the strong bits forward; the AI assistant will help you rewrite the weak ones."
+                : "Build a verified profile in 3 minutes. We'll auto-import from your resume, surface the gaps, and match you to live EV roles. Free."}
             </p>
             <div className="mt-4 flex flex-wrap gap-2">
-              <Button asChild size="lg" className="bg-emce-mid text-emce-darkest hover:bg-emce-mid-muted">
-                <Link href="/signup?role=CANDIDATE&next=/me/profile">Sign up & fix my gaps →</Link>
-              </Button>
+              {isSignedIn ? (
+                <Button asChild size="lg" className="bg-emce-mid text-emce-darkest hover:bg-emce-mid-muted">
+                  <Link href="/me/profile">Apply fixes to my profile →</Link>
+                </Button>
+              ) : (
+                <Button asChild size="lg" className="bg-emce-mid text-emce-darkest hover:bg-emce-mid-muted">
+                  <Link href="/signup?role=CANDIDATE&next=/me/profile">Sign up & fix my gaps →</Link>
+                </Button>
+              )}
               <Button asChild size="lg" variant="outline" className="border-white/30 text-white hover:bg-white/10">
                 <Link href="/jobs">Browse EV jobs</Link>
               </Button>

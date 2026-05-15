@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { COMPLETENESS_THRESHOLDS } from "@/lib/profile-completeness";
 import { ApplicationSource, ApplicationStage } from "@prisma/client";
@@ -152,14 +152,19 @@ export async function applyToJob(formData: FormData) {
     return app;
   });
 
-  // Notify the recruiter who posted the job
-  await notificationsQueue.add("application-received", {
+  // Notify the recruiter who posted the job. Use dispatchNotification
+  // so the in-app row lands inline — recruiters reported "application
+  // notifications don't work" when this depended on the BullMQ worker
+  // round-trip.
+  await dispatchNotification({
     userId: job.postedById,
+    actorId: session.user.id,
     type: "application.received",
     title: `New application: ${job.title}`,
     body: `${profile.firstName} ${profile.lastName ?? ""} applied for ${job.title}.`,
     link: `/employer/jobs/${jobId}/ats`,
     channels: ["IN_APP", "EMAIL"],
+    groupKey: `application.received:${jobId}`,
   });
 
   revalidatePath("/me/applications");

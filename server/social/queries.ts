@@ -67,8 +67,29 @@ const POST_INCLUDE = {
     },
   },
   reactions: {
-    select: { type: true, userId: true },
-    take: 5, // for "Liked by X, Y, and 12 others" UI
+    // Recent 5 reactors with enough profile info to render the
+    // LinkedIn-style "Liked by X, Y, and N others" social-proof
+    // line above the action bar. Adding the user join made the
+    // line actually appear — before it, PostCard only had userId
+    // and rendered nothing.
+    select: {
+      type: true,
+      userId: true,
+      user: {
+        select: {
+          candidateProfile: {
+            select: {
+              firstName: true,
+              lastName: true,
+              slug: true,
+              profilePhotoUrl: true,
+            },
+          },
+        },
+      },
+    },
+    take: 5,
+    orderBy: { createdAt: "desc" },
   },
   attachments: {
     orderBy: { order: "asc" },

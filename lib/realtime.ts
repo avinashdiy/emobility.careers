@@ -24,5 +24,10 @@ export const channels = {
 export const events = {
   notification: "notification",
   message: "message",
+  /** Fired on the thread channel when the recipient opens the
+      conversation — lets the sender's ChatThread flip "✓ Sent"
+      to "✓✓ Seen" in real time. Payload: `{ at: ISO string,
+      byUserId }`. */
+  messageRead: "read",
   stageChange: "stage-change",
 } as const;

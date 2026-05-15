@@ -82,7 +82,16 @@ export function HeaderUserMenu({ user }: { user: UserMenuViewerData }) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full z-50 mt-1 w-72 overflow-hidden rounded-md border border-emce-border bg-white shadow-emce-lg"
+          // `max-h-[calc(100vh-4rem)]` caps the dropdown so it never
+          // extends past the viewport; `overflow-y-auto` makes the
+          // inner content scroll when there are more groups than fit
+          // (typical for dual-persona users — Profile + Mentorship +
+          // Competitions + Hiring + Admin/TPO + Account easily
+          // exceeds a laptop screen). `overflow-x-hidden` keeps the
+          // rounded corners clean horizontally. Previously
+          // `overflow-hidden` clipped the lower groups entirely on
+          // ~13" laptops.
+          className="absolute right-0 top-full z-50 mt-1 max-h-[calc(100vh-4rem)] w-72 overflow-y-auto overflow-x-hidden rounded-md border border-emce-border bg-white shadow-emce-lg"
           onClick={() => setOpen(false)}
         >
           <div className="border-b border-emce-border p-3">

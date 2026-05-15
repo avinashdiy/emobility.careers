@@ -23,9 +23,50 @@ const TABS = [
 ] as const;
 type Tab = typeof TABS[number]["value"];
 
+// Notification type → tab routing. Two flavours co-exist in the DB:
+//
+//   • Dotted prefixes from the post-2026 convention ("application.*",
+//     "interview.*", "mentor.*", "competition.*").
+//   • Bare strings from the original social/jobs server actions
+//     ("reaction", "comment", "reply", "repost", "follow",
+//     "connect-request", "connect-accepted", "application-received",
+//     "inmail", "invited").
+//
+// Both shapes route to the same tabs here so the recruiter / candidate
+// inbox surfaces every notification rather than silently dumping the
+// bare-string ones into "System" — that was the bug recruiters hit
+// where likes / comments / job-apply pings looked like they weren't
+// firing.
 function categorise(type: string): Exclude<Tab, "all"> {
-  if (type.startsWith("social.") || type.startsWith("connection.") || type.startsWith("post.") || type.startsWith("follow.") || type.startsWith("comment.")) return "social";
-  if (type.startsWith("interview.") || type.startsWith("application.") || type.startsWith("job.")) return "applications";
+  // SOCIAL — feed reactions, comments, connections, follows, reposts.
+  if (
+    type.startsWith("social.") ||
+    type.startsWith("connection.") ||
+    type.startsWith("post.") ||
+    type.startsWith("follow.") ||
+    type.startsWith("comment.") ||
+    type === "reaction" ||
+    type === "comment" ||
+    type === "reply" ||
+    type === "repost" ||
+    type === "follow" ||
+    type === "connect-request" ||
+    type === "connect-accepted"
+  ) {
+    return "social";
+  }
+  // APPLICATIONS — job-side updates that hit the candidate inbox.
+  if (
+    type.startsWith("interview.") ||
+    type.startsWith("application.") ||
+    type.startsWith("job.") ||
+    type === "application-received" ||
+    type === "application-stage-changed" ||
+    type === "inmail" ||
+    type === "invited"
+  ) {
+    return "applications";
+  }
   if (type.startsWith("mentor") || type.startsWith("mentorship.")) return "mentorship";
   if (type.startsWith("competition.")) return "competitions";
   return "system";

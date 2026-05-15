@@ -79,7 +79,22 @@ export interface FeedPostShape {
       } | null;
     };
   } | null;
-  reactions: { type: ReactionType; userId: string }[];
+  reactions: {
+    type: ReactionType;
+    userId: string;
+    /** Joined in POST_INCLUDE so the "Liked by X, Y and N others" row
+        has names. Optional so legacy consumers that pre-date the join
+        still type-check; PostCard renders the row only when names
+        are present. */
+    user?: {
+      candidateProfile: {
+        firstName: string;
+        lastName: string | null;
+        slug: string;
+        profilePhotoUrl: string | null;
+      } | null;
+    } | null;
+  }[];
 
   // ─── Rich content fields ───
   kind?: PostKind;
@@ -287,20 +302,40 @@ export function PostCard({
         />
       )}
 
-      {/* Hashtag chips */}
-      {post.hashtags.length > 0 && (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          {post.hashtags.map((t) => (
-            <Link
-              key={t}
-              href={`/tag/${t}`}
-              className="text-hint font-bold text-emce-dark hover:underline"
-            >
-              #{t}
-            </Link>
-          ))}
-        </div>
-      )}
+      {/* Hashtag chips — only the tags that DON'T already appear
+          inline in the body. `post.hashtags` is the normalised (lower-
+          case) list; the body keeps the original casing the author
+          typed. Without this filter, mixed-case authors got their tags
+          shown twice in a row (`#ElectricVehicle` in the body, then
+          `#electricvehicle` as a chip below). Recruiters using the
+          composer's inline "#tag" pattern see no chip duplication;
+          authors who added tags via the explicit-tags UI still get
+          chip rendering because those tags aren't in the body. */}
+      {(() => {
+        const inlineTagsInBody = new Set<string>();
+        const inlineRe = /(?:^|\s)#([a-z0-9_-]+)/gi;
+        let m;
+        while ((m = inlineRe.exec(post.body))) {
+          inlineTagsInBody.add(m[1].toLowerCase());
+        }
+        const chipTags = post.hashtags.filter(
+          (t) => !inlineTagsInBody.has(t.toLowerCase()),
+        );
+        if (chipTags.length === 0) return null;
+        return (
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            {chipTags.map((t) => (
+              <Link
+                key={t}
+                href={`/tag/${t}`}
+                className="text-hint font-bold text-emce-dark hover:underline"
+              >
+                #{t}
+              </Link>
+            ))}
+          </div>
+        );
+      })()}
 
       {/* Repost reference */}
       {post.repostOf && (
@@ -360,6 +395,46 @@ export function PostCard({
           </div>
         </Link>
       )}
+
+      {/* "Liked by Alice, Bob and 4 others" social-proof row. Skipped
+          if no reactors have profile data joined (e.g. legacy callers
+          that haven't been migrated to the new POST_INCLUDE shape).
+          Up to 2 named reactors are shown; the remainder roll into
+          the trailing "N others" counter using the full reactionsCount
+          for accuracy. */}
+      {post.reactionsCount > 0 && (() => {
+        const named = post.reactions
+          .filter((r) => r.user?.candidateProfile)
+          .map((r) => ({
+            slug: r.user!.candidateProfile!.slug,
+            name: [
+              r.user!.candidateProfile!.firstName,
+              r.user!.candidateProfile!.lastName,
+            ].filter(Boolean).join(" "),
+          }));
+        if (named.length === 0) return null;
+        const shown = named.slice(0, 2);
+        const others = Math.max(0, post.reactionsCount - shown.length);
+        return (
+          <p className="mt-3 text-hint text-emce-text-sec">
+            <span>👍 Liked by </span>
+            {shown.map((n, i) => (
+              <span key={n.slug}>
+                <Link
+                  href={`/${n.slug}`}
+                  className="font-bold text-emce-text hover:underline"
+                >
+                  {n.name}
+                </Link>
+                {i < shown.length - 1 ? (others > 0 ? ", " : " and ") : null}
+              </span>
+            ))}
+            {others > 0 && (
+              <span> and <strong>{others.toLocaleString()}</strong> {others === 1 ? "other" : "others"}</span>
+            )}
+          </p>
+        );
+      })()}
 
       {/* Engagement strip */}
       {(post.reactionsCount > 0 ||

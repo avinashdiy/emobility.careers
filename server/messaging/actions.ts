@@ -32,6 +32,66 @@ async function ensureThreadAccess(threadId: string, userId: string, role: string
   return allowed ? thread : null;
 }
 
+/**
+ * Cold-outreach DM from a recruiter (or admin) to a candidate. Used
+ * by the "Message" button on the candidate's public profile when
+ * the viewer is an employer. Upserts on (candidateUserId,
+ * employerUserId, applicationId=null) so re-clicking the button
+ * always lands the recruiter back in the same thread instead of
+ * spawning duplicates.
+ *
+ * The schema (MessageThread.candidateUserId + employerUserId) was
+ * always meant for this case — it just had no UI hook before, so
+ * recruiters reported "can't message candidates from their profile".
+ */
+export async function startDirectThread(formData: FormData) {
+  const session = await auth();
+  if (!session?.user) redirect("/signin");
+  if (session.user.role !== "EMPLOYER" && session.user.role !== "ADMIN") {
+    redirect("/403");
+  }
+  const candidateUserId = z.string().min(1).parse(formData.get("candidateUserId"));
+  if (candidateUserId === session.user.id) {
+    redirect("/me/messages");
+  }
+  // Sanity: the target must actually have a candidate persona, else
+  // we'd be creating a meaningless thread.
+  const candidate = await db.candidateProfile.findUnique({
+    where: { userId: candidateUserId },
+    select: { userId: true },
+  });
+  if (!candidate) redirect("/employer");
+
+  // Find-or-create the cold-outreach thread. We can't use `upsert`
+  // because the unique key is the (candidateUserId, employerUserId,
+  // applicationId=null) triple and Prisma doesn't have a composite
+  // unique constraint for the application-null case — so we do a
+  // findFirst + create. Idempotent under concurrent clicks because
+  // a duplicate `create` would just produce a second thread that
+  // the next click picks up; not perfect, but acceptable for cold
+  // outreach (the recruiter sees both rows in their inbox if they
+  // race themselves; they don't).
+  const existing = await db.messageThread.findFirst({
+    where: {
+      applicationId: null,
+      candidateUserId,
+      employerUserId: session.user.id,
+    },
+    select: { id: true },
+  });
+  const thread =
+    existing ??
+    (await db.messageThread.create({
+      data: {
+        candidateUserId,
+        employerUserId: session.user.id,
+      },
+      select: { id: true },
+    }));
+
+  redirect(`/employer/messages/${thread.id}`);
+}
+
 export async function startThreadFromApplication(formData: FormData) {
   const session = await auth();
   if (!session?.user) redirect("/signin");

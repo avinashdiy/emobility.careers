@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
-import { notificationsQueue } from "@/lib/queues";
+import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { pgRateLimit } from "@/lib/rate-limit-pg";
 import { audit } from "@/lib/audit";
@@ -146,8 +146,9 @@ export async function createPost(formData: FormData): Promise<void> {
       select: { authorId: true, body: true },
     });
     if (orig && orig.authorId !== session.user.id) {
-      await notificationsQueue.add("repost", {
+      await dispatchNotification({
         userId: orig.authorId,
+        actorId: session.user.id,
         type: "social.repost",
         title: "Your post was reposted",
         body: body.slice(0, 140),
@@ -226,13 +227,18 @@ export async function togglePostReaction(formData: FormData): Promise<void> {
       select: { authorId: true, body: true },
     });
     if (post && post.authorId !== session.user.id) {
-      await notificationsQueue.add("reaction", {
+      // dispatchNotification writes the in-app row inline (no worker
+      // dependency) so the post author sees the reaction in their
+      // inbox immediately — even if the BullMQ worker is offline.
+      await dispatchNotification({
         userId: post.authorId,
+        actorId: session.user.id,
         type: "social.reaction",
         title: `Someone ${type.toLowerCase()}d your post`,
         body: post.body.slice(0, 140),
         link: `/posts/${postId}`,
         channels: ["IN_APP"],
+        groupKey: `social.reaction:${postId}`,
       });
     }
   }
@@ -312,13 +318,15 @@ export async function addComment(formData: FormData): Promise<void> {
 
   // Notify post author (and parent comment author if it's a reply)
   if (post.authorId !== session.user.id) {
-    await notificationsQueue.add("comment", {
+    await dispatchNotification({
       userId: post.authorId,
+      actorId: session.user.id,
       type: "social.comment",
       title: "New comment on your post",
       body: body.slice(0, 140),
       link: `/posts/${postId}#comment-${comment.id}`,
       channels: ["IN_APP", "EMAIL"],
+      groupKey: `social.comment:${postId}`,
     });
   }
   if (parentId) {
@@ -327,8 +335,9 @@ export async function addComment(formData: FormData): Promise<void> {
       select: { authorId: true },
     });
     if (parent && parent.authorId !== session.user.id && parent.authorId !== post.authorId) {
-      await notificationsQueue.add("reply", {
+      await dispatchNotification({
         userId: parent.authorId,
+        actorId: session.user.id,
         type: "social.reply",
         title: "Someone replied to your comment",
         body: body.slice(0, 140),
@@ -405,8 +414,9 @@ export async function requestConnection(formData: FormData): Promise<void> {
     },
   });
 
-  await notificationsQueue.add("connect-request", {
+  await dispatchNotification({
     userId: recipientId,
+    actorId: session.user.id,
     type: "connection.request",
     title: "New connection request",
     body: message ?? "Someone wants to connect with you.",
@@ -431,8 +441,9 @@ async function acceptConnectionInternal(connectionId: string, byUserId: string) 
       data: { connectionsCount: { increment: 1 } },
     }),
   ]);
-  await notificationsQueue.add("connect-accepted", {
+  await dispatchNotification({
     userId: conn.requesterId,
+    actorId: byUserId,
     type: "connection.accepted",
     title: "You're now connected",
     body: "Your connection request was accepted.",
@@ -515,8 +526,9 @@ export async function followUser(formData: FormData): Promise<void> {
       data: { followersCount: { increment: 1 } },
     }),
   ]);
-  await notificationsQueue.add("follow", {
+  await dispatchNotification({
     userId: followeeId,
+    actorId: session.user.id,
     type: "social.follow",
     title: "Someone followed you",
     body: "You have a new follower on eMobility Careers.",

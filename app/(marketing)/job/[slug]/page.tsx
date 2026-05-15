@@ -395,6 +395,18 @@ export default async function PublicJobDetail({
               before the candidate scrolls to read responsibilities. */}
           {candidateMatch && <MatchScoreCard match={candidateMatch} />}
 
+          {/* Sticky Apply card on desktop — the candidate may scroll
+              through a long JD (responsibilities + requirements +
+              benefits) and we don't want the CTA to disappear with
+              them. Pinned to `top-20` so it clears the site header.
+              Below `lg` the sidebar already stacks below the main
+              content, so sticky would just trap the card mid-scroll —
+              we keep mobile static. Only the Apply card itself is
+              sticky (not the whole aside) because the aside also
+              holds skills / about-company / save / share / report
+              cards which the candidate reads end-of-page, not while
+              reading the JD. */}
+          <div className="lg:sticky lg:top-20 lg:z-10">
           <Card className="p-6">
             <h3 className="text-section text-emce-text">Apply</h3>
             {/* External-apply jobs: when the listing carries an
@@ -485,6 +497,7 @@ export default async function PublicJobDetail({
               </p>
             )}
           </Card>
+          </div>
 
           {job.skills.length > 0 && (
             <Card className="p-6">

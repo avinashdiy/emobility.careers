@@ -57,7 +57,7 @@ export default async function AdminJobsPage({
               <Card>
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
-                    <Link href={`/jobs/${j.id}`} className="font-bold text-emce-text hover:underline">
+                    <Link href={`/job/${j.slug}`} className="font-bold text-emce-text hover:underline">
                       {j.title}
                     </Link>
                     <p className="text-hint text-emce-text-sec">

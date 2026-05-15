@@ -7,6 +7,8 @@ import { env } from "@/lib/env";
 import { Card } from "@/components/ui/card";
 import { ChatThread } from "@/components/chat/ChatThread";
 import { EmployerShell } from "@/components/layout/employer-shell";
+import { realtime, channels as rtChannels, events as rtEvents } from "@/lib/realtime";
+import { logger } from "@/lib/logger";
 
 export default async function EmployerMessageThread({
   params,
@@ -37,6 +39,25 @@ export default async function EmployerMessageThread({
     redirect("/403");
   }
 
+  // Mark incoming unread messages as read + push the realtime
+  // receipt so the candidate's open thread flips ✓ → ✓✓ live.
+  const readAt = new Date();
+  const marked = await db.message.updateMany({
+    where: { threadId: thread.id, senderId: { not: session.user.id }, readAt: null },
+    data: { readAt },
+  });
+  if (marked.count > 0) {
+    try {
+      await realtime.trigger(
+        rtChannels.thread(thread.id),
+        rtEvents.messageRead,
+        { at: readAt.toISOString(), byUserId: session.user.id },
+      );
+    } catch (err) {
+      logger.warn({ err, threadId }, "[messages] realtime read receipt failed");
+    }
+  }
+
   return (
     <EmployerShell>
       <div className="container max-w-3xl py-6">
@@ -60,6 +81,10 @@ export default async function EmployerMessageThread({
               senderId: m.senderId,
               body: m.body,
               createdAt: m.createdAt.toISOString(),
+              readAt:
+                m.senderId === session.user.id
+                  ? m.readAt?.toISOString() ?? null
+                  : (m.readAt ?? readAt).toISOString(),
             }))}
             pusherKey={env.NEXT_PUBLIC_SOKETI_KEY}
             pusherHost={env.NEXT_PUBLIC_SOKETI_HOST}

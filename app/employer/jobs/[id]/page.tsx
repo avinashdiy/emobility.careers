@@ -44,7 +44,16 @@ export default async function EmployerJobDetail({
           </Link>
           <div className="flex flex-wrap gap-2">
             <Button asChild variant="outline" size="sm">
-              <Link href={`/jobs/${job.id}`}>View public</Link>
+              {/* Link to the canonical slug URL, not the legacy
+                  `/jobs/<id>` redirect alias. The redirect route
+                  exists only for backwards-compatible inbound links
+                  (search-engine indexes, old shares); routing our
+                  own UI through it added a network hop AND was the
+                  failure point recruiters reported as "View public
+                  shows Page Not Found" — easier to skip the redirect
+                  than to debug why it intermittently misbehaves on
+                  prod. */}
+              <Link href={`/job/${job.slug}`}>View public</Link>
             </Button>
             <Button asChild variant="outline" size="sm">
               <Link href={`/employer/jobs/${job.id}/edit`}>Edit</Link>

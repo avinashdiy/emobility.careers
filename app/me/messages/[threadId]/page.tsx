@@ -6,6 +6,8 @@ import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { Card } from "@/components/ui/card";
 import { ChatThread } from "@/components/chat/ChatThread";
+import { realtime, channels as rtChannels, events as rtEvents } from "@/lib/realtime";
+import { logger } from "@/lib/logger";
 
 export default async function MessageThreadPage({
   params,
@@ -35,6 +37,27 @@ export default async function MessageThreadPage({
     redirect("/403");
   }
 
+  // Mark every incoming (not-from-me, still-unread) message as read.
+  // `updateMany` is one query regardless of how many messages there
+  // are, and we only fire the realtime push when at least one row
+  // was actually flipped — saves a no-op event on every refresh.
+  const readAt = new Date();
+  const marked = await db.message.updateMany({
+    where: { threadId: thread.id, senderId: { not: session.user.id }, readAt: null },
+    data: { readAt },
+  });
+  if (marked.count > 0) {
+    try {
+      await realtime.trigger(
+        rtChannels.thread(thread.id),
+        rtEvents.messageRead,
+        { at: readAt.toISOString(), byUserId: session.user.id },
+      );
+    } catch (err) {
+      logger.warn({ err, threadId }, "[messages] realtime read receipt failed");
+    }
+  }
+
   return (
     <div className="container max-w-3xl py-6">
       <Link href="/me/messages" className="text-hint font-bold text-emce-text-sec hover:text-emce-dark">
@@ -57,6 +80,15 @@ export default async function MessageThreadPage({
             senderId: m.senderId,
             body: m.body,
             createdAt: m.createdAt.toISOString(),
+            // Reflect the read pass we just did: any message we marked
+            // read in this request gets the fresh timestamp; older
+            // already-read rows keep their original. Self-messages
+            // also surface their stored readAt so the sender sees
+            // "Seen" if the recipient has opened the thread before.
+            readAt:
+              m.senderId === session.user.id
+                ? m.readAt?.toISOString() ?? null
+                : (m.readAt ?? readAt).toISOString(),
           }))}
           pusherKey={env.NEXT_PUBLIC_SOKETI_KEY}
           pusherHost={env.NEXT_PUBLIC_SOKETI_HOST}

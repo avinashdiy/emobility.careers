@@ -11,6 +11,11 @@ export interface ChatMessage {
   senderId: string;
   body: string;
   createdAt: string;
+  /** When the recipient last opened the thread (Message.readAt).
+      Drives the per-message "Sent ✓ / Seen ✓✓" status indicator on
+      outgoing messages. Null on messages the recipient hasn't yet
+      viewed. The thread page marks incoming-unread → read on load. */
+  readAt: string | null;
 }
 
 interface Props {
@@ -62,7 +67,24 @@ export function ChatThread({
       });
       const ch = pusher.subscribe(`private-thread-${threadId}`);
       ch.bind("message", (m: ChatMessage) => {
-        setMessages((prev) => (prev.find((x) => x.id === m.id) ? prev : [...prev, m]));
+        // Default readAt to null for live-arrived messages (recipient
+        // hasn't opened the thread on the other end yet — the server's
+        // mark-as-read pass runs on page load, not on every push).
+        const incoming: ChatMessage = { ...m, readAt: m.readAt ?? null };
+        setMessages((prev) => (prev.find((x) => x.id === incoming.id) ? prev : [...prev, incoming]));
+      });
+      // When the OTHER side opens the thread, the server fires a
+      // `read` event here so our outgoing messages can flip ✓ → ✓✓
+      // without a refresh.
+      ch.bind("read", (payload: { at: string; byUserId: string }) => {
+        if (payload.byUserId === selfUserId) return;
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.senderId === selfUserId && !m.readAt
+              ? { ...m, readAt: payload.at }
+              : m,
+          ),
+        );
       });
     } catch {
       // Soketi may be offline — degrade gracefully
@@ -96,8 +118,24 @@ export function ChatThread({
                   >
                     {m.body}
                   </div>
-                  <div className="mt-1 text-hint text-emce-text-muted">
-                    {new Date(m.createdAt).toLocaleString()}
+                  <div className={`mt-1 flex items-center gap-1 text-hint text-emce-text-muted ${mine ? "justify-end" : ""}`}>
+                    <span>{new Date(m.createdAt).toLocaleString()}</span>
+                    {/* WhatsApp-style status indicator — only on
+                        outgoing messages. ✓ = sent (server has the
+                        row), ✓✓ = seen (recipient opened the thread).
+                        We don't have a separate "delivered" signal in
+                        the schema; the row creation IS the delivery
+                        signal because Soketi push and DB insert
+                        happen in the same server action. */}
+                    {mine && (
+                      <span
+                        title={m.readAt ? `Seen ${new Date(m.readAt).toLocaleString()}` : "Sent"}
+                        className={m.readAt ? "font-bold text-emce-dark" : ""}
+                        aria-label={m.readAt ? "Seen" : "Sent"}
+                      >
+                        {m.readAt ? "✓✓" : "✓"}
+                      </span>
+                    )}
                   </div>
                 </li>
               );

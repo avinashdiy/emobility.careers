@@ -11,6 +11,7 @@ import { SiteHeader } from "@/components/layout/site-header";
 // Profile pages render no footer at all — keeps the LinkedIn-style focus
 // on the profile content with no visual interruption at the bottom.
 import { saveCandidate } from "@/server/employer/actions";
+import { startDirectThread } from "@/server/messaging/actions";
 import { toggleSkillEndorsement } from "@/server/candidates/actions";
 import { ShareButton } from "@/components/profile/ShareButton";
 import { CountryFlag } from "@/components/profile/CountryFlag";
@@ -849,10 +850,23 @@ export default async function PublicCandidateProfile({
                     <Link href={`/${profile.slug}/compass`}>⚡ View Compass</Link>
                   </Button>
                   {isEmployer && (
-                    <form action={saveCandidate}>
-                      <input type="hidden" name="candidateId" value={profile.id} />
-                      <Button type="submit" variant="outline" size="sm">☆ Save</Button>
-                    </form>
+                    <>
+                      {/* Cold-outreach DM — opens (or reuses) a thread
+                          between this recruiter and the candidate.
+                          Recruiters previously had no way to message
+                          a candidate they hadn't received an application
+                          from, even though the MessageThread schema
+                          supported (candidateUserId, employerUserId)
+                          cold threads. */}
+                      <form action={startDirectThread}>
+                        <input type="hidden" name="candidateUserId" value={profile.userId} />
+                        <Button type="submit" size="sm">💬 Message</Button>
+                      </form>
+                      <form action={saveCandidate}>
+                        <input type="hidden" name="candidateId" value={profile.id} />
+                        <Button type="submit" variant="outline" size="sm">☆ Save</Button>
+                      </form>
+                    </>
                   )}
                 </>
               )}

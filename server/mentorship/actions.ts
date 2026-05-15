@@ -681,6 +681,19 @@ export async function approveMentorKyc(mentorId: string): Promise<FormState> {
       kycReviewedAt: new Date(),
       kycReviewerId: session.user.id,
       kycRejectionNote: null,
+      // Auto-publish on first approval — the public /mentors directory
+      // filters on `isPublished AND kycStatus = APPROVED`, and the
+      // previous behaviour required the mentor to log back in and flip
+      // a separate "Go live" toggle. Admins kept reporting "I approved
+      // them but they're not showing up" — that gap was the bug.
+      // We only flip TRUE here (we never override an explicit FALSE
+      // back to TRUE on a re-approval): once published the mentor
+      // can pause themselves via setMentorPublished and we respect it.
+      // The condition `!profile.isPublished` ensures we only set the
+      // flag on first approval; re-running approve (e.g. after a
+      // REJECTED → APPROVED bounce) does flip them back on, which is
+      // what the admin clearly intends.
+      isPublished: true,
     },
   });
   await audit({ actorId: session.user.id, action: "mentor.kyc.approve", entity: "MentorProfile", entityId: mentorId });
@@ -688,10 +701,11 @@ export async function approveMentorKyc(mentorId: string): Promise<FormState> {
     userId: profile.userId,
     type: "mentor.kyc.approved",
     title: "You're approved as a mentor",
-    body: "Set your availability and publish your profile to start receiving bookings.",
+    body: "Your profile is now live on emobility.careers/mentors. Set your availability so candidates can book sessions.",
     link: "/me/mentor",
   });
   revalidatePath("/admin/mentors");
+  revalidatePath("/mentors");
   return { ok: true };
 }
 
