@@ -185,7 +185,7 @@ function DailySparkline({
                   wowPct > 0
                     ? "font-bold text-emce-darkest"
                     : wowPct < 0
-                      ? "font-bold text-emce-red"
+                      ? "font-bold text-emce-red-deep"
                       : "text-emce-text-muted"
                 }
               >

@@ -43,8 +43,8 @@ export function ProfileCompletenessCard({
 
   const tierColor =
     pct >= COMPLETENESS_THRESHOLDS.APPLY ? "stroke-emce-mid-muted text-emce-mid-muted"
-    : pct >= COMPLETENESS_THRESHOLDS.EXPLORE ? "stroke-emce-orange text-emce-orange"
-    : "stroke-emce-red text-emce-red";
+    : pct >= COMPLETENESS_THRESHOLDS.EXPLORE ? "stroke-emce-orange text-emce-orange-deep"
+    : "stroke-emce-red text-emce-red-deep";
 
   // Pick the next-step list. When the candidate is in a gating band
   // we show the *quick path* — the smallest set of actions that
@@ -126,12 +126,12 @@ export function ProfileCompletenessCard({
           </p>
           <p className="mt-0.5 line-clamp-2 text-hint text-emce-text-sec">{headline}</p>
           {variant === "card" && !canExplore && (
-            <p className="mt-1 inline-block rounded-full bg-emce-red-light px-2 py-0.5 text-[10px] font-bold text-emce-red">
+            <p className="mt-1 inline-block rounded-full bg-emce-red-light px-2 py-0.5 text-[10px] font-bold text-emce-red-deep">
               Browsing limited
             </p>
           )}
           {variant === "card" && canExplore && !canApply && (
-            <p className="mt-1 inline-block rounded-full bg-emce-orange-light px-2 py-0.5 text-[10px] font-bold text-emce-orange">
+            <p className="mt-1 inline-block rounded-full bg-emce-orange-light px-2 py-0.5 text-[10px] font-bold text-emce-orange-deep">
               Apply locked
             </p>
           )}

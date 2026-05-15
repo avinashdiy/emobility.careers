@@ -129,7 +129,7 @@ export default async function TpoDashboard({
                     {" · "}
                     <span>{row.current} live</span>
                     {row.dropoffPct > 0 && (
-                      <span className="ml-2 rounded-full bg-emce-red-light px-2 py-0.5 text-[10px] font-bold text-emce-red">
+                      <span className="ml-2 rounded-full bg-emce-red-light px-2 py-0.5 text-[10px] font-bold text-emce-red-deep">
                         −{row.dropoffPct}% drop
                       </span>
                     )}
@@ -225,7 +225,7 @@ function Kpi({
 }) {
   const toneClass =
     tone === "ok" ? "text-emce-mid-muted"
-    : tone === "warn" ? "text-emce-orange"
+    : tone === "warn" ? "text-emce-orange-deep"
     : tone === "info" ? "text-emce-dark"
     : "text-emce-text";
   return (

@@ -49,7 +49,7 @@ export default async function ExperimentsPage({
         </p>
 
         {sp.error && (
-          <div className="mt-3 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+          <div className="mt-3 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
             {sp.error}
           </div>
         )}

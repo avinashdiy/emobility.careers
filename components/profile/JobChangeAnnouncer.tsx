@@ -93,7 +93,7 @@ export function JobChangeAnnouncer({
           className={`mt-3 rounded-md p-3 text-sm ${
             feedback.ok
               ? "bg-emce-light-soft text-emce-darkest"
-              : "bg-emce-red-light text-emce-red"
+              : "bg-emce-red-light text-emce-red-deep"
           }`}
         >
           {feedback.message}

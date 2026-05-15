@@ -233,7 +233,7 @@ export default async function CompassPage({
 
               {isOwner && profile.cvVisibility !== "EVERYONE" && (
                 <Card className="bg-emce-orange-light">
-                  <p className="text-sm font-bold text-emce-orange">
+                  <p className="text-sm font-bold text-emce-orange-deep">
                     🔒 Your profile visibility is{" "}
                     {profile.cvVisibility.toLowerCase().replace("_", " ")}.
                   </p>

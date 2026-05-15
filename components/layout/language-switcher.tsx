@@ -9,6 +9,7 @@ import {
   googleTranslateCodeFor,
   type Locale,
 } from "@/lib/i18n";
+import { REQUEST_TRANSLATE_EVENT } from "@/components/translate/GoogleTranslate";
 
 /**
  * Sets the cookie that Google Translate's element widget reads on
@@ -50,6 +51,16 @@ export function LanguageSwitcher({
     // the freshly-rendered DOM. Doing this client-side avoids
     // round-tripping a cookie write through a server action.
     writeGoogleTranslateCookie(newLocale);
+
+    // Ask the lazy GoogleTranslateLoader to inject the widget
+    // script if it isn't already. Lighthouse flagged the eager
+    // script load as a ~93 KB / 193 ms drag on every page —
+    // including the 95%+ of homepage visits that stay in English.
+    // The loader now sits idle until either the googtrans cookie
+    // is present on mount, OR this event fires.
+    if (newLocale !== "en" && typeof window !== "undefined") {
+      window.dispatchEvent(new Event(REQUEST_TRANSLATE_EVENT));
+    }
 
     start(async () => {
       // Server-side locale tracking — used by emails / WhatsApp

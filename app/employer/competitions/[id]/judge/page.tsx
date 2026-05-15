@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { signinNextUrl } from "@/lib/auth-redirect";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
@@ -11,7 +12,7 @@ export const metadata = { title: "Judge submissions" };
 
 export default async function JudgePage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!session?.user) redirect("/signin");
+  if (!session?.user) redirect(await signinNextUrl());
   const { id } = await params;
 
   // Either the host or an invited judge can land here.

@@ -40,7 +40,7 @@ export function MentorProfileForm({ initial, evDomains }: Props) {
       </p>
       <form action={formAction} className="mt-4 space-y-4" noValidate>
         {state.message && (
-          <div role="alert" className={`rounded-md p-3 text-sm ${state.ok ? "bg-emce-light-soft text-emce-darkest" : "bg-emce-red-light text-emce-red"}`}>
+          <div role="alert" className={`rounded-md p-3 text-sm ${state.ok ? "bg-emce-light-soft text-emce-darkest" : "bg-emce-red-light text-emce-red-deep"}`}>
             {state.message}
           </div>
         )}

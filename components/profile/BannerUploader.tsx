@@ -58,7 +58,7 @@ export function BannerUploader({ hasBanner }: { hasBanner: boolean }) {
           <button
             type="submit"
             disabled={busy !== null}
-            className="rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-emce-text-sec shadow-sm backdrop-blur transition hover:bg-white hover:text-emce-red disabled:opacity-60"
+            className="rounded-full bg-white/90 px-3 py-1.5 text-xs font-bold text-emce-text-sec shadow-sm backdrop-blur transition hover:bg-white hover:text-emce-red-deep disabled:opacity-60"
           >
             {busy === "remove" ? "Removing…" : "Remove"}
           </button>

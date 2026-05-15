@@ -88,7 +88,7 @@ export default async function EventsListPage() {
 
         {ongoing.length > 0 && (
           <section className="mb-8">
-            <h2 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-emce-orange">
+            <h2 className="mb-3 text-xs font-extrabold uppercase tracking-wider text-emce-orange-deep">
               🔴 Live now
             </h2>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -183,7 +183,7 @@ function EventCard({ event, live = false }: { event: EventForCard; live?: boolea
             {formatEventTime(event.startsAt, event.timezone)}
           </span>
           {cancelled ? (
-            <Badge variant="outline" className="text-[10px] text-emce-orange">
+            <Badge variant="outline" className="text-[10px] text-emce-orange-deep">
               Cancelled
             </Badge>
           ) : (

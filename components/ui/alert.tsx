@@ -43,12 +43,12 @@ const STYLES: Record<Variant, { wrap: string; icon: string; iconComponent: Lucid
   },
   warning: {
     wrap: "border-emce-orange/40 bg-emce-orange-light/60 text-emce-text",
-    icon: "text-emce-orange",
+    icon: "text-emce-orange-deep",
     iconComponent: AlertTriangle,
   },
   danger: {
-    wrap: "border-emce-red/30 bg-emce-red-light text-emce-red",
-    icon: "text-emce-red",
+    wrap: "border-emce-red/30 bg-emce-red-light text-emce-red-deep",
+    icon: "text-emce-red-deep",
     iconComponent: XCircle,
   },
 };

@@ -32,7 +32,7 @@ export function SettingsForm({ category, title, description, definitions, values
         <input type="hidden" name="__category" value={category} />
 
         {state.message && (
-          <div role="alert" className={`rounded-md p-3 text-sm ${state.ok ? "bg-emce-light-soft text-emce-darkest" : "bg-emce-red-light text-emce-red"}`}>
+          <div role="alert" className={`rounded-md p-3 text-sm ${state.ok ? "bg-emce-light-soft text-emce-darkest" : "bg-emce-red-light text-emce-red-deep"}`}>
             {state.message}
           </div>
         )}

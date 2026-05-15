@@ -69,7 +69,7 @@ export function CompetitionDraftForm({ hostCompanyId, initial, evDomains }: Prop
       <form action={formAction} className="mt-4 space-y-4" noValidate>
         <input type="hidden" name="hostCompanyId" value={hostCompanyId} />
         {state.message && (
-          <div role="alert" className={`rounded-md p-3 text-sm ${state.ok ? "bg-emce-light-soft" : "bg-emce-red-light text-emce-red"}`}>
+          <div role="alert" className={`rounded-md p-3 text-sm ${state.ok ? "bg-emce-light-soft" : "bg-emce-red-light text-emce-red-deep"}`}>
             {state.message}
           </div>
         )}

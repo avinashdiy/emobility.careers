@@ -1,5 +1,15 @@
 import { db } from "@/lib/db";
 import { cookies } from "next/headers";
+import { unstable_cache } from "next/cache";
+
+/**
+ * Cache-tag namespace for every Salary Compass aggregate. Mutations
+ * that change what these helpers see (a new APPROVED submission, an
+ * admin reject) should call `revalidateTag("salary-compass")` so
+ * the next read recomputes. See server/salaries/actions.ts for the
+ * approve/reject paths that wire the tag.
+ */
+const COMPASS_TAG = "salary-compass";
 
 /**
  * Salary Compass — Levels.fyi for India's EV industry. The viral
@@ -84,29 +94,34 @@ export interface TopRole {
   stat: SalaryStat;
 }
 
-export async function getTopPayingRoles(limit = 6): Promise<TopRole[]> {
-  const since = new Date(Date.now() - 24 * 30 * 24 * 60 * 60 * 1000);
-  const rows = await db.salarySubmission.findMany({
-    where: { status: "APPROVED", createdAt: { gte: since } },
-    select: { jobTitle: true, ctcLakhs: true },
-    take: 5000,
-  });
-  const byTitle = new Map<string, number[]>();
-  for (const r of rows) {
-    const k = r.jobTitle.trim();
-    const arr = byTitle.get(k) ?? [];
-    arr.push(r.ctcLakhs);
-    byTitle.set(k, arr);
-  }
-  const out: TopRole[] = [];
-  for (const [title, vals] of byTitle) {
-    const stat = summarise(vals);
-    if (stat) out.push({ jobTitle: title, stat });
-  }
-  return out
-    .sort((a, b) => b.stat.medianLakhs - a.stat.medianLakhs)
-    .slice(0, limit);
-}
+export const getTopPayingRoles = unstable_cache(
+  async (limit = 6): Promise<TopRole[]> => {
+    const since = new Date(Date.now() - 24 * 30 * 24 * 60 * 60 * 1000);
+    const rows = await db.salarySubmission.findMany({
+      where: { status: "APPROVED", createdAt: { gte: since } },
+      select: { jobTitle: true, ctcLakhs: true },
+      take: 5000,
+    });
+    const byTitle = new Map<string, number[]>();
+    for (const r of rows) {
+      const k = r.jobTitle.trim();
+      const arr = byTitle.get(k) ?? [];
+      arr.push(r.ctcLakhs);
+      byTitle.set(k, arr);
+    }
+    const out: TopRole[] = [];
+    for (const [title, vals] of byTitle) {
+      const stat = summarise(vals);
+      if (stat) out.push({ jobTitle: title, stat });
+    }
+    return out
+      .sort((a, b) => b.stat.medianLakhs - a.stat.medianLakhs)
+      .slice(0, limit);
+  },
+  ["compass:top-paying-roles:v1"],
+  // Medians over a 30-day window — 5 minutes of staleness is fine.
+  { revalidate: 300, tags: [COMPASS_TAG] },
+);
 
 /**
  * Top-paying roles split by collar tier. Engineer = white-collar,
@@ -120,55 +135,62 @@ export interface TopRoleByTier extends TopRole {
   topCompanyName: string | null;
 }
 
-export async function getTopPayingRolesByTier(
-  tier: SalaryTier,
-  limit = 5,
-): Promise<TopRoleByTier[]> {
-  const since = new Date(Date.now() - 24 * 30 * 24 * 60 * 60 * 1000);
-  const profileFilter =
-    tier === "TECHNICIAN"
-      ? { profileMode: "TECHNICIAN" as const }
-      : { profileMode: { not: "TECHNICIAN" as const } };
-  const rows = await db.salarySubmission.findMany({
-    where: { status: "APPROVED", createdAt: { gte: since }, ...profileFilter },
-    select: { jobTitle: true, ctcLakhs: true, companyName: true },
-    take: 5000,
-  });
-  // Group submissions by jobTitle, tracking the most-frequent company
-  // for each role so the row can name a representative employer.
-  const byTitle = new Map<
-    string,
-    { vals: number[]; companies: Map<string, number> }
-  >();
-  for (const r of rows) {
-    const k = r.jobTitle.trim();
-    const slot =
-      byTitle.get(k) ?? { vals: [] as number[], companies: new Map<string, number>() };
-    slot.vals.push(r.ctcLakhs);
-    slot.companies.set(
-      r.companyName,
-      (slot.companies.get(r.companyName) ?? 0) + 1,
-    );
-    byTitle.set(k, slot);
-  }
-  const out: TopRoleByTier[] = [];
-  for (const [title, slot] of byTitle) {
-    const stat = summarise(slot.vals);
-    if (!stat) continue;
-    let topCompanyName: string | null = null;
-    let topCount = 0;
-    for (const [name, count] of slot.companies) {
-      if (count > topCount) {
-        topCount = count;
-        topCompanyName = name;
-      }
+export const getTopPayingRolesByTier = unstable_cache(
+  async (
+    tier: SalaryTier,
+    limit = 5,
+  ): Promise<TopRoleByTier[]> => {
+    const since = new Date(Date.now() - 24 * 30 * 24 * 60 * 60 * 1000);
+    const profileFilter =
+      tier === "TECHNICIAN"
+        ? { profileMode: "TECHNICIAN" as const }
+        : { profileMode: { not: "TECHNICIAN" as const } };
+    const rows = await db.salarySubmission.findMany({
+      where: { status: "APPROVED", createdAt: { gte: since }, ...profileFilter },
+      select: { jobTitle: true, ctcLakhs: true, companyName: true },
+      take: 5000,
+    });
+    // Group submissions by jobTitle, tracking the most-frequent company
+    // for each role so the row can name a representative employer.
+    const byTitle = new Map<
+      string,
+      { vals: number[]; companies: Map<string, number> }
+    >();
+    for (const r of rows) {
+      const k = r.jobTitle.trim();
+      const slot =
+        byTitle.get(k) ?? { vals: [] as number[], companies: new Map<string, number>() };
+      slot.vals.push(r.ctcLakhs);
+      slot.companies.set(
+        r.companyName,
+        (slot.companies.get(r.companyName) ?? 0) + 1,
+      );
+      byTitle.set(k, slot);
     }
-    out.push({ jobTitle: title, stat, tier, topCompanyName });
-  }
-  return out
-    .sort((a, b) => b.stat.medianLakhs - a.stat.medianLakhs)
-    .slice(0, limit);
-}
+    const out: TopRoleByTier[] = [];
+    for (const [title, slot] of byTitle) {
+      const stat = summarise(slot.vals);
+      if (!stat) continue;
+      let topCompanyName: string | null = null;
+      let topCount = 0;
+      for (const [name, count] of slot.companies) {
+        if (count > topCount) {
+          topCount = count;
+          topCompanyName = name;
+        }
+      }
+      out.push({ jobTitle: title, stat, tier, topCompanyName });
+    }
+    return out
+      .sort((a, b) => b.stat.medianLakhs - a.stat.medianLakhs)
+      .slice(0, limit);
+  },
+  ["compass:top-paying-roles-by-tier:v1"],
+  // Per-tier slice — same staleness profile as getTopPayingRoles.
+  // The cache key includes the `tier` argument automatically, so
+  // ENGINEER and TECHNICIAN don't collide.
+  { revalidate: 300, tags: [COMPASS_TAG] },
+);
 
 export interface TopCompany {
   companyId: string | null;
@@ -178,47 +200,51 @@ export interface TopCompany {
   stat: SalaryStat;
 }
 
-export async function getTopPayingCompanies(limit = 6): Promise<TopCompany[]> {
-  const since = new Date(Date.now() - 24 * 30 * 24 * 60 * 60 * 1000);
-  const rows = await db.salarySubmission.findMany({
-    where: { status: "APPROVED", createdAt: { gte: since } },
-    select: {
-      companyId: true,
-      companyName: true,
-      ctcLakhs: true,
-      company: { select: { slug: true, logoUrl: true } },
-    },
-    take: 5000,
-  });
-  const grouped = new Map<string, { name: string; slug: string | null; logo: string | null; vals: number[] }>();
-  for (const r of rows) {
-    const k = r.companyId ?? `text:${r.companyName.toLowerCase()}`;
-    const slot = grouped.get(k) ?? {
-      name: r.companyName,
-      slug: r.company?.slug ?? null,
-      logo: r.company?.logoUrl ?? null,
-      vals: [],
-    };
-    slot.vals.push(r.ctcLakhs);
-    grouped.set(k, slot);
-  }
-  const out: TopCompany[] = [];
-  for (const [k, slot] of grouped) {
-    const stat = summarise(slot.vals);
-    if (stat) {
-      out.push({
-        companyId: k.startsWith("text:") ? null : k,
-        companyName: slot.name,
-        companySlug: slot.slug,
-        logoUrl: slot.logo,
-        stat,
-      });
+export const getTopPayingCompanies = unstable_cache(
+  async (limit = 6): Promise<TopCompany[]> => {
+    const since = new Date(Date.now() - 24 * 30 * 24 * 60 * 60 * 1000);
+    const rows = await db.salarySubmission.findMany({
+      where: { status: "APPROVED", createdAt: { gte: since } },
+      select: {
+        companyId: true,
+        companyName: true,
+        ctcLakhs: true,
+        company: { select: { slug: true, logoUrl: true } },
+      },
+      take: 5000,
+    });
+    const grouped = new Map<string, { name: string; slug: string | null; logo: string | null; vals: number[] }>();
+    for (const r of rows) {
+      const k = r.companyId ?? `text:${r.companyName.toLowerCase()}`;
+      const slot = grouped.get(k) ?? {
+        name: r.companyName,
+        slug: r.company?.slug ?? null,
+        logo: r.company?.logoUrl ?? null,
+        vals: [],
+      };
+      slot.vals.push(r.ctcLakhs);
+      grouped.set(k, slot);
     }
-  }
-  return out
-    .sort((a, b) => b.stat.medianLakhs - a.stat.medianLakhs)
-    .slice(0, limit);
-}
+    const out: TopCompany[] = [];
+    for (const [k, slot] of grouped) {
+      const stat = summarise(slot.vals);
+      if (stat) {
+        out.push({
+          companyId: k.startsWith("text:") ? null : k,
+          companyName: slot.name,
+          companySlug: slot.slug,
+          logoUrl: slot.logo,
+          stat,
+        });
+      }
+    }
+    return out
+      .sort((a, b) => b.stat.medianLakhs - a.stat.medianLakhs)
+      .slice(0, limit);
+  },
+  ["compass:top-paying-companies:v1"],
+  { revalidate: 300, tags: [COMPASS_TAG] },
+);
 
 /** Headline counters for the landing page. */
 export interface CompassCounters {
@@ -228,25 +254,29 @@ export interface CompassCounters {
   rolesCovered: number;
 }
 
-export async function getCompassCounters(): Promise<CompassCounters> {
-  const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-  const [total, weekly] = await Promise.all([
-    db.salarySubmission.findMany({
-      where: { status: "APPROVED" },
-      select: { companyId: true, companyName: true, jobTitle: true, createdAt: true },
-      take: 5000,
-    }),
-    db.salarySubmission.count({ where: { status: "APPROVED", createdAt: { gte: since7d } } }),
-  ]);
-  const companies = new Set(total.map((r) => r.companyId ?? `text:${r.companyName.toLowerCase()}`));
-  const roles = new Set(total.map((r) => r.jobTitle.toLowerCase().trim()));
-  return {
-    totalApproved: total.length,
-    newThisWeek: weekly,
-    companiesCovered: companies.size,
-    rolesCovered: roles.size,
-  };
-}
+export const getCompassCounters = unstable_cache(
+  async (): Promise<CompassCounters> => {
+    const since7d = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const [total, weekly] = await Promise.all([
+      db.salarySubmission.findMany({
+        where: { status: "APPROVED" },
+        select: { companyId: true, companyName: true, jobTitle: true, createdAt: true },
+        take: 5000,
+      }),
+      db.salarySubmission.count({ where: { status: "APPROVED", createdAt: { gte: since7d } } }),
+    ]);
+    const companies = new Set(total.map((r) => r.companyId ?? `text:${r.companyName.toLowerCase()}`));
+    const roles = new Set(total.map((r) => r.jobTitle.toLowerCase().trim()));
+    return {
+      totalApproved: total.length,
+      newThisWeek: weekly,
+      companiesCovered: companies.size,
+      rolesCovered: roles.size,
+    };
+  },
+  ["compass:counters:v1"],
+  { revalidate: 60, tags: [COMPASS_TAG] },
+);
 
 /**
  * Per-experience-tier breakdown for an unlocked viewer. Buckets:
@@ -272,28 +302,34 @@ const BUCKET_LABELS: Record<TierBreakdown["bucket"], string> = {
   LEAD: "Lead · 10+ yrs",
 };
 
-export async function getTierBreakdown(opts: { jobTitle?: string; companyId?: string | null }): Promise<TierBreakdown[]> {
-  const where: { status: "APPROVED"; jobTitle?: string; companyId?: string | null } = { status: "APPROVED" };
-  if (opts.jobTitle) where.jobTitle = opts.jobTitle;
-  if (opts.companyId !== undefined) where.companyId = opts.companyId;
+export const getTierBreakdown = unstable_cache(
+  async (opts: { jobTitle?: string; companyId?: string | null }): Promise<TierBreakdown[]> => {
+    const where: { status: "APPROVED"; jobTitle?: string; companyId?: string | null } = { status: "APPROVED" };
+    if (opts.jobTitle) where.jobTitle = opts.jobTitle;
+    if (opts.companyId !== undefined) where.companyId = opts.companyId;
 
-  const rows = await db.salarySubmission.findMany({
-    where,
-    select: { yearsExp: true, ctcLakhs: true },
-  });
-  const byBucket = new Map<TierBreakdown["bucket"], number[]>();
-  for (const r of rows) {
-    const b = bucketFor(r.yearsExp);
-    const arr = byBucket.get(b) ?? [];
-    arr.push(r.ctcLakhs);
-    byBucket.set(b, arr);
-  }
-  return (["JUNIOR", "MID", "SENIOR", "LEAD"] as const).map((bucket) => ({
-    label: BUCKET_LABELS[bucket],
-    bucket,
-    stat: summarise(byBucket.get(bucket) ?? []),
-  }));
-}
+    const rows = await db.salarySubmission.findMany({
+      where,
+      select: { yearsExp: true, ctcLakhs: true },
+    });
+    const byBucket = new Map<TierBreakdown["bucket"], number[]>();
+    for (const r of rows) {
+      const b = bucketFor(r.yearsExp);
+      const arr = byBucket.get(b) ?? [];
+      arr.push(r.ctcLakhs);
+      byBucket.set(b, arr);
+    }
+    return (["JUNIOR", "MID", "SENIOR", "LEAD"] as const).map((bucket) => ({
+      label: BUCKET_LABELS[bucket],
+      bucket,
+      stat: summarise(byBucket.get(bucket) ?? []),
+    }));
+  },
+  ["compass:tier-breakdown:v1"],
+  // Cache key includes the opts object (jobTitle / companyId) so the
+  // per-role / per-company drilldowns each get their own entry.
+  { revalidate: 300, tags: [COMPASS_TAG] },
+);
 
 export function formatLakhs(value: number): string {
   if (value >= 100) return `₹${(value / 100).toFixed(1)}Cr`;

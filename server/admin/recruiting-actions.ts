@@ -78,9 +78,18 @@ const adminJobSchema = z.object({
   companyId: z.string().optional(),
   newCompanyName: z.string().max(120).optional(),
   newCompanyWebsite: looseUrl.optional(),
-  newCompanyType: z
-    .preprocess((v) => (v === "" ? undefined : v), z.nativeEnum(CompanyType))
-    .optional(),
+  // NB the `.optional()` lives INSIDE the preprocess wrap. The HTML
+  // form always submits this field (the <NativeSelect> exists on the
+  // page even when the inline new-company <details> is collapsed),
+  // so the raw value is `""`, not `undefined`. We turn the empty
+  // string into `undefined` first, then let the enum accept the
+  // undefined via its own `.optional()`. The old `.preprocess(...).optional()`
+  // chain failed in the opposite direction — preprocess returned
+  // undefined, but the enum (without its own optional) refused.
+  newCompanyType: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z.nativeEnum(CompanyType).optional(),
+  ),
   newCompanyHqLocation: z.string().max(120).optional(),
 
   title: z.string().min(3).max(140),

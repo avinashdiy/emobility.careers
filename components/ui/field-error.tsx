@@ -14,7 +14,7 @@ export function FieldError({
     <p
       id={id}
       role="alert"
-      className={cn("mt-1 text-hint font-bold text-emce-red", className)}
+      className={cn("mt-1 text-hint font-bold text-emce-red-deep", className)}
     >
       {error}
     </p>

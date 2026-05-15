@@ -66,7 +66,7 @@ export default async function DigestPage({
               </p>
             </Card>
           ) : sp.error ? (
-            <div className="rounded-md border border-emce-red bg-emce-red-light p-3 text-sm text-emce-red">
+            <div className="rounded-md border border-emce-red bg-emce-red-light p-3 text-sm text-emce-red-deep">
               ⚠️ {sp.error}
             </div>
           ) : null}

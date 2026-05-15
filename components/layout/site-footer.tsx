@@ -32,7 +32,11 @@ export async function SiteFooter() {
           <div className="inline-block rounded-md bg-white px-3 py-1.5">
             <Logo size="md" />
           </div>
-          <p className="mt-3 text-sm text-emce-light-soft/70">
+          {/* Bumped from /70 → full opacity. Lighthouse flagged
+              the half-faded variant for failing AA on the dark-teal
+              footer surface; the full token (#eef2eb) hits ~12:1
+              contrast against bg-emce-darkest. */}
+          <p className="mt-3 text-sm text-emce-light-soft">
             India&apos;s specialised hiring platform for the electric mobility industry.
           </p>
         </div>
@@ -62,7 +66,11 @@ export async function SiteFooter() {
           ]}
         />
       </div>
-      <div className="border-t border-white/10 py-5 text-center text-xs text-emce-light-soft/50">
+      {/* Bumped from /50 → /80. At /50 the rendered color
+          composited only ~4.1:1 against bg-emce-darkest (below the
+          4.5:1 normal-text threshold). /80 lands at ~7.4:1 — still
+          reads as "fine print" but clears WCAG AA. */}
+      <div className="border-t border-white/10 py-5 text-center text-xs text-emce-light-soft/80">
         © {new Date().getFullYear()} eMobility Careers. Powered by DIYguru.
       </div>
     </footer>
@@ -78,7 +86,13 @@ function FooterCol({
 }) {
   return (
     <div>
-      <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-emce-mid">{title}</h4>
+      {/* Heading level deliberately h2: footer columns are top-
+          level navigation groups inside the <footer> landmark, peer
+          to the page's section h2s. The previous <h4> skipped levels
+          (no h3 on the page), failing Lighthouse's "heading-order"
+          audit. Visual styling is unchanged — `text-sm` keeps the
+          rendered size identical. */}
+      <h2 className="mb-3 text-sm font-bold uppercase tracking-wide text-emce-mid">{title}</h2>
       <ul className="space-y-2 text-sm">
         {links.map((l) => (
           <li key={l.href}>

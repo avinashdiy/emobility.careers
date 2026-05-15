@@ -46,7 +46,7 @@ export function AddTopicForm() {
           id="topic-msg"
           role={state.ok ? "status" : "alert"}
           className={`basis-full text-hint ${
-            state.ok ? "text-emce-success-deep" : "text-emce-red"
+            state.ok ? "text-emce-success-deep" : "text-emce-red-deep"
           }`}
         >
           {state.message}

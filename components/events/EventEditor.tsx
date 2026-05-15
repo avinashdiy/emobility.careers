@@ -375,7 +375,7 @@ function DangerActions({
   const router = useRouter();
   return (
     <Card className="border-emce-orange p-6">
-      <h3 className="text-section text-emce-orange">Danger zone</h3>
+      <h3 className="text-section text-emce-orange-deep">Danger zone</h3>
       <div className="mt-3 flex flex-wrap gap-2">
         {status !== "DRAFT" && (
           <form
@@ -410,7 +410,7 @@ function DangerActions({
             }}
           >
             <input type="hidden" name="id" value={eventId} />
-            <Button type="submit" variant="ghost" size="sm" className="text-emce-orange">
+            <Button type="submit" variant="ghost" size="sm" className="text-emce-orange-deep">
               Delete
             </Button>
           </form>

@@ -66,6 +66,15 @@ const createSchema = z.object({
   maxCandidates: z.coerce.number().int().min(0).max(10000).optional(),
 });
 
+// TODO: migrate to useActionState pattern — this currently has the
+// same data-loss bug as createCompany / submitSalary used to. Form has
+// ~10 fields, redirect-on-failure wipes them. Follow the playbook from
+// CreateCompanyForm: convert action signature to (prev, FormData) →
+// FormState, return state on validation failure with per-field errors +
+// snapshotFormData prevValues, wrap form in a client component that
+// uses useActionState. Leaving the redirect in place for now since the
+// surface is admin/employer-internal (lower blast radius than the public
+// salary submit form which we just fixed).
 export async function createDrive(formData: FormData) {
   const { session, employer } = await requireDriveAccess();
   const parsed = createSchema.safeParse(Object.fromEntries(formData));
@@ -126,6 +135,7 @@ const updateSchema = createSchema.extend({
   landingPageOverride: z.string().url().optional().or(z.literal("")),
 });
 
+// TODO: migrate to useActionState pattern (see createDrive note above).
 export async function updateDrive(formData: FormData) {
   const { session, drive } = await requireDriveAccess(
     String(formData.get("driveId") ?? ""),

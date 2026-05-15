@@ -105,7 +105,7 @@ export default async function RegisterPage({ params }: { params: Promise<{ slug:
               ))}
             </ul>
             {atUserCap ? (
-              <p className="mt-3 rounded-md bg-emce-orange-light/60 p-2 text-hint text-emce-orange">
+              <p className="mt-3 rounded-md bg-emce-orange-light/60 p-2 text-hint text-emce-orange-deep">
                 You&apos;ve hit the per-user cap of {PER_USER_TEAM_CAP} teams in
                 this competition. Withdraw an existing one or contact admin.
               </p>

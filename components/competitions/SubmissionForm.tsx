@@ -56,7 +56,7 @@ export function SubmissionForm(props: Props) {
       <form action={formAction} className="mt-4 space-y-3" key={stageId}>
         <input type="hidden" name="registrationId" value={props.registrationId} />
         {state.message && (
-          <div role="alert" className={`rounded-md p-3 text-sm ${state.ok ? "bg-emce-light-soft" : "bg-emce-red-light text-emce-red"}`}>
+          <div role="alert" className={`rounded-md p-3 text-sm ${state.ok ? "bg-emce-light-soft" : "bg-emce-red-light text-emce-red-deep"}`}>
             {state.message}
           </div>
         )}

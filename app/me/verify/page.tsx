@@ -88,7 +88,7 @@ export default async function MyVerifyPage() {
           </div>
           <p className="mt-3 text-sm text-emce-text-sec">{meta.helper}</p>
           {status === "REJECTED" && profile.idVerificationNotes && (
-            <div className="mt-3 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+            <div className="mt-3 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
               <strong>Reviewer notes:</strong> {profile.idVerificationNotes}
             </div>
           )}

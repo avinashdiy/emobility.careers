@@ -122,7 +122,7 @@ export function CustomizeUrlEditor({ currentSlug, domain }: Props) {
             </p>
           )}
           {status.kind === "error" && (
-            <p className="font-bold text-emce-red">⚠ {status.message}</p>
+            <p className="font-bold text-emce-red-deep">⚠ {status.message}</p>
           )}
         </div>
 

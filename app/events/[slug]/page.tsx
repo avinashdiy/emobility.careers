@@ -134,7 +134,7 @@ export default async function EventDetailPage({
       <main className="container max-w-3xl py-8">
         {event.status === "DRAFT" && canPreviewDraft && (
           <div className="mb-4 rounded-md border border-emce-orange bg-emce-orange-light p-3 text-sm">
-            <p className="font-bold text-emce-orange">🟡 Draft preview</p>
+            <p className="font-bold text-emce-orange-deep">🟡 Draft preview</p>
             <p className="mt-1 text-emce-text">
               This event isn&apos;t live yet — only you and other{" "}
               {event.company.name} recruiters can see this page. Flip the status
@@ -171,7 +171,7 @@ export default async function EventDetailPage({
         <header className="mt-5">
           <div className="flex flex-wrap items-center gap-2">
             <Badge variant="default">{eventTypeLabel[event.eventType]}</Badge>
-            {cancelled && <Badge variant="outline" className="text-emce-orange">Cancelled</Badge>}
+            {cancelled && <Badge variant="outline" className="text-emce-orange-deep">Cancelled</Badge>}
             {isPast && !cancelled && <Badge variant="outline">Past event</Badge>}
           </div>
           <h1 className="mt-2 text-2xl font-extrabold leading-tight text-emce-text md:text-3xl">
@@ -268,7 +268,7 @@ export default async function EventDetailPage({
             </div>
           ) : cancelled ? (
             <div>
-              <h2 className="text-section text-emce-orange">Event cancelled</h2>
+              <h2 className="text-section text-emce-orange-deep">Event cancelled</h2>
               <p className="mt-1 text-hint text-emce-text-sec">
                 The host has called off this event. Check{" "}
                 <Link href={`/company/${event.company.slug}`} className="font-bold text-emce-dark hover:underline">

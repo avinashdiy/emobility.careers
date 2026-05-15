@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { signinNextUrl } from "@/lib/auth-redirect";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
@@ -13,7 +14,7 @@ export const metadata = { title: "Saved candidates" };
 
 export default async function SavedCandidates() {
   const session = await auth();
-  if (!session?.user) redirect("/signin");
+  if (!session?.user) redirect(await signinNextUrl());
   if (session.user.role !== "EMPLOYER" && session.user.role !== "ADMIN") redirect("/403");
 
   const saved = await db.savedCandidate.findMany({

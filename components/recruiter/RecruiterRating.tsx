@@ -30,8 +30,8 @@ export function RecruiterRating({
   if (variant === "pill") {
     const toneClass =
       tone === "good" ? "bg-emce-light text-emce-darkest"
-      : tone === "okay" ? "bg-emce-orange-light text-emce-orange"
-      : "bg-emce-red-light text-emce-red";
+      : tone === "okay" ? "bg-emce-orange-light text-emce-orange-deep"
+      : "bg-emce-red-light text-emce-red-deep";
     return (
       <span
         className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold ${toneClass} ${className ?? ""}`}

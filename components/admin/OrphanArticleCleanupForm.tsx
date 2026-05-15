@@ -61,7 +61,7 @@ export function OrphanArticleCleanupForm({ orphanCount }: Props) {
           className={`rounded-md border p-3 text-sm ${
             state.ok
               ? "border-emce-success-deep/30 bg-emce-light-soft text-emce-text"
-              : "border-emce-red/40 bg-emce-red-light text-emce-red"
+              : "border-emce-red/40 bg-emce-red-light text-emce-red-deep"
           }`}
         >
           {state.message}

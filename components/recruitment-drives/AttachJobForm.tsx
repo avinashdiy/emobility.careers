@@ -108,7 +108,7 @@ export function AttachJobForm({
       </div>
 
       {error && (
-        <div role="alert" className="rounded-md bg-emce-red-light p-2 text-hint text-emce-red">
+        <div role="alert" className="rounded-md bg-emce-red-light p-2 text-hint text-emce-red-deep">
           {error}
         </div>
       )}

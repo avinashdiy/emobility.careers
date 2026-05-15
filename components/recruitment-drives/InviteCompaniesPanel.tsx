@@ -75,7 +75,7 @@ export function InviteCompaniesPanel({
         className="mt-1"
       />
       {error && (
-        <div role="alert" className="mt-2 rounded-md bg-emce-red-light p-2 text-hint text-emce-red">
+        <div role="alert" className="mt-2 rounded-md bg-emce-red-light p-2 text-hint text-emce-red-deep">
           {error}
         </div>
       )}

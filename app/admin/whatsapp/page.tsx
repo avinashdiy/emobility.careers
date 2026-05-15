@@ -101,7 +101,7 @@ export default async function AdminWhatsAppPage({
           </div>
         )}
         {sp.error && (
-          <div className="rounded-md border border-emce-red bg-emce-red-light p-3 text-sm text-emce-red">
+          <div className="rounded-md border border-emce-red bg-emce-red-light p-3 text-sm text-emce-red-deep">
             ⚠️ {sp.error}
           </div>
         )}
@@ -283,7 +283,7 @@ function Kpi({
 }) {
   const toneClass =
     tone === "ok" ? "text-emce-mid-muted"
-    : tone === "warn" ? "text-emce-orange"
+    : tone === "warn" ? "text-emce-orange-deep"
     : tone === "muted" ? "text-emce-text-muted"
     : "text-emce-text";
   return (

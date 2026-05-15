@@ -475,7 +475,7 @@ export default async function PublicCompanyPage({
                                 {e.eventType === "WEBINAR" ? "Webinar" : e.eventType === "IN_PERSON" ? "In person" : "Hybrid"}
                               </Badge>
                               {e.status === "CANCELLED" && (
-                                <Badge variant="outline" className="text-[10px] text-emce-orange">Cancelled</Badge>
+                                <Badge variant="outline" className="text-[10px] text-emce-orange-deep">Cancelled</Badge>
                               )}
                             </div>
                             <p className="mt-1 text-sm font-bold text-emce-text">{e.title}</p>

@@ -32,7 +32,7 @@ export const Label = React.forwardRef<HTMLLabelElement, LabelProps>(
       {required && (
         <>
           {" "}
-          <span aria-hidden className="text-emce-red">
+          <span aria-hidden className="text-emce-red-deep">
             *
           </span>
           <span className="sr-only"> (required)</span>

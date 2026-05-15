@@ -56,9 +56,9 @@ export default async function AccountPage() {
             <ShieldAlert
               className={`h-5 w-5 ${
                 accountState === "BANNED" || accountState === "SUSPENDED"
-                  ? "text-emce-red"
+                  ? "text-emce-red-deep"
                   : accountState === "WARNED"
-                    ? "text-emce-orange"
+                    ? "text-emce-orange-deep"
                     : "text-emce-mid"
               }`}
               aria-hidden
@@ -91,7 +91,7 @@ export default async function AccountPage() {
             </p>
           )}
           {accountState === "SUSPENDED" && (
-            <p className="mt-2 text-sm text-emce-red">
+            <p className="mt-2 text-sm text-emce-red-deep">
               Your account is suspended
               {me?.suspendedUntil
                 ? ` until ${me.suspendedUntil.toLocaleString()}`
@@ -101,7 +101,7 @@ export default async function AccountPage() {
             </p>
           )}
           {accountState === "BANNED" && (
-            <p className="mt-2 text-sm text-emce-red">
+            <p className="mt-2 text-sm text-emce-red-deep">
               Your account has been permanently banned. To appeal, email{" "}
               <strong>support@emobility.careers</strong>.
             </p>
@@ -150,9 +150,9 @@ export default async function AccountPage() {
 
         <Card className="mt-4 border-emce-red bg-emce-red-light/30 p-5">
           <div className="flex items-start gap-2">
-            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-emce-red" aria-hidden />
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-emce-red-deep" aria-hidden />
             <div className="min-w-0 flex-1">
-              <h2 className="text-section text-emce-red">Close my account</h2>
+              <h2 className="text-section text-emce-red-deep">Close my account</h2>
               <p className="mt-1 text-sm text-emce-text-sec">
                 Closes your account and immediately scrubs your name, photo,
                 and contact info from every public surface. Your posts +

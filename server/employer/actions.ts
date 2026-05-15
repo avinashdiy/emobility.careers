@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { Prisma } from "@prisma/client";
@@ -11,6 +11,7 @@ import { embeddingsQueue, notificationsQueue } from "@/lib/queues";
 import { logger } from "@/lib/logger";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { sanitizeJobHtml, plainTextLength } from "@/lib/cms/job-sanitize";
+import { snapshotFormData, type FormState } from "@/lib/form-state";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import {
@@ -80,24 +81,87 @@ async function requireEmployerWithCompany() {
 
 // ─── Company onboarding ─────────────────────────────────────
 
+/**
+ * Loose URL accepter — same trick as the admin job form. Auto-
+ * prefixes `https://` if the user typed a bare domain, trims
+ * whitespace, then runs the strict `.url()` parser. Prevents the
+ * common "I typed company.com and the form rejected my whole
+ * onboarding" UX trap.
+ */
+const looseUrl = z
+  .string()
+  .trim()
+  .transform((s) => {
+    if (!s) return "";
+    if (/^https?:\/\//i.test(s)) return s;
+    if (/^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}/i.test(s)) return `https://${s}`;
+    return s;
+  })
+  .pipe(z.string().url().or(z.literal("")));
+
 const companySchema = z.object({
   name: z.string().min(2).max(120),
-  website: z.string().url().optional().or(z.literal("")),
+  website: looseUrl.optional(),
   description: z.string().max(280).optional(),
   about: z.string().max(4000).optional(),
-  companyType: z.nativeEnum(CompanyType),
+  // Same preprocess-then-optional pattern that bit the admin job
+  // form: the form always submits "" for an unfilled NativeSelect,
+  // not undefined. Empty → undefined → enum.optional() accepts it.
+  // The action body checks `!data.companyType` below to enforce
+  // the actual requirement with a friendly per-field error instead
+  // of Zod's generic "Required" message.
+  companyType: z.preprocess(
+    (v) => (v === "" ? undefined : v),
+    z.nativeEnum(CompanyType).optional(),
+  ),
   teamSize: z.string().optional(),
   hqLocation: z.string().max(120).optional(),
   designation: z.string().min(1).max(120),
 });
 
-export async function createCompany(formData: FormData) {
+export interface CreateCompanyFormState extends FormState {
+  /// Slug of the newly created company on success — lets the
+  /// client surface a "Your page is at /companies/<slug>" link
+  /// in the success state.
+  slug?: string;
+}
+
+export async function createCompany(
+  _prev: CreateCompanyFormState,
+  formData: FormData,
+): Promise<CreateCompanyFormState> {
   const session = await requireEmployerOrCandidate();
   const parsed = companySchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
-    redirect("/employer/onboarding?error=" + encodeURIComponent("Invalid input"));
+    const flat = parsed.error.flatten();
+    const fieldErrors: Record<string, string> = {};
+    for (const [k, v] of Object.entries(flat.fieldErrors)) {
+      if (v && v[0]) fieldErrors[k] = v[0];
+    }
+    const firstField = Object.keys(fieldErrors)[0];
+    return {
+      ok: false,
+      message:
+        firstField !== undefined
+          ? `Couldn't save: "${firstField}" — ${fieldErrors[firstField]}`
+          : "Couldn't save. Check the highlighted fields.",
+      fieldErrors,
+      prevValues: snapshotFormData(formData),
+    };
   }
-  const { designation, ...companyData } = parsed.data;
+  // Manual required-check for the enum so the user gets a friendly
+  // per-field error instead of Zod-generic "Required".
+  if (!parsed.data.companyType) {
+    return {
+      ok: false,
+      message: "Pick a company type to continue.",
+      fieldErrors: { companyType: "Please pick a company type." },
+      prevValues: snapshotFormData(formData),
+    };
+  }
+  const { designation, ...companyData } = parsed.data as typeof parsed.data & {
+    companyType: CompanyType;
+  };
 
   const company = await db.$transaction(async (tx) => {
     const created = await withUniqueSlug(companyData.name, (slug) =>
@@ -456,6 +520,11 @@ export async function createJob(
     void pingGoogleIndexing(url, "URL_UPDATED");
     revalidatePath("/jobs.xml");
     revalidatePath("/sitemap-jobs.xml");
+    // Bust the Pulse aggregate cache — a new OPEN job changes
+    // open-jobs count, jobs-added-today, top-hiring-companies,
+    // hottest-skills, and hiring-velocity. Without this, the home
+    // page's "live counters" claim could lag by up to 5 minutes.
+    revalidateTag("pulse");
 
     // Fan out to candidates whose JobAlerts match this listing. Best-
     // effort: the matcher swallows individual queue failures so a
@@ -739,6 +808,10 @@ export async function updateJobStatus(formData: FormData) {
   const url = `${process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "")}/jobs/${id}`;
   void pingIndexNow(url);
   void pingGoogleIndexing(url, status === JobStatus.OPEN ? "URL_UPDATED" : "URL_DELETED");
+
+  // Bust pulse aggregates — open-jobs count, top-hiring companies,
+  // and hottest-skills all change when a job opens/pauses/closes.
+  revalidateTag("pulse");
 
   revalidatePath("/employer/jobs");
   revalidatePath(`/employer/jobs/${id}`);

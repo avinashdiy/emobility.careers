@@ -1,8 +1,11 @@
 import { redirect } from "next/navigation";
+import { signinNextUrl } from "@/lib/auth-redirect";
 import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Logo } from "@/components/brand/Logo";
+import { HeaderUserMenu } from "@/components/layout/HeaderUserMenu";
+import { getUserMenuViewerData } from "@/lib/header-user-menu-data";
 
 /**
  * TPO (Training & Placement Officer) shell.
@@ -23,8 +26,10 @@ export default async function TpoLayout({ children }: { children: React.ReactNod
     where: { id: session.user.id },
     select: { role: true, isPlacementOfficer: true, name: true, email: true },
   });
-  if (!user) redirect("/signin");
+  if (!user) redirect(await signinNextUrl());
   if (user.role !== "ADMIN" && !user.isPlacementOfficer) redirect("/403");
+
+  const viewer = await getUserMenuViewerData(session.user);
 
   return (
     <div className="min-h-screen bg-emce-light-bg">
@@ -40,22 +45,27 @@ export default async function TpoLayout({ children }: { children: React.ReactNod
               TPO
             </span>
           </Link>
-          <nav className="flex items-center gap-1 text-sm">
-            <NavLink href="/tpo">Dashboard</NavLink>
-            <NavLink href="/tpo/cohorts">Cohorts</NavLink>
-            <NavLink href="/tpo/unplaced">Unplaced</NavLink>
+          <div className="flex items-center gap-1 text-sm">
+            <nav className="flex items-center gap-1">
+              <NavLink href="/tpo">Dashboard</NavLink>
+              <NavLink href="/tpo/cohorts">Cohorts</NavLink>
+              <NavLink href="/tpo/unplaced">Unplaced</NavLink>
+            </nav>
             <span className="hidden h-4 w-px bg-emce-border sm:mx-2 sm:block" />
-            <Link href="/" className="hidden rounded-md px-2 py-1 text-emce-text-sec hover:bg-emce-light-soft sm:inline-block">
+            <Link
+              href="/"
+              className="hidden rounded-md px-2 py-1 text-emce-text-sec hover:bg-emce-light-soft sm:inline-block"
+            >
               Visit site →
             </Link>
-            <span className="hidden text-emce-text-muted sm:inline">{user.email}</span>
-            <Link
-              href="/api/auth/signout"
-              className="rounded-md bg-emce-light-soft px-2 py-1 text-xs font-bold text-emce-text hover:bg-emce-border"
-            >
-              Sign out
-            </Link>
-          </nav>
+            {/* Switched from the old bare "email | Sign out" pair to the
+                shared HeaderUserMenu so the persona switcher, admin
+                jumps, and verified-badge surface here too. The
+                /tpo console viewer is typically a placement officer
+                who ALSO needs to flip into their candidate profile
+                (DIYguru staff are usually alumni). */}
+            {viewer && <HeaderUserMenu user={viewer} />}
+          </div>
         </div>
       </header>
       <main className="container max-w-6xl py-6">{children}</main>

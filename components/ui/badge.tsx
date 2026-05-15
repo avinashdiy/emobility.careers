@@ -12,7 +12,7 @@ const badgeVariants = cva(
         // `emce-success-deep` so design tweaks happen in one place.
         success: "bg-emce-light-soft text-emce-success-deep",
         warning: "bg-emce-orange-light text-emce-orange-deep",
-        danger: "bg-emce-red-light text-emce-red",
+        danger: "bg-emce-red-light text-emce-red-deep",
         outline: "border border-emce-border text-emce-text-sec",
         verified:
           "bg-gradient-to-r from-emce-verified-bg to-emce-light-soft text-emce-verified-text border border-emce-verified-border",

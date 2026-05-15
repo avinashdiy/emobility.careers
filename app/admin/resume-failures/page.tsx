@@ -148,7 +148,7 @@ export default async function ResumeFailuresPage() {
                         </span>
                       </div>
                       {r.failedReason && (
-                        <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-emce-red-light p-2 text-xs text-emce-red">
+                        <pre className="mt-2 max-h-32 overflow-auto rounded-md bg-emce-red-light p-2 text-xs text-emce-red-deep">
                           {r.failedReason}
                         </pre>
                       )}

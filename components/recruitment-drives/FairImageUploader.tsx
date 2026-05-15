@@ -134,7 +134,7 @@ function UploadSlot({
       </form>
       <p className="mt-1 text-hint text-emce-text-muted">{helper}</p>
       {error && (
-        <p role="alert" className="mt-1 text-hint text-emce-red">
+        <p role="alert" className="mt-1 text-hint text-emce-red-deep">
           {error}
         </p>
       )}

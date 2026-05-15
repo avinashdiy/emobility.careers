@@ -87,7 +87,7 @@ export function TeamLogoUploader({
           square — upload a square image for best results.
         </p>
         {error && (
-          <p role="alert" className="mt-1 text-hint text-emce-red">
+          <p role="alert" className="mt-1 text-hint text-emce-red-deep">
             {error}
           </p>
         )}

@@ -58,7 +58,7 @@ export function TeamRegisterForm({
       </p>
 
       {!state.ok && state.message && (
-        <div role="alert" className="mt-3 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+        <div role="alert" className="mt-3 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
           {state.message}
         </div>
       )}

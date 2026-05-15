@@ -15,7 +15,7 @@ export function ResetPasswordForm({ token }: { token: string }) {
     <form action={formAction} className="space-y-3" noValidate>
       <input type="hidden" name="token" value={token} />
       {state.message && !state.fieldErrors && (
-        <div role="alert" className="rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+        <div role="alert" className="rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
           {state.message}
         </div>
       )}

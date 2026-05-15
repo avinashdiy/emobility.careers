@@ -43,7 +43,7 @@ export function BoothEditor({
         </div>
       )}
       {!state.ok && state.message && (
-        <div role="alert" className="mt-3 rounded-md bg-emce-red-light p-2 text-hint text-emce-red">
+        <div role="alert" className="mt-3 rounded-md bg-emce-red-light p-2 text-hint text-emce-red-deep">
           {state.message}
         </div>
       )}

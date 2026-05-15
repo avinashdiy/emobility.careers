@@ -293,7 +293,7 @@ export default async function AIOpsPage({
                     </span>
                   </div>
                   {f.errorMessage && (
-                    <pre className="mt-1 max-h-24 overflow-auto text-xs text-emce-red">
+                    <pre className="mt-1 max-h-24 overflow-auto text-xs text-emce-red-deep">
                       {f.errorMessage}
                     </pre>
                   )}

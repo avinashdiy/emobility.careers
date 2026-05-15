@@ -73,7 +73,7 @@ export function JudgeForm({ submission, criteria }: { submission: Submission; cr
       <form action={formAction} className="mt-4 space-y-3 border-t border-emce-border pt-3">
         <input type="hidden" name="submissionId" value={submission.id} />
         {state.message && (
-          <div role="alert" className={`rounded-md p-2 text-sm ${state.ok ? "bg-emce-light-soft" : "bg-emce-red-light text-emce-red"}`}>
+          <div role="alert" className={`rounded-md p-2 text-sm ${state.ok ? "bg-emce-light-soft" : "bg-emce-red-light text-emce-red-deep"}`}>
             {state.message}
           </div>
         )}

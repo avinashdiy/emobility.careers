@@ -38,7 +38,7 @@ const STAGE_COLOR: Record<string, string> = {
   INTERVIEW: "bg-emce-orange-light text-[#8a4a1a]",
   OFFER: "bg-emce-light text-emce-darkest",
   HIRED: "bg-emce-mid text-emce-darkest",
-  REJECTED: "bg-emce-red-light text-emce-red",
+  REJECTED: "bg-emce-red-light text-emce-red-deep",
   WITHDRAWN: "bg-gray-100 text-gray-500",
 };
 

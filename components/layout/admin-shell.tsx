@@ -3,6 +3,8 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { AdminSidebar } from "@/components/layout/AdminSidebar";
+import { HeaderUserMenu } from "@/components/layout/HeaderUserMenu";
+import { getUserMenuViewerData } from "@/lib/header-user-menu-data";
 import { Logo } from "@/components/brand/Logo";
 
 /**
@@ -87,10 +89,11 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
             {session?.user && (
               <>
                 <span className="hidden h-4 w-px bg-white/20 sm:block" />
-                <span className="hidden text-white/70 sm:inline">{session.user.email}</span>
-                <Link href="/api/auth/signout" className="rounded bg-white/10 px-2 py-1 text-xs font-bold hover:bg-white/20">
-                  Sign out
-                </Link>
+                {/* Replaced the old "email | Sign out" pair with the
+                    shared HeaderUserMenu so admins can also jump
+                    into their candidate / employer personas without
+                    sign-out-and-sign-in-again. */}
+                <AdminUserMenuSlot userId={session.user.id} role={session.user.role} email={session.user.email} name={session.user.name} />
               </>
             )}
           </div>
@@ -115,4 +118,37 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
       </div>
     </div>
   );
+}
+
+/**
+ * Async sub-component so the parent `AdminShell` doesn't get a
+ * second await sequence interleaved with the pending-counts
+ * Promise.all. Runs in parallel with the sidebar render.
+ */
+async function AdminUserMenuSlot({
+  userId,
+  role,
+  email,
+  name,
+}: {
+  userId: string;
+  role: string;
+  email?: string | null;
+  name?: string | null;
+}) {
+  const viewer = await getUserMenuViewerData({ id: userId, role, email, name });
+  if (!viewer) {
+    // Defensive fallback — User row vanished between the auth
+    // check and this point. Render the old plain-link signout so
+    // the admin can still escape the page.
+    return (
+      <Link
+        href="/api/auth/signout"
+        className="rounded bg-white/10 px-2 py-1 text-xs font-bold hover:bg-white/20"
+      >
+        Sign out
+      </Link>
+    );
+  }
+  return <HeaderUserMenu user={viewer} />;
 }

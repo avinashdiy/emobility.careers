@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import Papa from "papaparse";
 import { db } from "@/lib/db";
+import { isRouterControlError } from "@/lib/server-action-errors";
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { CompanyVerification, Role, AccountStatus } from "@prisma/client";
@@ -531,8 +532,12 @@ export async function sendTestEmail(formData: FormData) {
       )}`,
     );
   } catch (err) {
-    // Re-throw redirect errors that Next.js uses for redirect()
-    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    // Re-throw redirect / not-found errors Next.js uses for control
+    // flow. Using the canonical helper instead of an ad-hoc
+    // `err.message === "NEXT_REDIRECT"` check — the helper handles
+    // both NEXT_REDIRECT and NEXT_NOT_FOUND and survives any future
+    // Next.js error-format change.
+    if (isRouterControlError(err)) throw err;
     const message =
       err instanceof Error
         ? `${err.name}: ${err.message}`.slice(0, 600)

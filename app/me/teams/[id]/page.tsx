@@ -143,6 +143,7 @@ export default async function CaptainTeamDashboard({
     <div className="container max-w-5xl space-y-6 py-8">
       <PageHeader
         title={team.teamName ?? "Untitled team"}
+        backHref="/me/teams"
         subtitle={
           <>
             <Link href={`/competitions/${team.competition.slug}`} className="hover:underline">
@@ -218,7 +219,7 @@ export default async function CaptainTeamDashboard({
             only gates the public page and prize money.
           </p>
           {!verificationReady && (
-            <p className="mt-2 text-hint text-emce-orange">
+            <p className="mt-2 text-hint text-emce-orange-deep">
               Add your <strong>institution</strong>, <strong>faculty advisor name</strong>, and
               <strong> faculty email</strong> in the profile below before submitting.
             </p>

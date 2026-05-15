@@ -97,7 +97,7 @@ export function AdminJobForm({ companies, evDomains, existingJob }: Props) {
       {state.message && !state.ok && (
         <div
           role="alert"
-          className="mb-4 rounded-md border border-emce-red/40 bg-emce-red-light p-3 text-sm text-emce-red"
+          className="mb-4 rounded-md border border-emce-red/40 bg-emce-red-light p-3 text-sm text-emce-red-deep"
         >
           {state.message}
         </div>
@@ -109,89 +109,114 @@ export function AdminJobForm({ companies, evDomains, existingJob }: Props) {
         )}
         {/* ── Company picker ──────────────────────────── */}
         <div className="sm:col-span-2">
-          <Label htmlFor="companyId">Company (existing)</Label>
-          <NativeSelect
-            id="companyId"
-            name="companyId"
-            defaultValue={v.companyId ?? ""}
-            aria-invalid={!!e.companyId}
-          >
-            <option value="">— Pick one or fill new-company section below —</option>
-            {companies.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </NativeSelect>
-          <p className="mt-1 text-hint text-emce-text-sec">
-            {companies.length} companies in the directory.
-          </p>
-          <FieldError error={e.companyId} />
+          <Label htmlFor="companyId">Company {isEdit ? "(locked — re-parenting not supported)" : "(existing)"}</Label>
+          {isEdit ? (
+            <>
+              {/* Edit mode: show the company as read-only context but
+                  send its id via a hidden input. Changing the parent
+                  company of a posted job invalidates audit history +
+                  every existing application's company reference, so
+                  it's out of scope here. */}
+              <input type="hidden" name="companyId" value={v.companyId ?? ""} />
+              <div className="rounded-md border border-emce-border bg-emce-light-soft px-3 py-2 text-sm font-bold text-emce-text">
+                {companies.find((c) => c.id === v.companyId)?.name ?? "(unknown)"}
+              </div>
+            </>
+          ) : (
+            <>
+              <NativeSelect
+                id="companyId"
+                name="companyId"
+                defaultValue={v.companyId ?? ""}
+                aria-invalid={!!e.companyId}
+              >
+                <option value="">— Pick one or fill new-company section below —</option>
+                {companies.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name}
+                  </option>
+                ))}
+              </NativeSelect>
+              <p className="mt-1 text-hint text-emce-text-sec">
+                {companies.length} companies in the directory.
+              </p>
+              <FieldError error={e.companyId} />
+            </>
+          )}
         </div>
 
-        {/* ── Inline new-company ──────────────────────── */}
-        <details
-          className="sm:col-span-2 rounded-md border border-emce-border bg-emce-bg p-4"
-          open={!!(e.newCompanyName || e.newCompanyType || v.newCompanyName)}
-        >
-          <summary className="cursor-pointer text-sm font-bold text-emce-text">
-            Or create a new company inline
-          </summary>
-          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <Label htmlFor="newCompanyName">Company name</Label>
-              <Input
-                id="newCompanyName"
-                name="newCompanyName"
-                defaultValue={v.newCompanyName ?? ""}
-                maxLength={120}
-                aria-invalid={!!e.newCompanyName}
-              />
-              <FieldError error={e.newCompanyName} />
+        {/* ── Inline new-company ────────────────────────
+            Only rendered on the create page. In edit mode it makes
+            no sense (you can't create a new company AND link to it
+            via the same edit submission), and worse, leaving the
+            collapsed <NativeSelect name="newCompanyType"> in the
+            DOM would silently submit empty-string values that the
+            schema has to ignore. Skipping the whole block keeps
+            the FormData minimal. */}
+        {!isEdit && (
+          <details
+            className="sm:col-span-2 rounded-md border border-emce-border bg-emce-bg p-4"
+            open={!!(e.newCompanyName || e.newCompanyType || v.newCompanyName)}
+          >
+            <summary className="cursor-pointer text-sm font-bold text-emce-text">
+              Or create a new company inline
+            </summary>
+            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <Label htmlFor="newCompanyName">Company name</Label>
+                <Input
+                  id="newCompanyName"
+                  name="newCompanyName"
+                  defaultValue={v.newCompanyName ?? ""}
+                  maxLength={120}
+                  aria-invalid={!!e.newCompanyName}
+                />
+                <FieldError error={e.newCompanyName} />
+              </div>
+              <div>
+                <Label htmlFor="newCompanyType">Company type</Label>
+                <NativeSelect
+                  id="newCompanyType"
+                  name="newCompanyType"
+                  defaultValue={v.newCompanyType ?? ""}
+                  aria-invalid={!!e.newCompanyType}
+                >
+                  <option value="">—</option>
+                  <option value="OEM">OEM</option>
+                  <option value="STARTUP">Startup</option>
+                  <option value="TIER1">Tier-1</option>
+                  <option value="TIER2">Tier-2</option>
+                  <option value="BATTERY">Battery</option>
+                  <option value="CHARGING">Charging</option>
+                  <option value="FLEET">Fleet / Mobility</option>
+                  <option value="CONSULTING">Consulting / Services</option>
+                  <option value="OTHER">Other</option>
+                </NativeSelect>
+                <FieldError error={e.newCompanyType} />
+              </div>
+              <div>
+                <Label htmlFor="newCompanyWebsite">Website</Label>
+                <Input
+                  id="newCompanyWebsite"
+                  name="newCompanyWebsite"
+                  defaultValue={v.newCompanyWebsite ?? ""}
+                  placeholder="https://... (auto-prefixed if you type just company.com)"
+                  aria-invalid={!!e.newCompanyWebsite}
+                />
+                <FieldError error={e.newCompanyWebsite} />
+              </div>
+              <div>
+                <Label htmlFor="newCompanyHqLocation">HQ Location</Label>
+                <Input
+                  id="newCompanyHqLocation"
+                  name="newCompanyHqLocation"
+                  defaultValue={v.newCompanyHqLocation ?? ""}
+                  placeholder="e.g. Bengaluru"
+                />
+              </div>
             </div>
-            <div>
-              <Label htmlFor="newCompanyType">Company type</Label>
-              <NativeSelect
-                id="newCompanyType"
-                name="newCompanyType"
-                defaultValue={v.newCompanyType ?? ""}
-                aria-invalid={!!e.newCompanyType}
-              >
-                <option value="">—</option>
-                <option value="OEM">OEM</option>
-                <option value="STARTUP">Startup</option>
-                <option value="TIER1">Tier-1</option>
-                <option value="TIER2">Tier-2</option>
-                <option value="BATTERY">Battery</option>
-                <option value="CHARGING">Charging</option>
-                <option value="FLEET">Fleet / Mobility</option>
-                <option value="CONSULTING">Consulting / Services</option>
-                <option value="OTHER">Other</option>
-              </NativeSelect>
-              <FieldError error={e.newCompanyType} />
-            </div>
-            <div>
-              <Label htmlFor="newCompanyWebsite">Website</Label>
-              <Input
-                id="newCompanyWebsite"
-                name="newCompanyWebsite"
-                defaultValue={v.newCompanyWebsite ?? ""}
-                placeholder="https://... (auto-prefixed if you type just company.com)"
-                aria-invalid={!!e.newCompanyWebsite}
-              />
-              <FieldError error={e.newCompanyWebsite} />
-            </div>
-            <div>
-              <Label htmlFor="newCompanyHqLocation">HQ Location</Label>
-              <Input
-                id="newCompanyHqLocation"
-                name="newCompanyHqLocation"
-                defaultValue={v.newCompanyHqLocation ?? ""}
-                placeholder="e.g. Bengaluru"
-              />
-            </div>
-          </div>
-        </details>
+          </details>
+        )}
 
         {/* ── Job basics ──────────────────────────────── */}
         <div className="sm:col-span-2">

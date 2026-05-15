@@ -168,7 +168,7 @@ export function SessionRow({
             required
             placeholder="Brief reason — visible to the other party."
           />
-          <p className="text-hint text-emce-red">
+          <p className="text-hint text-emce-red-deep">
             Paid sessions cancelled &gt;24h ahead get an automatic refund flag for admin to process.
           </p>
           <div className="flex justify-end gap-2">

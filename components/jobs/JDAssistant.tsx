@@ -116,7 +116,7 @@ export function JDAssistant({ fields }: Props) {
             placeholder="e.g. Looking for someone with 3-5 yrs in BMS firmware. Must know C, ARM Cortex, RTOS. Will own pack-level safety logic. Bangalore on-site."
             disabled={busy}
           />
-          {error && <p className="text-hint text-emce-red">{error}</p>}
+          {error && <p className="text-hint text-emce-red-deep">{error}</p>}
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" onClick={() => setOpen(false)}>Cancel</Button>
             <Button type="button" size="sm" onClick={run} disabled={busy || notes.length < 20}>

@@ -58,7 +58,7 @@ export function EmployerJobForm({ evDomains }: Props) {
       {state.message && !state.ok && (
         <div
           role="alert"
-          className="mb-4 rounded-md border border-emce-red/40 bg-emce-red-light p-3 text-sm text-emce-red"
+          className="mb-4 rounded-md border border-emce-red/40 bg-emce-red-light p-3 text-sm text-emce-red-deep"
         >
           {state.message}
         </div>

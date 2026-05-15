@@ -63,7 +63,7 @@ function tone(score: number): {
   return {
     label: "Long shot",
     bg: "bg-emce-red-light/60",
-    text: "text-emce-red",
+    text: "text-emce-red-deep",
     bar: "bg-emce-red",
     stroke: "#dc2626",
   };
@@ -150,7 +150,7 @@ export function MatchScoreCard({ match }: { match: MatchScoreData }) {
         <ul className="mt-3 space-y-1 border-t border-emce-border pt-3">
           {match.breakdown.caveats.map((c, i) => (
             <li key={i} className="flex items-start gap-2 text-hint text-emce-text-sec">
-              <span className="mt-0.5 text-emce-orange" aria-hidden>
+              <span className="mt-0.5 text-emce-orange-deep" aria-hidden>
                 !
               </span>
               <span>{c}</span>

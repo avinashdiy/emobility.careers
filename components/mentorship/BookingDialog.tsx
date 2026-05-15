@@ -170,7 +170,7 @@ export function BookingDialog(props: Props) {
       <div className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-emce-lg bg-white shadow-emce-lg">
         <div className="sticky top-0 flex items-center justify-between border-b border-emce-border bg-white p-4">
           <h2 className="text-section text-emce-text">Book a session with {props.mentorName}</h2>
-          <button onClick={() => setOpen(false)} className="text-emce-text-sec hover:text-emce-text">✕</button>
+          <button type="button" onClick={() => setOpen(false)} className="text-emce-text-sec hover:text-emce-text">✕</button>
         </div>
         <form id={formId} onSubmit={submitBooking} className="space-y-4 p-4">
           <div>

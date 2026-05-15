@@ -91,7 +91,7 @@ export default async function AdminCompanyTeamPage({
         </header>
 
         {sp.error && (
-          <div className="mb-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+          <div className="mb-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
             {sp.error}
           </div>
         )}
@@ -207,7 +207,7 @@ export default async function AdminCompanyTeamPage({
                             type="submit"
                             size="sm"
                             variant="ghost"
-                            className="text-emce-orange"
+                            className="text-emce-orange-deep"
                           >
                             <UserMinus className="mr-1 h-3 w-3" /> Remove
                           </Button>
@@ -298,7 +298,7 @@ export default async function AdminCompanyTeamPage({
                     className="mt-0.5 h-4 w-4"
                   />
                   <Label htmlFor="ackVerifiedBypass" className="!mt-0 text-emce-text">
-                    <strong className="text-emce-orange">Verified company —</strong>{" "}
+                    <strong className="text-emce-orange-deep">Verified company —</strong>{" "}
                     {company.name} is{" "}
                     <strong>{company.verificationStatus.toLowerCase()}</strong>. The
                     self-serve join flow refuses this attach to prevent impersonation

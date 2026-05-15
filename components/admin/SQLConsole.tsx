@@ -137,7 +137,7 @@ export function SQLConsole() {
               )}
             </>
           ) : (
-            <div className="rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+            <div className="rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
               <strong>Error:</strong> {result.message}
             </div>
           )}

@@ -59,7 +59,7 @@ export default async function QueueDetailPage({
           </div>
         )}
         {sp.error && (
-          <div className="mt-3 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+          <div className="mt-3 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
             {sp.error}
           </div>
         )}
@@ -124,7 +124,7 @@ export default async function QueueDetailPage({
                         </span>
                       </div>
                       {j.failedReason && (
-                        <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-emce-red-light p-2 text-xs text-emce-red">
+                        <pre className="mt-2 max-h-40 overflow-auto rounded-md bg-emce-red-light p-2 text-xs text-emce-red-deep">
                           {j.failedReason}
                         </pre>
                       )}
@@ -192,7 +192,7 @@ function CountTile({
       <div className="text-xs uppercase tracking-wide text-emce-text-muted">{label}</div>
       <div
         className={`mt-1 text-2xl font-extrabold tabular-nums ${
-          danger ? "text-emce-red" : "text-emce-dark"
+          danger ? "text-emce-red-deep" : "text-emce-dark"
         }`}
       >
         {value.toLocaleString()}

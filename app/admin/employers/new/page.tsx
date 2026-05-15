@@ -71,7 +71,7 @@ export default async function AdminProvisionHrPage({
         </div>
 
         {sp.error && (
-          <div className="mb-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+          <div className="mb-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
             {sp.error}
           </div>
         )}

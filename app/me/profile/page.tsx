@@ -154,7 +154,7 @@ export default async function MyProfilePage({
             COMPLETENESS_THRESHOLDS.APPLY (60% as of 2026-05). */}
         {sp.incomplete === "apply" && completeness.pct < COMPLETENESS_THRESHOLDS.APPLY && (
           <div className="mb-6 rounded-md border border-emce-orange bg-emce-orange-light p-4 text-sm">
-            <p className="font-bold text-emce-orange">
+            <p className="font-bold text-emce-orange-deep">
               📝 You need a {COMPLETENESS_THRESHOLDS.APPLY}% complete profile to apply for jobs.
             </p>
             <p className="mt-1 text-emce-text">

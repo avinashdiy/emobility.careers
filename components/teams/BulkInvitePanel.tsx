@@ -69,7 +69,7 @@ export function BulkInvitePanel({
             </p>
           )}
           {state.blockedByMaxSize != null && state.blockedByMaxSize > 0 && (
-            <p className="mt-1 text-emce-orange">
+            <p className="mt-1 text-emce-orange-deep">
               {state.blockedByMaxSize} email
               {state.blockedByMaxSize === 1 ? " was" : "s were"} skipped because
               the team would exceed the size cap. Remove members or ask the
@@ -78,14 +78,14 @@ export function BulkInvitePanel({
           )}
           {state.skippedInvalid && state.skippedInvalid.length > 0 && (
             <p className="mt-1 text-emce-text-sec">
-              <span className="text-emce-red">Ignored {state.skippedInvalid.length} invalid:</span>{" "}
+              <span className="text-emce-red-deep">Ignored {state.skippedInvalid.length} invalid:</span>{" "}
               <code className="text-hint">{state.skippedInvalid.slice(0, 6).join(", ")}{state.skippedInvalid.length > 6 ? "…" : ""}</code>
             </p>
           )}
         </div>
       )}
       {!state.ok && state.message && (
-        <div role="alert" className="mt-3 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+        <div role="alert" className="mt-3 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
           {state.message}
         </div>
       )}

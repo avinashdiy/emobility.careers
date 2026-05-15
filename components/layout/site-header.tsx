@@ -14,6 +14,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
+import { getUserMenuViewerData } from "@/lib/header-user-menu-data";
 
 /**
  * Top navigation — LinkedIn-style: WHITE background, thin bottom border,
@@ -30,7 +31,10 @@ export async function SiteHeader() {
   const [session, locale] = await Promise.all([auth(), getLocale()]);
   const user = session?.user;
 
-  const [unreadNotifs, pendingInvites, viewerCard, viewerUser, viewerEmployer] = user
+  // Two cheap counts (used directly in nav) + the shared viewer-menu
+  // payload (used by HeaderUserMenu and by the mobile nav for the
+  // EMPLOYER/ADMIN flags).
+  const [unreadNotifs, pendingInvites, viewer] = user
     ? await Promise.all([
         db.notification.count({
           where: { userId: user.id, channel: "IN_APP", readAt: null },
@@ -38,43 +42,11 @@ export async function SiteHeader() {
         db.connection.count({
           where: { recipientId: user.id, status: "PENDING" },
         }),
-        db.candidateProfile.findUnique({
-          where: { userId: user.id },
-          select: {
-            slug: true,
-            firstName: true,
-            lastName: true,
-            profilePhotoUrl: true,
-            isDIYguruVerified: true,
-          },
-        }),
-        // Pull the placement-officer flag so the user menu can surface
-        // the /tpo dashboard for trusted DIYguru staff who aren't
-        // ADMIN-tier. Cheap query — single bool by primary key.
-        db.user.findUnique({
-          where: { id: user.id },
-          select: { isPlacementOfficer: true },
-        }),
-        // Surface whether the user has an EmployerProfile so the
-        // persona-switcher in the dropdown can render either a
-        // "Switch view" toggle (both personas exist) or a "Hire on
-        // eMobility" CTA (employer persona not yet adopted).
-        db.employerProfile.findUnique({
-          where: { userId: user.id },
-          select: {
-            companyId: true,
-            company: { select: { name: true, slug: true, logoUrl: true } },
-          },
-        }),
+        getUserMenuViewerData(user),
       ])
-    : [0, 0, null, null, null];
+    : [0, 0, null];
 
-  const isMentor = user
-    ? Boolean(await db.mentorProfile.findUnique({ where: { userId: user.id }, select: { id: true } }))
-    : false;
-  const isPlacementOfficer = !!viewerUser?.isPlacementOfficer;
-
-  const fullName = viewerCard ? `${viewerCard.firstName} ${viewerCard.lastName ?? ""}`.trim() : (user?.name ?? "");
+  const isPlacementOfficer = viewer?.isPlacementOfficer ?? false;
 
   const PUBLIC_NAV = [
     // Pulse goes first — it's the platform's most viral, public surface
@@ -209,29 +181,9 @@ export async function SiteHeader() {
 
           <div className="ml-1 flex items-center gap-2 border-l border-emce-border pl-2">
             <LanguageSwitcher current={locale} variant="light" />
-            {user ? (
-              <HeaderUserMenu
-                user={{
-                  name: fullName || user.email || "Account",
-                  email: user.email ?? "",
-                  role: user.role as "ADMIN" | "EMPLOYER" | "CANDIDATE",
-                  avatarUrl: viewerCard?.profilePhotoUrl ?? null,
-                  publicSlug: viewerCard?.slug ?? null,
-                  isMentor,
-                  isVerified: viewerCard?.isDIYguruVerified ?? false,
-                  isPlacementOfficer,
-                  hasCandidateProfile: !!viewerCard,
-                  hasEmployerProfile: !!viewerEmployer,
-                  employerCompany: viewerEmployer?.company
-                    ? {
-                        name: viewerEmployer.company.name,
-                        slug: viewerEmployer.company.slug,
-                        logoUrl: viewerEmployer.company.logoUrl,
-                      }
-                    : null,
-                }}
-              />
-            ) : (
+            {user && viewer ? (
+              <HeaderUserMenu user={viewer} />
+            ) : !user ? (
               <>
                 <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
                   <Link href="/signin">{t("nav.signIn", locale)}</Link>
@@ -240,7 +192,7 @@ export async function SiteHeader() {
                   <Link href="/signup">{t("nav.joinFree", locale)}</Link>
                 </Button>
               </>
-            )}
+            ) : null}
             <MobileNav items={mobileItems} variant="light" />
           </div>
         </div>

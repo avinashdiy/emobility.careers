@@ -1,6 +1,6 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
@@ -11,6 +11,7 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { clientIp, honeypotTriggered } from "@/lib/anti-spam";
 import { getOrSetAnonCookie, setUnlocked } from "@/lib/salary-compass";
 import { ProfileMode, SalarySubmissionStatus } from "@prisma/client";
+import { snapshotFormData, type FormState } from "@/lib/form-state";
 
 /**
  * Salary Compass — server actions.
@@ -46,10 +47,16 @@ const submitSchema = z.object({
   attributeToProfile: z.coerce.boolean().optional(),
 });
 
-export async function submitSalary(formData: FormData): Promise<void> {
-  // Layer 1 — honeypot
+export async function submitSalary(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  // Layer 1 — honeypot. Bots filling the hidden field get a silent
+  // success-shaped redirect so they don't get a useful signal.
+  // (Keeping `redirect()` here is intentional — we don't want bots
+  // round-tripping through useActionState.)
   if (honeypotTriggered(formData.get("website"))) {
-    redirect("/salaries/submit?error=" + encodeURIComponent("Couldn't process this submission."));
+    redirect("/salaries?just_submitted=1");
   }
 
   // Layer 2 — rate-limit by IP
@@ -58,15 +65,33 @@ export async function submitSalary(formData: FormData): Promise<void> {
     try {
       await rateLimitOrThrow(`salary-ip:${ip}`, "signupIp"); // reuse 5/hour preset
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Too many submissions";
-      redirect("/salaries/submit?error=" + encodeURIComponent(msg));
+      const msg = e instanceof Error ? e.message : "Too many submissions — try again later.";
+      return {
+        ok: false,
+        message: msg,
+        prevValues: snapshotFormData(formData),
+      };
     }
   }
 
   // Layer 3 — schema
   const parsed = submitSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
-    redirect("/salaries/submit?error=" + encodeURIComponent("Please fill required fields with sensible numbers."));
+    const flat = parsed.error.flatten();
+    const fieldErrors: Record<string, string> = {};
+    for (const [k, v] of Object.entries(flat.fieldErrors)) {
+      if (v && v[0]) fieldErrors[k] = v[0];
+    }
+    const firstField = Object.keys(fieldErrors)[0];
+    return {
+      ok: false,
+      message:
+        firstField !== undefined
+          ? `Check "${firstField}" — ${fieldErrors[firstField]}`
+          : "Please fill required fields with sensible numbers.",
+      fieldErrors,
+      prevValues: snapshotFormData(formData),
+    };
   }
   const data = parsed.data;
 
@@ -79,7 +104,11 @@ export async function submitSalary(formData: FormData): Promise<void> {
     where: { cookieId, createdAt: { gte: since24h } },
   });
   if (recent >= 1) {
-    redirect("/salaries/submit?error=" + encodeURIComponent("You already submitted today. Come back tomorrow!"));
+    return {
+      ok: false,
+      message: "You already submitted today. Come back tomorrow!",
+      prevValues: snapshotFormData(formData),
+    };
   }
 
   // Layer 5 — submit
@@ -142,6 +171,11 @@ export async function approveSalary(formData: FormData) {
   });
   revalidatePath("/admin/salaries");
   revalidatePath("/salaries");
+  // Bust the aggregate caches — a freshly-approved submission
+  // changes top-paying-roles / top-paying-companies / tier-breakdown
+  // / counters. Without this the home + /salaries page lag the
+  // approval by up to 5 minutes.
+  revalidateTag("salary-compass");
 }
 
 export async function rejectSalary(formData: FormData) {

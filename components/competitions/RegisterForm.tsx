@@ -43,7 +43,7 @@ export function RegisterForm(props: Props) {
       <form action={formAction} className="mt-4 space-y-3" noValidate>
         <input type="hidden" name="competitionId" value={props.competitionId} />
         {state.message && (
-          <div role="alert" className={`rounded-md p-3 text-sm ${state.ok ? "bg-emce-light-soft" : "bg-emce-red-light text-emce-red"}`}>
+          <div role="alert" className={`rounded-md p-3 text-sm ${state.ok ? "bg-emce-light-soft" : "bg-emce-red-light text-emce-red-deep"}`}>
             {state.message}
           </div>
         )}

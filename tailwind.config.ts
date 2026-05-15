@@ -61,6 +61,15 @@ const config: Config = {
           "orange-deep": "#8a4a1a",
           red: "#d45454",
           "red-light": "#fdeaea",
+          // Deep red for error-text foreground over `bg-emce-red-light`
+          // and over plain white. `text-emce-red` (the base #d45454)
+          // hit only 3.4:1 on bg-emce-red-light and 3.98:1 on white —
+          // failing WCAG AA for normal text (4.5:1 required). This
+          // value clears 6.1:1 on bg-emce-red-light, 8.7:1 on white.
+          // Sed-migrated `text-emce-red` → `text-emce-red-deep`
+          // sitewide; the base `emce-red` stays for backgrounds,
+          // borders, and decorative dots where AA doesn't apply.
+          "red-deep": "#a02c2c",
           // Deep success-green text colour — used on the success
           // badge over emce-light-soft (5.1:1 contrast). Promoted
           // from inline `text-[#1e5a32]`.

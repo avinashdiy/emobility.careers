@@ -76,7 +76,7 @@ export function SignUpForm({
   return (
     <>
       {state.message && !state.fieldErrors && (
-        <div role="alert" className="mb-3 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+        <div role="alert" className="mb-3 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
           {state.message}
         </div>
       )}

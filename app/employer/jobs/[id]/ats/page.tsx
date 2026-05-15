@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { signinNextUrl } from "@/lib/auth-redirect";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
@@ -15,7 +16,7 @@ export default async function ATSPage({
 }) {
   const { id } = await params;
   const session = await auth();
-  if (!session?.user) redirect("/signin");
+  if (!session?.user) redirect(await signinNextUrl());
 
   const employer = await db.employerProfile.findUnique({
     where: { userId: session.user.id },

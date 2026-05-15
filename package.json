@@ -5,6 +5,14 @@
   "engines": {
     "node": ">=20"
   },
+  "browserslist": [
+    "Chrome >= 100",
+    "Edge >= 100",
+    "Firefox >= 100",
+    "Safari >= 15",
+    "iOS >= 15",
+    "not dead"
+  ],
   "scripts": {
     "dev": "next dev --turbo",
     "build": "next build",

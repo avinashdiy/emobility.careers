@@ -37,8 +37,8 @@ const DIM_LABELS: Record<keyof RoastBreakdown, { label: string; emoji: string }>
 };
 
 const SEVERITY_TONE: Record<FeedbackItem["severity"], string> = {
-  high: "border-emce-red bg-emce-red-light text-emce-red",
-  medium: "border-emce-orange bg-emce-orange-light text-emce-orange",
+  high: "border-emce-red bg-emce-red-light text-emce-red-deep",
+  medium: "border-emce-orange bg-emce-orange-light text-emce-orange-deep",
   low: "border-emce-border bg-emce-light-soft text-emce-text-sec",
 };
 
@@ -74,7 +74,7 @@ export default async function RoastResultPage({
   const tier =
     roast.scoreOverall >= 85 ? { label: "Recruiter-magnet", tone: "bg-emce-mid text-emce-darkest" }
     : roast.scoreOverall >= 70 ? { label: "Strong", tone: "bg-emce-light text-emce-darkest" }
-    : roast.scoreOverall >= 55 ? { label: "Good baseline", tone: "bg-emce-orange-light text-emce-orange" }
+    : roast.scoreOverall >= 55 ? { label: "Good baseline", tone: "bg-emce-orange-light text-emce-orange-deep" }
     : roast.scoreOverall >= 40 ? { label: "Needs work", tone: "bg-emce-orange text-white" }
     : { label: "Roasted", tone: "bg-emce-red text-white" };
 

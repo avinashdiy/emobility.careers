@@ -190,7 +190,7 @@ export function AdminSidebar({ pendingCounts }: { pendingCounts: Counts }) {
       >
         <div className="flex h-12 items-center justify-between border-b border-emce-border px-3 lg:hidden">
           <span className="text-sm font-bold text-emce-text">Admin menu</span>
-          <button onClick={() => setMobileOpen(false)} aria-label="Close menu">
+          <button type="button" onClick={() => setMobileOpen(false)} aria-label="Close menu">
             <X className="h-5 w-5 text-emce-text-sec" />
           </button>
         </div>

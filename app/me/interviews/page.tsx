@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { signinNextUrl } from "@/lib/auth-redirect";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
@@ -11,7 +12,7 @@ export const metadata = { title: "My interviews" };
 
 export default async function MyInterviews() {
   const session = await auth();
-  if (!session?.user) redirect("/signin");
+  if (!session?.user) redirect(await signinNextUrl());
   const profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
   });

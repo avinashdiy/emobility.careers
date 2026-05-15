@@ -228,7 +228,7 @@ export function RichPostComposer({ user, companies }: Props) {
         </div>
         <div className="mt-1.5 flex items-center gap-1 pt-1.5 text-sm font-semibold text-emce-text-sec">
           <ModeChip icon={<ImageIcon className="h-5 w-5 text-emce-mid-muted" />} label="Photo" onClick={() => { setMode("IMAGE"); setOpen(true); }} />
-          <ModeChip icon={<Video className="h-5 w-5 text-emce-orange" />} label="Video" onClick={() => { setMode("VIDEO"); setOpen(true); }} />
+          <ModeChip icon={<Video className="h-5 w-5 text-emce-orange-deep" />} label="Video" onClick={() => { setMode("VIDEO"); setOpen(true); }} />
           <ModeChip icon={<Newspaper className="h-5 w-5 text-emce-darkest" />} label="Article" onClick={() => { setMode("ARTICLE"); setOpen(true); }} />
         </div>
       </Card>
@@ -258,7 +258,7 @@ export function RichPostComposer({ user, companies }: Props) {
             </NativeSelect>
           </div>
         </div>
-        <button onClick={() => { setOpen(false); reset(); }} className="text-emce-text-sec hover:text-emce-text" aria-label="Close">
+        <button type="button" onClick={() => { setOpen(false); reset(); }} className="text-emce-text-sec hover:text-emce-text" aria-label="Close">
           <X className="h-5 w-5" />
         </button>
       </div>
@@ -349,7 +349,7 @@ export function RichPostComposer({ user, companies }: Props) {
             if (!embedUrl) return null;
             if (!det) {
               return (
-                <p className="mt-1 text-xs text-emce-red">
+                <p className="mt-1 text-xs text-emce-red-deep">
                   Unsupported URL — we support YouTube, Vimeo, LinkedIn, Instagram, X.
                 </p>
               );

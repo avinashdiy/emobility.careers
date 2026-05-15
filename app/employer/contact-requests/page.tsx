@@ -4,6 +4,7 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import { relativeTime } from "@/lib/utils";
@@ -132,9 +133,17 @@ export default async function EmployerContactRequestsPage({
                     : "No contact requests yet."}
             </p>
             <p className="mt-1 text-hint text-emce-text-sec">
-              Hit "Request contact" on a candidate's public profile when you'd
+              Hit &ldquo;Request contact&rdquo; on a candidate&apos;s public profile when you&apos;d
               like their email + phone.
             </p>
+            {/* Take the recruiter straight to the candidate browse —
+                the previous empty state only described the workflow,
+                making a one-click bounce-out impossible. */}
+            <div className="mt-4">
+              <Button asChild>
+                <Link href="/employer/candidates">Browse candidates →</Link>
+              </Button>
+            </div>
           </Card>
         ) : (
           <ul className="mt-6 space-y-3">
@@ -198,7 +207,7 @@ export default async function EmployerContactRequestsPage({
                           </p>
                         )}
                         {r.status === "DENIED" && r.denyReason && (
-                          <p className="mt-2 rounded-md bg-emce-red-light p-2 text-sm text-emce-red">
+                          <p className="mt-2 rounded-md bg-emce-red-light p-2 text-sm text-emce-red-deep">
                             <strong>Their reason:</strong> {r.denyReason}
                           </p>
                         )}

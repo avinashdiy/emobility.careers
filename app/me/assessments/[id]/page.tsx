@@ -1,4 +1,6 @@
 import { notFound, redirect } from "next/navigation";
+import Link from "next/link";
+import { signinNextUrl } from "@/lib/auth-redirect";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
@@ -8,7 +10,7 @@ import type { MCQQuestion } from "@/server/assessments/actions";
 export default async function AttemptRunner({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const session = await auth();
-  if (!session?.user) redirect("/signin");
+  if (!session?.user) redirect(await signinNextUrl());
   const profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
   });
@@ -24,7 +26,16 @@ export default async function AttemptRunner({ params }: { params: Promise<{ id: 
   if (attempt.assessment.type !== "MCQ") {
     return (
       <div className="container max-w-xl py-20">
-        <Card className="p-8 text-center">
+        {/* Always give the candidate a route out — without this they
+            were stuck on the dead-end screen and had to manually
+            edit the URL or hit the browser back button. */}
+        <Link
+          href="/me/applications"
+          className="text-hint font-bold text-emce-text-sec hover:text-emce-dark"
+        >
+          ← My applications
+        </Link>
+        <Card className="mt-3 p-8 text-center">
           <h1 className="text-section text-emce-text">{attempt.assessment.title}</h1>
           <p className="mt-3 text-hint text-emce-text-sec">
             {attempt.assessment.type} assessments aren&apos;t runnable in v1 — please contact the recruiter.

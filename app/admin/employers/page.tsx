@@ -104,7 +104,7 @@ export default async function AdminEmployersPage({
         </div>
 
         {sp.error && (
-          <div className="mt-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+          <div className="mt-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
             {sp.error}
           </div>
         )}
@@ -172,7 +172,7 @@ export default async function AdminEmployersPage({
           <Card className="mt-3 border-emce-orange p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
-                <h3 className="text-sm font-bold text-emce-orange">
+                <h3 className="text-sm font-bold text-emce-orange-deep">
                   Bulk delete rejected
                 </h3>
                 <p className="mt-0.5 text-hint text-emce-text-sec">
@@ -222,7 +222,7 @@ export default async function AdminEmployersPage({
                         landed. */}
                     {c.verificationStatus === "REJECTED" && c.rejectionReason && (
                       <div className="mt-2 rounded border border-emce-orange bg-emce-orange-light p-2 text-hint">
-                        <p className="font-bold text-emce-orange">Rejection reason</p>
+                        <p className="font-bold text-emce-orange-deep">Rejection reason</p>
                         <p className="mt-0.5 whitespace-pre-line text-emce-text">
                           {c.rejectionReason}
                         </p>
@@ -284,7 +284,7 @@ export default async function AdminEmployersPage({
                         confirm={`Permanently delete "${c.name}"? This will cascade-delete ${c._count.jobs} job(s), ${c._count.team} team member(s), and any events / invites. Candidate experience entries that linked here will unlink (kept as plain text). This cannot be undone.`}
                         size="sm"
                         variant="ghost"
-                        className="text-emce-orange"
+                        className="text-emce-orange-deep"
                       >
                         Delete
                       </ConfirmSubmit>

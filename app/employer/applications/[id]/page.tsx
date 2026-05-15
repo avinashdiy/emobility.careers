@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { signinNextUrl } from "@/lib/auth-redirect";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
@@ -26,7 +27,7 @@ export default async function ApplicationDetail({
 }) {
   const { id } = await params;
   const session = await auth();
-  if (!session?.user) redirect("/signin");
+  if (!session?.user) redirect(await signinNextUrl());
 
   const employer = await db.employerProfile.findUnique({
     where: { userId: session.user.id },
@@ -339,7 +340,7 @@ export default async function ApplicationDetail({
                     <input type="hidden" name="rating" value={n} />
                     <button
                       type="submit"
-                      className={`text-xl ${(application.rating ?? 0) >= n ? "text-emce-orange" : "text-emce-text-muted hover:text-emce-orange"}`}
+                      className={`text-xl ${(application.rating ?? 0) >= n ? "text-emce-orange-deep" : "text-emce-text-muted hover:text-emce-orange-deep"}`}
                       aria-label={`Rate ${n}`}
                     >
                       ★

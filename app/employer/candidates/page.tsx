@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { signinNextUrl } from "@/lib/auth-redirect";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import type { Prisma } from "@prisma/client";
@@ -41,7 +42,7 @@ export default async function TalentSearch({
   }>;
 }) {
   const session = await auth();
-  if (!session?.user) redirect("/signin");
+  if (!session?.user) redirect(await signinNextUrl());
   const employer = await db.employerProfile.findUnique({
     where: { userId: session.user.id },
   });

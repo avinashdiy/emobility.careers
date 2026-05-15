@@ -57,7 +57,7 @@ export default async function RoastUploadPage({
 
         <div className="container max-w-3xl space-y-6 py-10">
           {sp.error && (
-            <div className="rounded-md border border-emce-red bg-emce-red-light p-3 text-sm text-emce-red">
+            <div className="rounded-md border border-emce-red bg-emce-red-light p-3 text-sm text-emce-red-deep">
               ⚠️ {sp.error}
             </div>
           )}

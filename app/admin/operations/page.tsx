@@ -44,7 +44,7 @@ export default async function OperationsPage() {
           <SummaryTile
             label="Waiting"
             value={totalWaiting}
-            icon={<Clock className="h-4 w-4 text-emce-orange" aria-hidden />}
+            icon={<Clock className="h-4 w-4 text-emce-orange-deep" aria-hidden />}
           />
           <SummaryTile
             label="Completed (24h)"
@@ -56,7 +56,7 @@ export default async function OperationsPage() {
             value={totalFailed}
             icon={
               <AlertTriangle
-                className={`h-4 w-4 ${totalFailed > 0 ? "text-emce-red" : "text-emce-text-muted"}`}
+                className={`h-4 w-4 ${totalFailed > 0 ? "text-emce-red-deep" : "text-emce-text-muted"}`}
                 aria-hidden
               />
             }
@@ -96,7 +96,7 @@ export default async function OperationsPage() {
                   <td className="p-3 text-right tabular-nums">{q.counts.delayed.toLocaleString()}</td>
                   <td
                     className={`p-3 text-right tabular-nums ${
-                      q.counts.failed > 0 ? "font-bold text-emce-red" : "text-emce-text-muted"
+                      q.counts.failed > 0 ? "font-bold text-emce-red-deep" : "text-emce-text-muted"
                     }`}
                   >
                     {q.counts.failed.toLocaleString()}

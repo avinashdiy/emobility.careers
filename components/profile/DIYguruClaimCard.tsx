@@ -67,7 +67,7 @@ export function DIYguruClaimCard({ verifiedEmail }: { verifiedEmail: string }) {
               className={`mt-3 flex items-start gap-2 rounded-md p-3 text-sm ${
                 result.ok
                   ? "bg-emce-mid/10 text-emce-darkest"
-                  : "bg-emce-red-light text-emce-red"
+                  : "bg-emce-red-light text-emce-red-deep"
               }`}
             >
               {result.ok ? (

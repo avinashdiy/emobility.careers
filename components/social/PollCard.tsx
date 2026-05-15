@@ -143,7 +143,7 @@ export function PollCard({ poll, viewerVotes, isAuthor }: PollCardProps) {
           )}
         </div>
       </div>
-      {error && <p className="mt-1 text-hint text-emce-red">{error}</p>}
+      {error && <p className="mt-1 text-hint text-emce-red-deep">{error}</p>}
     </div>
   );
 }

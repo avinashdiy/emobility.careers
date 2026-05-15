@@ -53,7 +53,7 @@ export default async function DIYguruAdmin({
           </div>
         )}
         {sp.error && (
-          <div className="mt-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">{sp.error}</div>
+          <div className="mt-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">{sp.error}</div>
         )}
 
         <Card className="mt-6 p-6">

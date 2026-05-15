@@ -74,7 +74,7 @@ export default async function CohortListPage({
       />
 
       {sp.error && (
-        <div className="rounded-md bg-emce-red-light p-3 text-sm text-emce-red">{sp.error}</div>
+        <div className="rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">{sp.error}</div>
       )}
 
       <Card>

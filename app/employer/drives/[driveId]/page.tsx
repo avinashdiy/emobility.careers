@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
+import { signinNextUrl } from "@/lib/auth-redirect";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
@@ -30,7 +31,7 @@ export default async function EditDrivePage({
   const { driveId } = await params;
   const sp = await searchParams;
   const session = await auth();
-  if (!session?.user) redirect("/signin");
+  if (!session?.user) redirect(await signinNextUrl());
   const employer = await db.employerProfile.findUnique({
     where: { userId: session.user.id },
   });
@@ -94,7 +95,7 @@ export default async function EditDrivePage({
         </div>
 
         {sp.error && (
-          <div className="rounded-md bg-emce-red-light p-3 text-sm text-emce-red">{sp.error}</div>
+          <div className="rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">{sp.error}</div>
         )}
 
         {/* Status workflow */}

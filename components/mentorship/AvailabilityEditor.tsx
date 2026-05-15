@@ -64,7 +64,7 @@ export function AvailabilityEditor({ rules }: { rules: Rule[] }) {
             <SubmitButton className="w-full">Add</SubmitButton>
           </div>
           {recurringState.message && (
-            <p className="sm:col-span-12 text-sm text-emce-red">{recurringState.message}</p>
+            <p className="sm:col-span-12 text-sm text-emce-red-deep">{recurringState.message}</p>
           )}
         </form>
 
@@ -111,7 +111,7 @@ export function AvailabilityEditor({ rules }: { rules: Rule[] }) {
             <SubmitButton className="w-full">Add</SubmitButton>
           </div>
           {overrideState.message && (
-            <p className="sm:col-span-12 text-sm text-emce-red">{overrideState.message}</p>
+            <p className="sm:col-span-12 text-sm text-emce-red-deep">{overrideState.message}</p>
           )}
         </form>
 

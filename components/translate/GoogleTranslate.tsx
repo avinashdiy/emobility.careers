@@ -12,72 +12,98 @@ declare global {
 }
 
 /**
- * Mounts Google Translate's element widget so the entire page can be
- * machine-translated to whichever locale the user picks in the
- * language switcher (Hindi, Tamil, Telugu, Marathi, German, Arabic,
- * Chinese, French, Japanese — see `lib/i18n.ts`).
+ * Lazy-loaded Google Translate widget.
  *
- * How it works end-to-end:
- *   1. This component injects the widget script once on first mount.
- *   2. The widget reads a `googtrans` cookie on every page load.
- *      A value like `/en/hi` means "translate the page from English
- *      to Hindi"; an empty/absent cookie means "leave it in English".
- *   3. The language switcher writes that cookie when the user picks a
- *      language, then hard-reloads — so the widget initialises against
- *      the new cookie state and translates the freshly-rendered DOM.
+ * Lighthouse-driven change: the widget script (~93 KB JS, ~193 ms
+ * long task) used to load on every page render — including the
+ * 95%+ of homepage visits from English-locale users who never
+ * touch the language switcher. We now defer injection until one
+ * of two signals fires:
+ *
+ *   1. The `googtrans` cookie is already set → the user has
+ *      previously switched to a non-English locale, so the page
+ *      genuinely needs translation. Inject on mount.
+ *   2. The user actively changes the language via the
+ *      <LanguageSwitcher> → it dispatches a
+ *      `cms:request-translate` window event before its reload,
+ *      and we listen for it. (Belt-and-braces — the reload
+ *      path 1 covers it too once the cookie is set, but the
+ *      event makes it a noop on first switch instead of waiting
+ *      for the reload-then-cookie-read round trip.)
  *
  * The widget itself ships with its own dropdown UI that we don't
- * want a duplicate of — that UI is hidden via CSS in
- * `app/globals.css` (.skiptranslate / .goog-te-* selectors). Our own
+ * want a duplicate of — globals.css hides it. Our own
  * <LanguageSwitcher/> drives the experience.
  *
  * Caveats:
- *   - Google Translate's accuracy on niche EV terminology
- *     (BMS, OCPP, AIS-156) varies — accept some imperfection.
- *   - The widget runs after hydration, so users on Hindi see a brief
- *     flash of English on first paint. Acceptable for v1.
- *   - If the script fails to load (adblockers / firewalls), the page
- *     stays in English. We fail silent rather than showing an error.
+ *   - Google Translate's accuracy on niche EV terminology varies.
+ *   - The widget runs after hydration, so users on Hindi see a
+ *     brief flash of English on first paint. Acceptable for v1.
+ *   - If the script fails to load, the page stays in English.
+ *     Fail silent — no error UI.
  */
+
+const SCRIPT_ID = "google-translate-script";
+const REQUEST_EVENT = "cms:request-translate";
+
+function hasGoogTransCookie(): boolean {
+  if (typeof document === "undefined") return false;
+  // Cookie format `googtrans=/en/<target>` — any non-empty value
+  // counts as "user wants translation".
+  const match = document.cookie.match(/(?:^|;\s*)googtrans=([^;]+)/);
+  if (!match) return false;
+  const value = decodeURIComponent(match[1]);
+  return value.length > 0 && value !== "/en/en";
+}
+
+function injectScript() {
+  if (typeof document === "undefined") return;
+  // Already injected? Don't double-load — React 19 strict-mode +
+  // client navigation can re-run the effect even though the
+  // script tag persists across renders.
+  if (document.getElementById(SCRIPT_ID)) return;
+
+  // The widget calls `googleTranslateElementInit()` after load.
+  // Define it on `window` first so the script finds it.
+  window.googleTranslateElementInit = () => {
+    try {
+      const includedLanguages = locales
+        .map((l) => googleTranslateCodeFor[l])
+        .filter(Boolean)
+        .join(",");
+      new window.google.translate.TranslateElement(
+        {
+          pageLanguage: "en",
+          includedLanguages,
+          layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE,
+          autoDisplay: false,
+        },
+        "google_translate_element",
+      );
+    } catch {
+      /* widget failed to init; site stays in English */
+    }
+  };
+
+  const script = document.createElement("script");
+  script.id = SCRIPT_ID;
+  script.src =
+    "//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
+  script.async = true;
+  document.head.appendChild(script);
+}
+
 export function GoogleTranslateLoader() {
   useEffect(() => {
-    // Already loaded in a previous mount? Don't double-inject the
-    // <script>; React 19 strict-mode + client navigation can re-run
-    // this effect even though the script tag persists across renders.
-    if (document.getElementById("google-translate-script")) return;
-
-    // The widget calls `googleTranslateElementInit()` after load.
-    // Define it on `window` first so the script finds it.
-    window.googleTranslateElementInit = () => {
-      try {
-        // Build the widget against every supported locale's GT code.
-        const includedLanguages = locales
-          .map((l) => googleTranslateCodeFor[l])
-          .filter(Boolean)
-          .join(",");
-        new window.google.translate.TranslateElement(
-          {
-            pageLanguage: "en",
-            includedLanguages,
-            layout:
-              window.google.translate.TranslateElement.InlineLayout.SIMPLE,
-            // Don't auto-pop the "Translate this page?" banner — our
-            // own switcher decides when to translate.
-            autoDisplay: false,
-          },
-          "google_translate_element",
-        );
-      } catch {
-        /* widget failed to init; site stays in English */
-      }
-    };
-
-    const script = document.createElement("script");
-    script.id = "google-translate-script";
-    script.src =
-      "//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit";
-    script.async = true;
-    document.head.appendChild(script);
+    // Path 1 — cookie already set on mount.
+    if (hasGoogTransCookie()) {
+      injectScript();
+      return;
+    }
+    // Path 2 — wait for the language switcher to ask for it.
+    const onRequest = () => injectScript();
+    window.addEventListener(REQUEST_EVENT, onRequest);
+    return () => window.removeEventListener(REQUEST_EVENT, onRequest);
   }, []);
 
   // Hidden host element the widget mounts into. The widget normally
@@ -91,3 +117,10 @@ export function GoogleTranslateLoader() {
     />
   );
 }
+
+/**
+ * Public event name used by <LanguageSwitcher> to ask the loader
+ * to inject. Exported so the switcher doesn't string-match the
+ * event name in two places.
+ */
+export const REQUEST_TRANSLATE_EVENT = REQUEST_EVENT;

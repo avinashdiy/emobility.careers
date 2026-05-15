@@ -271,7 +271,7 @@ export default async function PublicJobDetail({
       />
 
       {sp.error && (
-        <div className="mb-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">{sp.error}</div>
+        <div className="mb-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">{sp.error}</div>
       )}
 
       <Card className="p-6">
@@ -440,7 +440,7 @@ export default async function PublicJobDetail({
                 // constant change.
                 <div className="mt-3 space-y-2">
                   <div className="rounded-md border border-emce-orange bg-emce-orange-light p-3 text-sm">
-                    <p className="font-bold text-emce-orange">
+                    <p className="font-bold text-emce-orange-deep">
                       🔒 Complete your profile to apply
                     </p>
                     <p className="mt-1 text-emce-text">

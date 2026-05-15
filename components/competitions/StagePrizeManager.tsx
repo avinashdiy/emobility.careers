@@ -82,7 +82,7 @@ export function StagePrizeManager(props: Props) {
             <Input name="startsAt" type="datetime-local" required className="sm:col-span-3" />
             <Input name="endsAt" type="datetime-local" required className="sm:col-span-3" />
             <SubmitButton className="sm:col-span-1">Add</SubmitButton>
-            {stageState.message && <p className="sm:col-span-12 text-xs text-emce-red">{stageState.message}</p>}
+            {stageState.message && <p className="sm:col-span-12 text-xs text-emce-red-deep">{stageState.message}</p>}
           </form>
         )}
         <ul className="mt-3 divide-y divide-emce-border">
@@ -117,7 +117,7 @@ export function StagePrizeManager(props: Props) {
             <Input name="inKind" placeholder="In-kind reward" className="sm:col-span-3" />
             <Input name="sponsor" placeholder="Sponsor (optional)" className="sm:col-span-2" />
             <SubmitButton className="sm:col-span-1">Add</SubmitButton>
-            {prizeState.message && <p className="sm:col-span-12 text-xs text-emce-red">{prizeState.message}</p>}
+            {prizeState.message && <p className="sm:col-span-12 text-xs text-emce-red-deep">{prizeState.message}</p>}
           </form>
         )}
         <ul className="mt-3 divide-y divide-emce-border">
@@ -186,7 +186,7 @@ export function StagePrizeManager(props: Props) {
             </NativeSelect>
             <Input name="notes" placeholder="Notes (optional)" className="sm:col-span-2" />
             <SubmitButton className="sm:col-span-1">Add</SubmitButton>
-            {perkState.message && <p className="sm:col-span-12 text-xs text-emce-red">{perkState.message}</p>}
+            {perkState.message && <p className="sm:col-span-12 text-xs text-emce-red-deep">{perkState.message}</p>}
           </form>
         )}
         <ul className="mt-3 divide-y divide-emce-border">
@@ -205,7 +205,7 @@ export function StagePrizeManager(props: Props) {
           <input type="hidden" name="competitionId" value={props.competitionId} />
           <Input name="email" type="email" required placeholder="judge@example.com" className="sm:col-span-9" />
           <SubmitButton className="sm:col-span-3">Invite</SubmitButton>
-          {judgeState.message && <p className="sm:col-span-12 text-xs text-emce-red">{judgeState.message}</p>}
+          {judgeState.message && <p className="sm:col-span-12 text-xs text-emce-red-deep">{judgeState.message}</p>}
         </form>
       </Card>
 

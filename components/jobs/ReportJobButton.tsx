@@ -17,7 +17,7 @@ export function ReportJobButton({ jobId }: { jobId: string }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="text-hint text-emce-text-muted hover:text-emce-red hover:underline"
+        className="text-hint text-emce-text-muted hover:text-emce-red-deep hover:underline"
       >
         Report this job
       </button>
@@ -32,7 +32,7 @@ export function ReportJobButton({ jobId }: { jobId: string }) {
           type="button"
           onClick={() => setOpen(false)}
           aria-label="Close"
-          className="text-emce-text-muted hover:text-emce-red"
+          className="text-emce-text-muted hover:text-emce-red-deep"
         >
           ✕
         </button>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { signinNextUrl } from "@/lib/auth-redirect";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
@@ -13,7 +14,7 @@ export default async function MessageThreadPage({
 }) {
   const { threadId } = await params;
   const session = await auth();
-  if (!session?.user) redirect("/signin");
+  if (!session?.user) redirect(await signinNextUrl());
 
   const thread = await db.messageThread.findUnique({
     where: { id: threadId },

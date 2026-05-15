@@ -13,8 +13,8 @@ export function ResponseTimePill({ stats, className }: { stats: ResponseStats | 
   if (!formatted || !stats) return null;
   const toneClass =
     formatted.tone === "fast" ? "bg-emce-light text-emce-darkest"
-    : formatted.tone === "typical" ? "bg-emce-orange-light text-emce-orange"
-    : "bg-emce-red-light text-emce-red";
+    : formatted.tone === "typical" ? "bg-emce-orange-light text-emce-orange-deep"
+    : "bg-emce-red-light text-emce-red-deep";
   const dot =
     formatted.tone === "fast" ? "bg-emce-mid"
     : formatted.tone === "typical" ? "bg-emce-orange"

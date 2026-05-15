@@ -31,7 +31,7 @@ export function ForgotPasswordForm() {
   return (
     <form action={formAction} className="space-y-3" noValidate>
       {state.message && !state.fieldErrors && (
-        <div role="alert" className="rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+        <div role="alert" className="rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
           {state.message}
         </div>
       )}

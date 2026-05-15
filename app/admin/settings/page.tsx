@@ -340,7 +340,7 @@ function TestEmailCard({
       )}
       {result === "err" && message && (
         <div className="mt-4 rounded-md border border-emce-orange bg-emce-orange-light p-3 text-sm">
-          <p className="font-bold text-emce-orange">❌ Test send failed</p>
+          <p className="font-bold text-emce-orange-deep">❌ Test send failed</p>
           <pre className="mt-2 whitespace-pre-wrap break-words text-xs text-emce-text">{message}</pre>
           <p className="mt-2 text-hint text-emce-text-muted">
             Common causes:{" "}

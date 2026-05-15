@@ -144,7 +144,7 @@ export function VolunteerExperienceEditor({
                   confirm={`Remove "${e.role} at ${e.organization}"?`}
                   size="sm"
                   variant="ghost"
-                  className="text-emce-text-sec hover:text-emce-red"
+                  className="text-emce-text-sec hover:text-emce-red-deep"
                   aria-label="Remove volunteer entry"
                 >
                   <Trash2 className="h-4 w-4" />

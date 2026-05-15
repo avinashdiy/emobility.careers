@@ -166,7 +166,7 @@ export default async function TeamInvitePage({
         captainPhotoUrl={captain?.candidateProfile?.profilePhotoUrl ?? null}
       />
       {sp.error && (
-        <div className="mt-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">
+        <div className="mt-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">
           {sp.error}
         </div>
       )}

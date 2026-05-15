@@ -1,5 +1,6 @@
 "use server";
 
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
@@ -125,6 +126,13 @@ export async function createCompanyLite(input: {
     entityId: created.id,
     meta: { source: "candidate-experience-editor" },
   });
+  // Bust the public directory + company detail page caches so the
+  // new row surfaces immediately. Without these, a candidate who
+  // creates "Acme EV" inline from their profile editor doesn't see
+  // the company on /companies until the next deploy or 60-min
+  // cache window — confusing UX.
+  revalidatePath("/companies");
+  revalidatePath(`/company/${created.slug}`);
   return { ok: true, id: created.id, slug: created.slug };
 }
 
@@ -234,5 +242,10 @@ export async function createInstitutionLite(input: {
     entityId: created.id,
     meta: { source: "candidate-education-editor", type: parsed.data.type },
   });
+  // Same revalidation rationale as createCompanyLite — keep the
+  // public directory in sync after a candidate adds a brand-new
+  // institution from their education editor.
+  revalidatePath("/institutions");
+  revalidatePath(`/institutions/${created.slug}`);
   return { ok: true, id: created.id, slug: created.slug };
 }

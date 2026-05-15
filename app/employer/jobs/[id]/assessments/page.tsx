@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { signinNextUrl } from "@/lib/auth-redirect";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
@@ -22,7 +23,7 @@ export default async function JobAssessmentsPage({
   const { id } = await params;
   const sp = await searchParams;
   const session = await auth();
-  if (!session?.user) redirect("/signin");
+  if (!session?.user) redirect(await signinNextUrl());
   const employer = await db.employerProfile.findUnique({
     where: { userId: session.user.id },
   });
@@ -69,7 +70,7 @@ export default async function JobAssessmentsPage({
         <h1 className="text-dashboard text-emce-text">Assessments — {job.title}</h1>
 
         {sp.error && (
-          <div className="mt-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red">{sp.error}</div>
+          <div className="mt-4 rounded-md bg-emce-red-light p-3 text-sm text-emce-red-deep">{sp.error}</div>
         )}
 
         {job.assessments.length > 0 ? (
@@ -84,7 +85,7 @@ export default async function JobAssessmentsPage({
                         {a.type} · pass at {a.passingScore}% · {a._count.attempts} attempts
                       </p>
                       {a.gateAdvance && (
-                        <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-emce-orange-light px-2 py-0.5 text-[10px] font-bold text-emce-orange">
+                        <p className="mt-1 inline-flex items-center gap-1 rounded-full bg-emce-orange-light px-2 py-0.5 text-[10px] font-bold text-emce-orange-deep">
                           🚧 Pre-placement gate · blocks forward stage advance until passed
                         </p>
                       )}

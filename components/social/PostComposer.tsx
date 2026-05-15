@@ -78,7 +78,7 @@ export function PostComposer({ user, companies = [] }: Props) {
             <span>Photo</span>
           </span>
           <span className="inline-flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-md px-2 py-1.5 hover:bg-emce-light-soft">
-            <BriefcaseIcon className="h-5 w-5 text-emce-orange" />
+            <BriefcaseIcon className="h-5 w-5 text-emce-orange-deep" />
             <span>Share a job</span>
           </span>
         </div>

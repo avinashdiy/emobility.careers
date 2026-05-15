@@ -30,6 +30,13 @@ const assessmentCreateSchema = z.object({
   gateAdvance: z.coerce.boolean().optional(),
 });
 
+// TODO: migrate to useActionState pattern. Particularly painful here
+// because of the questionsJson field — losing a hand-built MCQ paste
+// on validation failure forces the recruiter to redo it. Same playbook
+// as CreateCompanyForm: convert action signature to (prev, FormData) →
+// FormState, return state with snapshotFormData prevValues on Zod /
+// JSON-parse failure, wrap form in a client component using
+// useActionState.
 export async function createAssessment(formData: FormData) {
   const session = await auth();
   if (!session?.user) redirect("/signin");

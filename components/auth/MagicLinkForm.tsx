@@ -57,7 +57,7 @@ export function MagicLinkForm({ next, emailLabel, buttonLabel, pendingLabel, tur
         <FieldError id="magic-email-err" error={state.fieldErrors?.email} />
       </div>
       {state.message && !state.ok && (
-        <div role="alert" className="rounded-md bg-emce-red-light p-2 text-sm text-emce-red">
+        <div role="alert" className="rounded-md bg-emce-red-light p-2 text-sm text-emce-red-deep">
           {state.message}
         </div>
       )}

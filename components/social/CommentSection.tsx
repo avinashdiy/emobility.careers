@@ -174,7 +174,7 @@ function CommentItem({
                 confirm="Delete this comment?"
                 variant="ghost"
                 size="sm"
-                className="px-1 py-0 h-auto text-hint text-emce-text-muted hover:text-emce-red"
+                className="px-1 py-0 h-auto text-hint text-emce-text-muted hover:text-emce-red-deep"
               >
                 Delete
               </ConfirmSubmit>

@@ -83,7 +83,7 @@ export function HiringVelocityChart({ data }: { data: VelocitySummary }) {
             label="Hires · last 7d"
             value={data.thisWeekHires}
             delta={hiresDelta}
-            colorClass="text-emce-orange"
+            colorClass="text-emce-orange-deep"
             dotClass="bg-emce-orange"
           />
         </div>
@@ -167,7 +167,7 @@ function DeltaBlock({
           delta.sign === "up"
             ? "text-emce-darkest"
             : delta.sign === "down"
-              ? "text-emce-red"
+              ? "text-emce-red-deep"
               : "text-emce-text-muted"
         }`}
       >

@@ -1,10 +1,16 @@
 import * as React from "react";
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 interface AvatarProps extends React.HTMLAttributes<HTMLDivElement> {
   src?: string | null;
   name?: string | null;
   size?: "sm" | "md" | "lg" | "xl";
+  /// `true` for above-the-fold avatars (home-page hero rail, profile
+  /// header). Adds Next/Image `priority` + `fetchpriority="high"` so
+  /// the LCP image isn't lazy-loaded. Default `false` keeps the lazy
+  /// behaviour we want for in-feed avatars.
+  priority?: boolean;
   /**
    * LinkedIn-style "#OpenToWork" green ring + chip overlay. Renders
    * only when `openToWork` is true *and* size is "md" or larger — at
@@ -27,6 +33,17 @@ const sizeMap = {
   md: "h-12 w-12",
   lg: "h-16 w-16",
   xl: "h-24 w-24",
+};
+
+/// Pixel dimensions paired to each Tailwind size. Next/Image needs an
+/// explicit width/height so it can emit the right responsive
+/// `srcset` and reserve layout space (kills CLS during image swap).
+/// Matches the Tailwind classes above (h-8 = 32px @ default 4px ramp).
+const pixelMap = {
+  sm: 32,
+  md: 48,
+  lg: 64,
+  xl: 96,
 };
 
 // Chip sizing — kept proportional to the avatar disc so the chip always
@@ -60,7 +77,7 @@ const ringSize = {
  * silhouette is recognisable instantly and never makes the user feel
  * the platform is half-built.
  */
-export function Avatar({ src, name, size = "md", className, openToWork, hiring, ...props }: AvatarProps) {
+export function Avatar({ src, name, size = "md", className, openToWork, hiring, priority = false, ...props }: AvatarProps) {
   // Hiring wins when both are accidentally set (more deliberate signal).
   const status: "hiring" | "open" | null = hiring ? "hiring" : openToWork ? "open" : null;
   // The chip overlay would obscure most of an `sm` avatar — keep the ring
@@ -90,8 +107,30 @@ export function Avatar({ src, name, size = "md", className, openToWork, hiring, 
       {...props}
     >
       {src ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={src} alt={name ?? ""} className="h-full w-full object-cover" />
+        // Next/Image gets explicit pixel dimensions from `pixelMap`
+        // so the responsive `srcset` is sized to what we actually
+        // render (32/48/64/96 px) — the browser never downloads a
+        // 1200×1200 source for a 48 px disc. `quality={80}` matches
+        // the WebP we now ship from `uploadAvatar`'s sharp pipeline;
+        // higher values would re-encode for no perceptible gain.
+        <Image
+          src={src}
+          alt={name ?? ""}
+          width={pixelMap[size]}
+          height={pixelMap[size]}
+          quality={80}
+          priority={priority}
+          // Hint to the loader — `(max-width: 0px) 0px, Npx` collapses
+          // to the literal pixel size at every breakpoint, so we get
+          // a single 1x + 2x srcset entry per avatar.
+          sizes={`${pixelMap[size]}px`}
+          className="h-full w-full object-cover"
+          // The avatar disc is small enough that `unoptimized` for
+          // SVG / blob: URLs would be cheaper to render than to
+          // process — but every avatar in our DB is a remote URL
+          // (MinIO public bucket), so the default optimizer path
+          // wins. No special-case here.
+        />
       ) : (
         <PersonSilhouette />
       )}

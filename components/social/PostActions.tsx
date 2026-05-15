@@ -39,7 +39,7 @@ export function PostActions({
                   confirm="Delete this post? This can't be undone."
                   variant="ghost"
                   size="sm"
-                  className="w-full justify-start rounded-none text-emce-red"
+                  className="w-full justify-start rounded-none text-emce-red-deep"
                 >
                   Delete post
                 </ConfirmSubmit>

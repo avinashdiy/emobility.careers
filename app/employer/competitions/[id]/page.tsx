@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { signinNextUrl } from "@/lib/auth-redirect";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
@@ -13,7 +14,7 @@ import { getCompetitionForHost, getRegistrationsForHost } from "@/server/competi
 
 export default async function HostCompetitionPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
-  if (!session?.user) redirect("/signin");
+  if (!session?.user) redirect(await signinNextUrl());
   if (session.user.role !== "EMPLOYER" && session.user.role !== "ADMIN") redirect("/403");
   const { id } = await params;
 
@@ -51,7 +52,7 @@ export default async function HostCompetitionPage({ params }: { params: Promise<
 
         {c.reviewerNotes && c.status === "CHANGES_REQUESTED" && (
           <Card className="border-emce-red">
-            <p className="text-sm text-emce-red"><strong>Reviewer:</strong> {c.reviewerNotes}</p>
+            <p className="text-sm text-emce-red-deep"><strong>Reviewer:</strong> {c.reviewerNotes}</p>
           </Card>
         )}
 

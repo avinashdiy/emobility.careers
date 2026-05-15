@@ -94,7 +94,7 @@ export async function RoleStaleBanner() {
     <div className="border-b border-emce-orange bg-emce-orange-light">
       <div className="container flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
         <p className="text-emce-text">
-          <strong className="text-emce-orange">⚠️ {title}</strong>
+          <strong className="text-emce-orange-deep">⚠️ {title}</strong>
           <span className="ml-1 text-emce-text-sec">— {body}</span>
         </p>
         <Link
