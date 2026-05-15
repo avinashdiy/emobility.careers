@@ -18,7 +18,7 @@ import {
 } from "@/server/events/actions";
 import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { env } from "@/lib/env";
-import { htmlOrFallback } from "@/lib/cms/job-sanitize";
+import { htmlOrFallback, stripHtml } from "@/lib/cms/job-sanitize";
 
 export async function generateMetadata({
   params,
@@ -42,12 +42,7 @@ export async function generateMetadata({
   // Strip HTML tags before slicing — descriptions are now rich text,
   // so `<p>` / `<strong>` / `<a>` would otherwise leak into the
   // meta-description tag and OG / Twitter cards.
-  const metaDescription = event.description
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 200);
+  const metaDescription = stripHtml(event.description).slice(0, 200);
   return {
     title: `${event.title} — ${event.company.name}`,
     description: metaDescription,
@@ -198,12 +193,7 @@ export default async function EventDetailPage({
             <ShareDropdown
               url={`${env.NEXT_PUBLIC_APP_URL}/events/${event.slug}`}
               title={`${event.title} — ${event.company.name}`}
-              description={event.description
-                .replace(/<[^>]+>/g, " ")
-                .replace(/&nbsp;/g, " ")
-                .replace(/\s+/g, " ")
-                .trim()
-                .slice(0, 200)}
+              description={stripHtml(event.description).slice(0, 200)}
               label="Share event"
             />
           </div>

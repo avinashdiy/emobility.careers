@@ -909,36 +909,53 @@ const volunteerSchema = z.object({
   description: z.string().max(2000).optional().nullable(),
 });
 
-export async function saveVolunteerExperience(formData: FormData) {
-  const { profile } = await requireCandidate();
-  const parsed = volunteerSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) {
-    logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
-    );
-    return;
+export async function saveVolunteerExperience(
+  _prev: FormState,
+  formData: FormData,
+): Promise<FormState> {
+  try {
+    const { profile } = await requireCandidate();
+    const parsed = volunteerSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      const fieldErrors = zodErrorsToFieldErrors(parsed.error.flatten());
+      logger.warn(
+        { userId: profile.userId, fieldErrors },
+        "[saveVolunteerExperience] validation failed",
+      );
+      return {
+        ok: false,
+        message: "Please fix the highlighted fields.",
+        fieldErrors,
+        prevValues: snapshotFormData(formData),
+      };
+    }
+    const { id, startDate, endDate, current, ...rest } = parsed.data;
+    const data = {
+      ...rest,
+      candidateId: profile.id,
+      startDate: new Date(`${startDate}-01`),
+      endDate: !current && endDate ? new Date(`${endDate}-01`) : null,
+      current: Boolean(current),
+    };
+    if (id) {
+      const result = await db.volunteerExperience.updateMany({
+        where: { id, candidateId: profile.id },
+        data,
+      });
+      if (result.count === 0) {
+        return { ok: false, message: "Couldn't find that volunteer entry." };
+      }
+    } else {
+      await db.volunteerExperience.create({ data });
+    }
+    revalidatePath("/me/profile");
+    revalidatePath(`/${profile.slug}`);
+    return { ok: true, message: id ? "Updated." : "Added." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[saveVolunteerExperience] unexpected failure");
+    return { ok: false, message: "Couldn't save. Try again." };
   }
-  const { id, startDate, endDate, current, ...rest } = parsed.data;
-  const data = {
-    ...rest,
-    candidateId: profile.id,
-    startDate: new Date(`${startDate}-01`),
-    endDate: !current && endDate ? new Date(`${endDate}-01`) : null,
-    current: Boolean(current),
-  };
-  if (id) {
-    // Scope by candidateId so an attacker can't update another candidate's row.
-    const result = await db.volunteerExperience.updateMany({
-      where: { id, candidateId: profile.id },
-      data,
-    });
-    if (result.count === 0) return;
-  } else {
-    await db.volunteerExperience.create({ data });
-  }
-  revalidatePath("/me/profile");
-  revalidatePath(`/${profile.slug}`);
 }
 
 export async function deleteVolunteerExperience(formData: FormData) {

@@ -1,3 +1,6 @@
+"use client";
+
+import { useActionState, useEffect, useState } from "react";
 import type { VolunteerExperience } from "@prisma/client";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,10 +9,13 @@ import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Alert } from "@/components/ui/alert";
+import { FieldError } from "@/components/ui/field-error";
 import {
   saveVolunteerExperience,
   deleteVolunteerExperience,
 } from "@/server/candidates/actions";
+import { emptyFormState, type FormState } from "@/lib/form-state";
 import { formatMonthYear } from "@/lib/utils";
 import { Trash2 } from "lucide-react";
 
@@ -19,84 +25,118 @@ function isoMonth(d?: Date | null): string {
 }
 
 function VolunteerForm({ entry }: { entry?: VolunteerExperience }) {
+  const [state, formAction] = useActionState<FormState, FormData>(saveVolunteerExperience, emptyFormState);
+  const e = state.fieldErrors ?? {};
+  const v = state.prevValues ?? {};
+
+  const [showOk, setShowOk] = useState(false);
+  useEffect(() => {
+    if (state.ok && state.message) {
+      setShowOk(true);
+      const t = setTimeout(() => setShowOk(false), 4000);
+      return () => clearTimeout(t);
+    }
+  }, [state]);
+
+  const idTag = entry?.id ?? "new";
   return (
-    <form action={saveVolunteerExperience} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      {entry && <input type="hidden" name="id" value={entry.id} />}
-      <div>
-        <Label htmlFor={`role-${entry?.id ?? "new"}`}>Role</Label>
-        <Input
-          id={`role-${entry?.id ?? "new"}`}
-          name="role"
-          required
-          defaultValue={entry?.role ?? ""}
-          placeholder="e.g. Mentor, Volunteer instructor"
-        />
-      </div>
-      <div>
-        <Label htmlFor={`organization-${entry?.id ?? "new"}`}>Organization</Label>
-        <Input
-          id={`organization-${entry?.id ?? "new"}`}
-          name="organization"
-          required
-          defaultValue={entry?.organization ?? ""}
-          placeholder="e.g. DIYguru, Akshaya Patra Foundation"
-        />
-      </div>
-      <div className="sm:col-span-2">
-        <Label htmlFor={`cause-${entry?.id ?? "new"}`}>Cause area</Label>
-        <Input
-          id={`cause-${entry?.id ?? "new"}`}
-          name="cause"
-          defaultValue={entry?.cause ?? ""}
-          placeholder="e.g. Education, Environment, Health"
-        />
-      </div>
-      <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+    <>
+      {state.ok && showOk && state.message && (
+        <Alert variant="success" className="mb-3">✓ {state.message}</Alert>
+      )}
+      {!state.ok && state.message && (
+        <Alert variant="danger" className="mb-3">{state.message}</Alert>
+      )}
+      <form action={formAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2" noValidate>
+        {entry && <input type="hidden" name="id" value={entry.id} />}
         <div>
-          <Label htmlFor={`startDate-vol-${entry?.id ?? "new"}`}>Start</Label>
+          <Label htmlFor={`role-${idTag}`} required>Role</Label>
           <Input
-            id={`startDate-vol-${entry?.id ?? "new"}`}
-            name="startDate"
-            type="month"
+            id={`role-${idTag}`}
+            name="role"
             required
-            defaultValue={isoMonth(entry?.startDate)}
+            defaultValue={v.role ?? entry?.role ?? ""}
+            placeholder="e.g. Mentor, Volunteer instructor"
+            aria-invalid={!!e.role}
           />
+          <FieldError error={e.role} />
         </div>
         <div>
-          <Label htmlFor={`endDate-vol-${entry?.id ?? "new"}`}>End</Label>
+          <Label htmlFor={`organization-${idTag}`} required>Organization</Label>
           <Input
-            id={`endDate-vol-${entry?.id ?? "new"}`}
-            name="endDate"
-            type="month"
-            defaultValue={isoMonth(entry?.endDate)}
+            id={`organization-${idTag}`}
+            name="organization"
+            required
+            defaultValue={v.organization ?? entry?.organization ?? ""}
+            placeholder="e.g. DIYguru, Akshaya Patra Foundation"
+            aria-invalid={!!e.organization}
           />
+          <FieldError error={e.organization} />
         </div>
-      </div>
-      <label className="flex items-center gap-2 text-sm font-bold text-emce-text-sec sm:col-span-2">
-        <input
-          type="checkbox"
-          name="current"
-          value="true"
-          defaultChecked={entry?.current ?? false}
-          className="h-4 w-4 accent-emce-mid"
-        />
-        I'm currently volunteering here
-      </label>
-      <div className="sm:col-span-2">
-        <Label htmlFor={`description-vol-${entry?.id ?? "new"}`}>Description</Label>
-        <Textarea
-          id={`description-vol-${entry?.id ?? "new"}`}
-          name="description"
-          rows={3}
-          maxLength={2000}
-          defaultValue={entry?.description ?? ""}
-          placeholder="What you did and the impact — be specific."
-        />
-      </div>
-      <div className="flex justify-end gap-2 sm:col-span-2">
-        <Button type="submit">{entry ? "Save changes" : "Add volunteer entry"}</Button>
-      </div>
-    </form>
+        <div className="sm:col-span-2">
+          <Label htmlFor={`cause-${idTag}`} optional>Cause area</Label>
+          <Input
+            id={`cause-${idTag}`}
+            name="cause"
+            defaultValue={v.cause ?? entry?.cause ?? ""}
+            placeholder="e.g. Education, Environment, Health"
+            aria-invalid={!!e.cause}
+          />
+          <FieldError error={e.cause} />
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:col-span-2">
+          <div>
+            <Label htmlFor={`startDate-vol-${idTag}`} required>Start</Label>
+            <Input
+              id={`startDate-vol-${idTag}`}
+              name="startDate"
+              type="month"
+              required
+              defaultValue={v.startDate ?? isoMonth(entry?.startDate)}
+              aria-invalid={!!e.startDate}
+            />
+            <FieldError error={e.startDate} />
+          </div>
+          <div>
+            <Label htmlFor={`endDate-vol-${idTag}`} optional>End</Label>
+            <Input
+              id={`endDate-vol-${idTag}`}
+              name="endDate"
+              type="month"
+              defaultValue={v.endDate ?? isoMonth(entry?.endDate)}
+              aria-invalid={!!e.endDate}
+            />
+            <FieldError error={e.endDate} />
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-sm font-bold text-emce-text-sec sm:col-span-2">
+          <input
+            type="checkbox"
+            name="current"
+            value="true"
+            defaultChecked={v.current === "true" || (v.current == null && (entry?.current ?? false))}
+            className="h-4 w-4 accent-emce-mid"
+          />
+          I&apos;m currently volunteering here
+        </label>
+        <div className="sm:col-span-2">
+          <Label htmlFor={`description-vol-${idTag}`} optional>Description</Label>
+          <Textarea
+            id={`description-vol-${idTag}`}
+            name="description"
+            rows={3}
+            maxLength={2000}
+            defaultValue={v.description ?? entry?.description ?? ""}
+            placeholder="What you did and the impact — be specific."
+            aria-invalid={!!e.description}
+          />
+          <FieldError error={e.description} />
+        </div>
+        <div className="flex justify-end gap-2 sm:col-span-2">
+          <Button type="submit">{entry ? "Save changes" : "Add volunteer entry"}</Button>
+        </div>
+      </form>
+    </>
   );
 }
 

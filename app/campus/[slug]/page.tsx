@@ -9,7 +9,7 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import type { Metadata } from "next";
 import { env } from "@/lib/env";
-import { htmlOrFallback } from "@/lib/cms/job-sanitize";
+import { htmlOrFallback, stripHtml } from "@/lib/cms/job-sanitize";
 
 export async function generateMetadata({
   params,
@@ -32,15 +32,11 @@ export async function generateMetadata({
   });
   // Strip HTML before slicing so meta-description / OG cards don't
   // leak `<p>` / `<strong>` markup from the rich-text body.
-  const plainDescription = drive.description
-    ?.replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const plainDescription = drive.description ? stripHtml(drive.description) : "";
   return {
     title: `${drive.title} — ${drive.institution} · ${drive.company.name}`,
     description:
-      plainDescription?.slice(0, 200) ??
+      (plainDescription && plainDescription.slice(0, 200)) ||
       `Campus drive at ${drive.institution}${drive.city ? `, ${drive.city}` : ""} on ${dateStr}.`,
     alternates: { canonical: `${env.NEXT_PUBLIC_APP_URL}/campus/${slug}` },
   };
