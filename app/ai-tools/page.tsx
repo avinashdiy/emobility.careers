@@ -106,6 +106,24 @@ const TOOLS: Tool[] = [
     status: "live",
   },
   {
+    href: "/ai-tools/cv-evaluation",
+    emoji: "🔬",
+    title: "Expert CV Evaluation",
+    blurb:
+      "Deep section-by-section CV review. Per-section scores (Summary / Experience / Education / Skills / Projects) plus specific 'weak phrasing → stronger phrasing' rewrites you can apply directly.",
+    badge: { label: "New · Free", tone: "new" },
+    status: "live",
+  },
+  {
+    href: "/ai-tools/resume-creator",
+    emoji: "📄",
+    title: "ATS Resume Creator",
+    blurb:
+      "Paste a brain dump of your past roles, projects, and skills. AI restructures it into a clean ATS-friendly EV-industry resume — print to PDF when you're happy.",
+    badge: { label: "New · Free", tone: "new" },
+    status: "live",
+  },
+  {
     href: "/roast",
     emoji: "🔥",
     title: "Roast My Resume",

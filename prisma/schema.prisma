@@ -223,6 +223,7 @@ model User {
   profileViewsMade            ProfileView[]             @relation("ProfileViewer")
   wordpressImportBatches      WordPressImportBatch[]    @relation("WordPressImporter")
   interviewSessions           InterviewSession[]        @relation("InterviewSessionUser")
+  cvEvaluations               CvEvaluation[]            @relation("CvEvaluationUser")
 
   // TPO / placement
   cohortsCreated Cohort[]
@@ -4504,4 +4505,43 @@ model InterviewSession {
 
   @@index([userId, createdAt])
   @@index([status, updatedAt])
+}
+
+// ─── AI CV Evaluation ──────────────────────────────────────────
+// Deep section-by-section CV analysis — beefier sibling of the
+// Roast Resume tool. Roast is a short viral hook (single 0-100
+// score + 3-5 fix items); Expert Evaluation reads every section
+// and produces rewrite suggestions per bullet. We persist runs
+// so the candidate can revisit + share.
+
+model CvEvaluation {
+  id              String   @id @default(cuid())
+  /// Null for anonymous runs — same pattern as ResumeRoast.
+  userId          String?
+  user            User?    @relation("CvEvaluationUser", fields: [userId], references: [id], onDelete: Cascade)
+  /// Anonymous-session cookie. Lets a signed-out visitor return to
+  /// past evaluations from the same browser without a real account.
+  anonId          String?
+  /// 0-100 overall — same shape as Roast so the result-card UI
+  /// reuses cleanly.
+  scoreOverall    Int
+  /// Per-section JSON ([{ section, score, observation, rewrites: [] }]).
+  /// Stored as JSON so the schema can evolve without a migration
+  /// every time the result shape changes.
+  sectionAnalysis Json
+  /// Top 3 things the candidate should fix first — the high-
+  /// signal subset of the full analysis.
+  topFixes        Json
+  /// Length of input text we parsed. Used for sanity checks +
+  /// "scored across N characters" line on the result page.
+  textLength      Int
+  /// Optional target role / EV domain the candidate said they
+  /// were aiming for. Helps shape the evaluation's tone.
+  targetRole      String?
+  evDomainSlug    String?
+  ip              String?
+  createdAt       DateTime @default(now())
+
+  @@index([userId, createdAt])
+  @@index([anonId, createdAt])
 }

@@ -397,33 +397,76 @@ export async function savePreferences(formData: FormData) {
 
 // ─── Profile editor: section-level mutations ───────────────
 
+/**
+ * Lenient URL field for the profile header form. Strict `.url()`
+ * rejects common-but-fixable inputs the user expects to "just work":
+ *
+ *   • leading/trailing whitespace from a paste
+ *   • `linkedin.com/in/foo` without the `https://` prefix
+ *   • a trailing slash or extra path the user didn't notice
+ *
+ * Bare `.url()` was the most common cause of the "Save changes does
+ * nothing" bug recruiters and candidates reported. We pre-trim and
+ * auto-prefix here so the action's `parsed.success` check stops
+ * rejecting valid intent. Genuinely empty input is preserved as
+ * empty string so the action can null it out later.
+ */
+const optionalUrl = z
+  .string()
+  .trim()
+  .max(500)
+  .optional()
+  .nullable()
+  .transform((v) => {
+    if (!v) return "";
+    return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+  })
+  .pipe(z.string().url().or(z.literal("")));
+
 const headerSchema = z.object({
-  firstName: z.string().min(1).max(80),
-  lastName: z.string().max(80).optional().nullable(),
-  headline: z.string().max(160).optional().nullable(),
+  firstName: z.string().trim().min(1).max(80),
+  lastName: z.string().trim().max(80).optional().nullable(),
+  headline: z.string().trim().max(160).optional().nullable(),
   summary: z.string().max(2000).optional().nullable(),
-  location: z.string().max(120).optional().nullable(),
+  location: z.string().trim().max(120).optional().nullable(),
   // ISO alpha-2; empty string allowed because the editor's "— Select —"
   // option submits "". We normalise to null below.
   country: z.string().length(2).optional().or(z.literal("")),
-  city: z.string().max(120).optional().nullable(),
-  phone: z.string().max(30).optional().nullable(),
-  linkedinUrl: z.string().url().optional().nullable().or(z.literal("")),
-  githubUrl: z.string().url().optional().nullable().or(z.literal("")),
-  portfolioUrl: z.string().url().optional().nullable().or(z.literal("")),
+  city: z.string().trim().max(120).optional().nullable(),
+  phone: z.string().trim().max(30).optional().nullable(),
+  linkedinUrl: optionalUrl,
+  githubUrl: optionalUrl,
+  portfolioUrl: optionalUrl,
 });
 
 export async function saveHeader(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = headerSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
-  const { country, city, ...rest } = parsed.data;
+  if (!parsed.success) {
+    // The `<form action={saveHeader}>` pattern doesn't surface a
+    // return value to the client — silent rejection looks like
+    // "Save changes does nothing", which is exactly what users
+    // reported. Log loudly so admin can diagnose from server logs
+    // until this is migrated to a useActionState client form.
+    logger.warn(
+      { userId: profile.userId, fieldErrors: parsed.error.flatten().fieldErrors },
+      "[saveHeader] validation failed — Save changes appears to do nothing on the client",
+    );
+    return;
+  }
+  const { country, city, linkedinUrl, githubUrl, portfolioUrl, ...rest } = parsed.data;
   await db.candidateProfile.update({
     where: { id: profile.id },
     data: {
       ...rest,
       country: country ? country.toUpperCase() : null,
       city: city?.trim() || null,
+      // Empty-string URLs (user cleared the field) → null in the DB
+      // so the public profile stops rendering a broken / hashes-only
+      // anchor.
+      linkedinUrl: linkedinUrl || null,
+      githubUrl: githubUrl || null,
+      portfolioUrl: portfolioUrl || null,
     },
   });
   await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });

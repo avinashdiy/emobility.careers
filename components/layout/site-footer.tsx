@@ -53,6 +53,8 @@ export async function SiteFooter() {
             { href: "/ai-tools/cover-letter", label: "Cover letter generator" },
             { href: "/ai-tools/career-path", label: "Career path advisor" },
             { href: "/ai-tools/linkedin-optimizer", label: "LinkedIn optimizer" },
+            { href: "/ai-tools/cv-evaluation", label: "Expert CV evaluation" },
+            { href: "/ai-tools/resume-creator", label: "Resume creator" },
             { href: "/ai-tools/skills-analyzer", label: "Analyze EV skills" },
             { href: "/ai-tools/internship-navigator", label: "Internship navigator" },
             { href: "/roast", label: "Roast my resume" },
