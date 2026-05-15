@@ -107,6 +107,17 @@ const envSchema = z.object({
   // Until then, leaving it unset is fine — errors fall back to JSON logs.
   SENTRY_DSN: z.string().optional(),
   LOG_LEVEL: z.enum(["trace", "debug", "info", "warn", "error", "fatal"]).default("info"),
+
+  // ─── Wave C #16 Vernacular AI Calling Agent ─────────────────
+  // Provider creds. Default provider is Exotel (India-focused CPaaS);
+  // the noop provider takes over when these are unset, returning a
+  // PROVIDER_NOT_CONFIGURED error from any dial attempt. Twilio
+  // equivalents (TWILIO_ACCOUNT_SID / TWILIO_AUTH_TOKEN) can be added
+  // alongside once the provider abstraction is generalised.
+  EXOTEL_SID: z.string().optional(),
+  EXOTEL_TOKEN: z.string().optional(),
+  EXOTEL_CALLER_ID: z.string().optional(),    // outbound number shown to candidate
+  EXOTEL_WEBHOOK_BASE: z.string().url().optional(), // public URL Exotel posts to
 });
 
 const parsed = envSchema.safeParse(process.env);
