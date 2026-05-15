@@ -13,6 +13,7 @@ import { objectKey, presignUpload, publicUrl } from "@/lib/storage";
 import { EventType, EventStatus } from "@prisma/client";
 import { plainTextLength, sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
 import type { FormState } from "@/lib/form-state";
+import { optionalUrl } from "@/lib/forms/zod-url";
 
 // ─── Auth helpers ────────────────────────────────────────────
 
@@ -65,8 +66,8 @@ const EventSchema = z.object({
   timezone: z.string().min(1).max(64).default("Asia/Kolkata"),
   registrationDeadline: z.coerce.date().optional().nullable(),
   location: z.string().max(240).optional().nullable(),
-  meetingUrl: z.string().url().max(500).optional().or(z.literal("")).nullable(),
-  coverImageUrl: z.string().url().optional().or(z.literal("")).nullable(),
+  meetingUrl: optionalUrl,
+  coverImageUrl: optionalUrl,
   capacity: z.coerce.number().int().min(1).max(100_000).optional().nullable(),
 });
 

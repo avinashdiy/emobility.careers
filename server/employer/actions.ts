@@ -14,6 +14,7 @@ import { sanitizeJobHtml, plainTextLength } from "@/lib/cms/job-sanitize";
 import { snapshotFormData, type FormState } from "@/lib/form-state";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { optionalUrl } from "@/lib/forms/zod-url";
 import {
   CompanyType,
   EmploymentType,
@@ -82,23 +83,12 @@ async function requireEmployerWithCompany() {
 
 // ─── Company onboarding ─────────────────────────────────────
 
-/**
- * Loose URL accepter — same trick as the admin job form. Auto-
- * prefixes `https://` if the user typed a bare domain, trims
- * whitespace, then runs the strict `.url()` parser. Prevents the
- * common "I typed company.com and the form rejected my whole
- * onboarding" UX trap.
- */
-const looseUrl = z
-  .string()
-  .trim()
-  .transform((s) => {
-    if (!s) return "";
-    if (/^https?:\/\//i.test(s)) return s;
-    if (/^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}/i.test(s)) return `https://${s}`;
-    return s;
-  })
-  .pipe(z.string().url().or(z.literal("")));
+// `optionalUrl` (lib/forms/zod-url) handles the "user typed
+// company.com" UX trap centrally — auto-prefixes https://, trims
+// whitespace, accepts empty. We re-export it as `looseUrl` so the
+// callers inside this file don't have to change names, and so the
+// "loose vs strict" terminology stays readable in context.
+const looseUrl = optionalUrl;
 
 const companySchema = z.object({
   name: z.string().min(2).max(120),
@@ -296,15 +286,21 @@ export async function joinExistingCompany(formData: FormData) {
 const companyUpdateSchema = companySchema.omit({ designation: true }).extend({
   techStack: z.string().optional(),
   benefits: z.string().optional(),
-  linkedinUrl: z.string().url().optional().or(z.literal("")),
-  twitterUrl: z.string().url().optional().or(z.literal("")),
+  linkedinUrl: optionalUrl,
+  twitterUrl: optionalUrl,
 });
 
 export async function updateCompany(formData: FormData) {
   const { employer } = await requireEmployerWithCompany();
   if (!employer.isCompanyAdmin) redirect("/403");
   const parsed = companyUpdateSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[employer] Zod validation failed — bare-form action returns void; user sees no feedback. Migrate to useActionState if per-field errors needed.",
+    );
+    return;
+  }
   const { techStack, benefits, ...rest } = parsed.data;
   await db.company.update({
     where: { id: employer.companyId },
@@ -806,7 +802,13 @@ const inviteSchema = z.object({
 export async function bulkInviteCandidates(formData: FormData) {
   const { session, employer } = await requireEmployerWithCompany();
   const parsed = inviteSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[employer] Zod validation failed — bare-form action returns void; user sees no feedback. Migrate to useActionState if per-field errors needed.",
+    );
+    return;
+  }
 
   const job = await db.jobPosting.findUnique({
     where: { id: parsed.data.jobId },

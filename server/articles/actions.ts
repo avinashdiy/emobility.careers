@@ -14,6 +14,7 @@ import {
   sanitizeRichTextHtml,
 } from "@/lib/cms/job-sanitize";
 import type { FormState } from "@/lib/form-state";
+import { optionalUrl } from "@/lib/forms/zod-url";
 
 /**
  * Server actions for the editorial Article CMS. Admin-only on every
@@ -63,7 +64,7 @@ const ArticleSchema = z.object({
   // and apply the real "≥ 100 readable chars" gate AFTER sanitise
   // using `plainTextLength`.
   body: z.string().min(1, "Article body is required."),
-  coverImageUrl: z.string().url().optional().or(z.literal("")),
+  coverImageUrl: optionalUrl,
   categoryId: z.string().optional().or(z.literal("")),
   authorId: z.string().optional().or(z.literal("")),
   /// Comma- or newline-separated. We split + trim + dedupe + limit.

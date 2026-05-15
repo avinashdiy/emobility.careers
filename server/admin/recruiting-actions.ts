@@ -11,6 +11,7 @@ import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { embeddingsQueue } from "@/lib/queues";
 import { sanitizeJobHtml, plainTextLength } from "@/lib/cms/job-sanitize";
+import { optionalUrl } from "@/lib/forms/zod-url";
 import {
   CompanyType,
   CompanyVerification,
@@ -50,23 +51,11 @@ async function requireAdmin() {
 
 // ─── Job posting on behalf of a company ─────────────────────
 
-/// Best-effort URL coercion. The HTML5 `<input type="url">` accepts
-/// many shapes that fail Zod's strict `.url()`. We auto-prefix
-/// `https://` if the value looks domain-ish, trim whitespace, and
-/// only THEN validate. Same logic on the public + employer paths
-/// would be nice but out of scope for this fix — admins are the
-/// most-frequent victims since they paste from spreadsheets.
-const looseUrl = z
-  .string()
-  .trim()
-  .transform((s) => {
-    if (!s) return "";
-    if (/^https?:\/\//i.test(s)) return s;
-    // "company.com" or "www.company.com/careers" → "https://..."
-    if (/^[a-z0-9][a-z0-9.-]+\.[a-z]{2,}/i.test(s)) return `https://${s}`;
-    return s; // pass through; .url() will reject below if still invalid
-  })
-  .pipe(z.string().url().or(z.literal("")));
+// `looseUrl` is now an alias for the shared `optionalUrl` helper —
+// same trim + auto-https-prefix behaviour, consistent across every
+// candidate / employer / admin surface so a URL accepted in one
+// form is also accepted in another.
+const looseUrl = optionalUrl;
 
 const looseEmail = z
   .string()
@@ -597,7 +586,7 @@ const hrSchema = z.object({
   companyId: z.string().optional(),
   newCompanyName: z.string().max(120).optional(),
   newCompanyType: z.nativeEnum(CompanyType).optional(),
-  newCompanyWebsite: z.string().url().optional().or(z.literal("")),
+  newCompanyWebsite: optionalUrl,
   // Default to RECRUITER. Admin-tier within the company is a safer
   // explicit-opt-in: tick the box if you want this person to be able
   // to invite teammates / edit the company page.

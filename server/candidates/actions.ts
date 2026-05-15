@@ -15,6 +15,7 @@ import { logger } from "@/lib/logger";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { recalcCompleteness } from "@/lib/profile-completeness";
+import { optionalUrl } from "@/lib/forms/zod-url";
 import {
   ProfileMode,
   AvailabilityStatus,
@@ -66,7 +67,13 @@ export async function setProfileMode(formData: FormData) {
   const { profile } = await requireCandidate();
   const mode = formData.get("profileMode");
   const parsed = z.nativeEnum(ProfileMode).safeParse(mode);
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
+    );
+    return;
+  }
 
   await db.candidateProfile.update({
     where: { id: profile.id },
@@ -397,32 +404,6 @@ export async function savePreferences(formData: FormData) {
 
 // ─── Profile editor: section-level mutations ───────────────
 
-/**
- * Lenient URL field for the profile header form. Strict `.url()`
- * rejects common-but-fixable inputs the user expects to "just work":
- *
- *   • leading/trailing whitespace from a paste
- *   • `linkedin.com/in/foo` without the `https://` prefix
- *   • a trailing slash or extra path the user didn't notice
- *
- * Bare `.url()` was the most common cause of the "Save changes does
- * nothing" bug recruiters and candidates reported. We pre-trim and
- * auto-prefix here so the action's `parsed.success` check stops
- * rejecting valid intent. Genuinely empty input is preserved as
- * empty string so the action can null it out later.
- */
-const optionalUrl = z
-  .string()
-  .trim()
-  .max(500)
-  .optional()
-  .nullable()
-  .transform((v) => {
-    if (!v) return "";
-    return /^https?:\/\//i.test(v) ? v : `https://${v}`;
-  })
-  .pipe(z.string().url().or(z.literal("")));
-
 const headerSchema = z.object({
   firstName: z.string().trim().min(1).max(80),
   lastName: z.string().trim().max(80).optional().nullable(),
@@ -493,7 +474,13 @@ const experienceSchema = z.object({
 export async function saveExperience(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = experienceSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
+    );
+    return;
+  }
   const { id, startDate, endDate, current, companyId, ...rest } = parsed.data;
   const data = {
     ...rest,
@@ -547,7 +534,13 @@ const educationSchema = z.object({
 export async function saveEducation(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = educationSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
+    );
+    return;
+  }
   const { id, institutionId, ...rest } = parsed.data;
   const data = {
     ...rest,
@@ -761,7 +754,13 @@ const availabilitySchema = z.object({
 export async function saveAvailability(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = availabilitySchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
+    );
+    return;
+  }
   const { status } = parsed.data;
   await db.candidateProfile.update({
     where: { id: profile.id },
@@ -787,7 +786,13 @@ const customCtaSchema = z.object({
 export async function saveCustomCta(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = customCtaSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
+    );
+    return;
+  }
   const trimmed = parsed.data.customCta?.trim() || null;
   await db.candidateProfile.update({
     where: { id: profile.id },
@@ -812,7 +817,13 @@ const volunteerSchema = z.object({
 export async function saveVolunteerExperience(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = volunteerSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
+    );
+    return;
+  }
   const { id, startDate, endDate, current, ...rest } = parsed.data;
   const data = {
     ...rest,
@@ -1215,7 +1226,13 @@ const skillAddSchema = z.object({
 export async function addSkillToProfile(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = skillAddSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
+    );
+    return;
+  }
   const slug = parsed.data.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
   const skill = await db.skill.upsert({
     where: { slug },
@@ -1368,13 +1385,19 @@ const certSchema = z.object({
   issuer: z.string().max(120).optional().nullable(),
   issueDate: z.string().optional().nullable(),
   credentialId: z.string().max(120).optional().nullable(),
-  credentialUrl: z.string().url().optional().or(z.literal("")).nullable(),
+  credentialUrl: optionalUrl,
 });
 
 export async function saveCertification(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = certSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
+    );
+    return;
+  }
   const { id, issueDate, credentialUrl, ...rest } = parsed.data;
   const data = {
     ...rest,
@@ -1412,14 +1435,20 @@ const projectSchema = z.object({
   id: z.string().optional(),
   title: z.string().min(1).max(140),
   description: z.string().max(2000).optional().nullable(),
-  url: z.string().url().optional().or(z.literal("")).nullable(),
+  url: optionalUrl,
   techStack: z.string().optional(),
 });
 
 export async function saveProject(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = projectSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
+    );
+    return;
+  }
   const { id, techStack, url, ...rest } = parsed.data;
   const data = {
     ...rest,
@@ -1466,7 +1495,13 @@ const awardSchema = z.object({
 export async function saveAward(formData: FormData) {
   const { profile } = await requireCandidate();
   const parsed = awardSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[candidates] Zod validation failed — bare-form server action returns void on Zod fail; user sees no feedback. Update form to useActionState pattern if you need per-field error surfacing.",
+    );
+    return;
+  }
   const { id, date, ...rest } = parsed.data;
   const data = { ...rest, date: date ? new Date(`${date}-01`) : null };
   if (id) {

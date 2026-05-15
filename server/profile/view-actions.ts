@@ -38,7 +38,13 @@ export async function setViewerVisibility(formData: FormData): Promise<void> {
     const parsed = visibilitySchema.safeParse({
       viewerVisibility: formData.get("viewerVisibility"),
     });
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      logger.warn(
+        { fieldErrors: parsed.error.flatten().fieldErrors },
+        "[profile-view] Zod validation failed — bare form action returns void; user sees no feedback.",
+      );
+      return;
+    }
 
     await db.candidateProfile.update({
       where: { userId: session.user.id },

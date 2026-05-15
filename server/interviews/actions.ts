@@ -11,6 +11,8 @@ import { generateICS } from "@/lib/ics";
 import { sendMail } from "@/lib/mail";
 import { env } from "@/lib/env";
 import { InterviewMode, ApplicationStage } from "@prisma/client";
+import { optionalUrl } from "@/lib/forms/zod-url";
+import { logger } from "@/lib/logger";
 
 const scheduleSchema = z.object({
   applicationId: z.string(),
@@ -18,7 +20,7 @@ const scheduleSchema = z.object({
   durationMins: z.coerce.number().int().min(15).max(180).default(45),
   mode: z.nativeEnum(InterviewMode),
   location: z.string().optional(),
-  meetingUrl: z.string().url().optional().or(z.literal("")),
+  meetingUrl: optionalUrl,
 });
 
 export async function scheduleInterview(formData: FormData) {
@@ -30,7 +32,13 @@ export async function scheduleInterview(formData: FormData) {
   if (!employer) redirect("/employer/onboarding");
 
   const parsed = scheduleSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[interviews] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   const application = await db.application.findUnique({
     where: { id: parsed.data.applicationId },

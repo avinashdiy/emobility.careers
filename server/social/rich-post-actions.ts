@@ -16,6 +16,7 @@ import { extractHashtags, extractMentions } from "@/lib/social/extract";
 import { objectKey, presignUpload, publicUrl } from "@/lib/storage";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { logger } from "@/lib/logger";
+import { optionalUrl } from "@/lib/forms/zod-url";
 import type { FormState } from "@/lib/form-state";
 
 const MAX_BYTES = 10 * 1024 * 1024; // 10MB cap on every uploaded asset
@@ -145,10 +146,12 @@ const RichPostSchema = z.object({
   attachedJobId: z.string().optional().nullable(),
   // Type-specific payloads — only one will be populated based on `kind`.
   attachments: z.array(AttachmentSchema).max(9).optional(),
-  embedUrl: z.string().url().optional(),
+  // User-typed paste fields — lenient URL handler so missing
+  // `https://` doesn't reject a valid intent.
+  embedUrl: optionalUrl.optional(),
   poll: PollSchema.optional(),
   articleTitle: z.string().min(3).max(200).optional(),
-  articleCoverUrl: z.string().url().optional(),
+  articleCoverUrl: optionalUrl.optional(),
 });
 
 export async function createRichPost(

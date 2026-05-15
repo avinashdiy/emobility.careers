@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { logger } from "@/lib/logger";
 
 async function requireCompanyAdmin() {
   const session = await auth();
@@ -28,7 +29,13 @@ const stageSchema = z.object({
 export async function createStage(formData: FormData) {
   const { employer } = await requireCompanyAdmin();
   const parsed = stageSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[employer-pipeline] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   const stage = await db.customPipelineStage.create({
     data: {

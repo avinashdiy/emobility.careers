@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { logger } from "@/lib/logger";
 
 const prefsSchema = z.object({
   applicationUpdatesEmail: z.coerce.boolean().optional(),
@@ -35,7 +36,13 @@ export async function saveNotificationPrefs(formData: FormData) {
     raw[k] = formData.get(k) ? "true" : "false";
   }
   const parsed = prefsSchema.safeParse(raw);
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[preferences] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   await db.notificationPreference.upsert({
     where: { userId: session.user.id },

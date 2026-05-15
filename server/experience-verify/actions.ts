@@ -216,7 +216,13 @@ async function requireRecruiterAtCompany(experienceId: string) {
 
 export async function recruiterApproveExperience(formData: FormData) {
   const parsed = recruiterDecisionSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[experience-verify] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
   const { session, exp } = await requireRecruiterAtCompany(parsed.data.experienceId);
 
   if (exp.verifiedAt) {
@@ -245,7 +251,13 @@ export async function recruiterApproveExperience(formData: FormData) {
 
 export async function recruiterRejectExperience(formData: FormData) {
   const parsed = recruiterDecisionSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[experience-verify] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
   const { session, exp } = await requireRecruiterAtCompany(parsed.data.experienceId);
 
   // Rejection here is an explicit "I don't recognise this person" — we

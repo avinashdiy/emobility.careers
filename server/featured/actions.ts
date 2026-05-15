@@ -8,6 +8,8 @@ import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { notificationsQueue } from "@/lib/queues";
 import { startOfThisWeekIST } from "./week";
+import { optionalUrl } from "@/lib/forms/zod-url";
+import { logger } from "@/lib/logger";
 
 /**
  * Featured This Week — admin curation. Five candidate slots per week
@@ -27,7 +29,7 @@ const featureSchema = z.object({
   candidateSlug: z.string().min(1),
   position: z.coerce.number().int().min(1).max(5),
   spotlightReason: z.string().max(280).optional(),
-  imageUrl: z.string().url().optional().or(z.literal("")),
+  imageUrl: optionalUrl,
   weekStart: z.string().optional(), // ISO date — defaults to this week
 });
 
@@ -112,7 +114,13 @@ const unfeatureSchema = z.object({
 export async function unfeatureCandidate(formData: FormData) {
   const session = await requireAdmin();
   const parsed = unfeatureSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[featured] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
   const slot = await db.featuredSlot.findUnique({
     where: { id: parsed.data.slotId },
     select: { id: true, candidateId: true },

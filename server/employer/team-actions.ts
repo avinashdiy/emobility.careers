@@ -33,7 +33,13 @@ export async function inviteTeammate(formData: FormData) {
   const { session, employer } = await requireCompanyAdmin();
   await rateLimitOrThrow(`invite:${session.user.id}`, "invite");
   const parsed = inviteSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[employer-team] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   const token = crypto.randomBytes(24).toString("hex");
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
@@ -182,7 +188,13 @@ const promoteSchema = z.object({
 export async function setTeammateAdmin(formData: FormData) {
   const { employer } = await requireCompanyAdmin();
   const parsed = promoteSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[employer-team] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   // Self-toggle off is allowed (you can step down) but only if
   // there's at least one other admin on the team. Self-toggle on

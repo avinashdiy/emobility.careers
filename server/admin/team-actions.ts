@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { notificationsQueue } from "@/lib/queues";
 import { CompanyTeamRole } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 /**
  * Best-effort notification fanout. Wraps the queue add in a catch so
@@ -237,7 +238,13 @@ const removeSchema = z.object({
 export async function adminRemoveTeamMember(formData: FormData) {
   const session = await requirePlatformAdmin();
   const parsed = removeSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[admin-team] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   // Refuse to remove the company owner — that would leave the
   // company orphaned (Company.ownerUserId is required). Platform
@@ -305,7 +312,13 @@ const adminFlagSchema = z.object({
 export async function adminSetCompanyAdmin(formData: FormData) {
   const session = await requirePlatformAdmin();
   const parsed = adminFlagSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[admin-team] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   // One company lookup — used for the owner-protect guard above and
   // for the notification body further down.
@@ -375,7 +388,13 @@ const roleSchema = z.object({
 export async function adminSetEmployerRole(formData: FormData) {
   const session = await requirePlatformAdmin();
   const parsed = roleSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[admin-team] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   // Prevent the admin from accidentally demoting themselves —
   // dropping role to CANDIDATE would lock them out of /admin/*

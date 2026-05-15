@@ -10,6 +10,7 @@ import { audit } from "@/lib/audit";
 import { env } from "@/lib/env";
 import { CampusDriveStatus } from "@prisma/client";
 import { sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
+import { optionalUrl } from "@/lib/forms/zod-url";
 
 /**
  * Campus drive CRUD. Drives are owned by Companies — same authorization
@@ -65,7 +66,7 @@ const createSchema = z.object({
   // Description is HTML from the rich-text editor — allowlist sanitiser
   // runs after parse. Ceiling raised from 8k → 40k to fit the markup.
   description: z.string().max(40_000).optional(),
-  bannerImageUrl: z.string().url().optional().or(z.literal("")),
+  bannerImageUrl: optionalUrl,
   maxCandidates: z.coerce.number().int().min(0).max(10000).optional(),
 });
 
@@ -135,7 +136,7 @@ const updateSchema = createSchema.extend({
   driveId: z.string(),
   // Only used when an admin / coordinator wants to redirect candidates to
   // an external landing page. Empty string = revert to auto-generated.
-  landingPageOverride: z.string().url().optional().or(z.literal("")),
+  landingPageOverride: optionalUrl,
 });
 
 // TODO: migrate to useActionState pattern (see createDrive note above).

@@ -19,6 +19,7 @@ import { pgRateLimit } from "@/lib/rate-limit-pg";
 import { notificationsQueue } from "@/lib/queues";
 import { s3, buckets, publicUrl, objectKey } from "@/lib/storage";
 import type { FormState } from "@/lib/form-state";
+import { optionalUrl } from "@/lib/forms/zod-url";
 
 /**
  * Server actions for the Team EV Challenge feature.
@@ -333,10 +334,10 @@ const UpdateTeamSchema = z.object({
   // every time the captain saves the profile.
   // Social links — flat fields on the form so the multipart parser
   // doesn't choke; we re-bundle into JSON before write.
-  instagram: z.string().url().optional().or(z.literal("")),
-  linkedin: z.string().url().optional().or(z.literal("")),
-  website: z.string().url().optional().or(z.literal("")),
-  youtube: z.string().url().optional().or(z.literal("")),
+  instagram: optionalUrl,
+  linkedin: optionalUrl,
+  website: optionalUrl,
+  youtube: optionalUrl,
 });
 
 export async function updateTeam(

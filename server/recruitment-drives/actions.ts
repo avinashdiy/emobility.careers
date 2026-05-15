@@ -15,6 +15,7 @@ import { notificationsQueue } from "@/lib/queues";
 import { s3, buckets, publicUrl, objectKey } from "@/lib/storage";
 import { sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
 import type { FormState } from "@/lib/form-state";
+import { optionalUrl } from "@/lib/forms/zod-url";
 
 /**
  * Server actions for the RecruitmentDrive (job-fair) feature.
@@ -191,8 +192,8 @@ export async function createRecruitmentDrive(
 
 const UpdateDriveSchema = CreateDriveSchema.extend({
   driveId: z.string(),
-  bannerImageUrl: z.string().url().optional().or(z.literal("")),
-  heroImageUrl: z.string().url().optional().or(z.literal("")),
+  bannerImageUrl: optionalUrl,
+  heroImageUrl: optionalUrl,
 });
 
 export async function updateRecruitmentDrive(

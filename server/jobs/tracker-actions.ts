@@ -39,7 +39,13 @@ export async function saveTrackerNote(formData: FormData): Promise<void> {
       body: z.string().max(2000),
     });
     const parsed = schema.safeParse(Object.fromEntries(formData));
-    if (!parsed.success) return;
+    if (!parsed.success) {
+      logger.warn(
+        { fieldErrors: parsed.error.flatten().fieldErrors },
+        "[jobs-tracker] Zod validation failed — bare form action returns void; user sees no feedback.",
+      );
+      return;
+    }
 
     // Verify ownership — the application must belong to the calling
     // candidate. We do this in one query so a forged applicationId

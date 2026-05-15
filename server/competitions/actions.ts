@@ -17,6 +17,7 @@ import type { FormState } from "@/lib/form-state";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { logger } from "@/lib/logger";
 import { zodErrorsToFieldErrors } from "@/lib/form-state";
+import { optionalUrl } from "@/lib/forms/zod-url";
 
 async function requireUser() {
   const session = await auth();
@@ -65,7 +66,7 @@ const CompetitionDraftSchema = z.object({
   description: z.string().min(1, "Description is required.").max(40000),
   type: z.enum(["HACKATHON", "CASE_STUDY", "QUIZ", "DESIGN_CHALLENGE", "INNOVATION", "INTERNSHIP_HUNT", "IDEATHON", "RESEARCH"]),
   evDomainSlugs: z.array(z.string()).max(10).default([]),
-  bannerImageUrl: z.string().url().optional().or(z.literal("")),
+  bannerImageUrl: optionalUrl,
   eligibility: z.string().max(2000).optional(),
   rules: z.string().max(40000).optional(),
   isTeamBased: z.coerce.boolean().default(false),
@@ -549,13 +550,13 @@ const SubmissionSchema = z.object({
   summary: z.string().max(4000).optional(),
   body: z.string().max(50_000).optional(),
   attachmentUrls: z.array(z.string().url()).max(10).default([]),
-  externalUrl: z.string().url().optional().or(z.literal("")),
+  externalUrl: optionalUrl,
   /// Optional first-class field for the working-prototype video.
   /// Validated as a URL only — we don't gate on YouTube/Vimeo here
   /// because hosts may want to allow self-hosted MinIO or Drive
   /// links. The team page renderer detects YouTube/Vimeo for
   /// inline embed and falls back to a "Watch video" link otherwise.
-  prototypeVideoUrl: z.string().url().optional().or(z.literal("")),
+  prototypeVideoUrl: optionalUrl,
 });
 
 export async function submitCompetitionEntry(_prev: FormState, formData: FormData): Promise<FormState> {

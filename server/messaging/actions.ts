@@ -9,6 +9,7 @@ import { realtime, channels, events } from "@/lib/realtime";
 import { notificationsQueue } from "@/lib/queues";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { requireEmailVerified, EmailNotVerifiedError } from "@/lib/anti-spam";
+import { logger } from "@/lib/logger";
 
 async function ensureThreadAccess(threadId: string, userId: string, role: string) {
   const thread = await db.messageThread.findUnique({
@@ -141,7 +142,13 @@ export async function sendMessage(formData: FormData) {
   }
   await rateLimitOrThrow(`message:${session.user.id}`, "message");
   const parsed = sendSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[messaging] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   const thread = await ensureThreadAccess(parsed.data.threadId, session.user.id, session.user.role);
   if (!thread) redirect("/403");

@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { broadcastsQueue } from "@/lib/queues";
 import { BroadcastTarget, NotificationChannel } from "@prisma/client";
+import { optionalUrl } from "@/lib/forms/zod-url";
 
 async function requireAdmin() {
   const session = await auth();
@@ -19,7 +20,7 @@ async function requireAdmin() {
 const broadcastSchema = z.object({
   title: z.string().min(2).max(140),
   body: z.string().min(2).max(2000),
-  link: z.string().url().optional().or(z.literal("")),
+  link: optionalUrl,
   target: z.nativeEnum(BroadcastTarget),
   email: z.coerce.boolean().optional(),
   sms: z.coerce.boolean().optional(),

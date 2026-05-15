@@ -161,7 +161,13 @@ export async function updateGrievance(formData: FormData): Promise<void> {
   if (!session?.user) redirect("/signin");
   if (session.user.role !== "ADMIN") redirect("/403");
   const parsed = updateSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[grievance] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   const ticket = await db.grievanceTicket.findUnique({
     where: { id: parsed.data.ticketId },

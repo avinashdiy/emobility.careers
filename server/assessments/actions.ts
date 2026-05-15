@@ -7,6 +7,7 @@ import { Prisma } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { AssessmentType } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 const mcqQuestionSchema = z.object({
   q: z.string().min(1),
@@ -213,7 +214,13 @@ export async function submitAssessment(formData: FormData) {
   if (!profile) redirect("/onboarding");
 
   const parsed = submitSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[assessments] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   const attempt = await db.assessmentAttempt.findUnique({
     where: { id: parsed.data.attemptId },

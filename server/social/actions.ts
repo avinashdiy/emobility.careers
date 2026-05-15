@@ -12,6 +12,7 @@ import { audit } from "@/lib/audit";
 import { requireEmailVerified } from "@/lib/anti-spam";
 import { extractHashtags, extractMentions } from "@/lib/social/extract";
 import { findBannedWord, autoFlagContent } from "@/lib/social/banned-words";
+import { logger } from "@/lib/logger";
 import {
   ConnectionStatus,
   PostVisibility,
@@ -61,7 +62,13 @@ export async function createPost(formData: FormData): Promise<void> {
   await rateLimitOrThrow(`post:${session.user.id}`, "message");
 
   const parsed = postCreateSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[social] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
   const { body, visibility, asCompanyId, attachedJobId, repostOfId } = parsed.data;
 
   // Optional "post as company" — only allowed if the user is a verified team
@@ -196,7 +203,13 @@ const reactionSchema = z.object({
 export async function togglePostReaction(formData: FormData): Promise<void> {
   const session = await requireUserVerified();
   const parsed = reactionSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[social] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
   await rateLimitOrThrow(`react:${session.user.id}`, "ats");
 
   const { postId, type } = parsed.data;
@@ -261,7 +274,13 @@ export async function addComment(formData: FormData): Promise<void> {
   if (!pgLimit.ok) return;
   await rateLimitOrThrow(`comment:${session.user.id}`, "message");
   const parsed = commentSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[social] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   const { postId, body, parentId } = parsed.data;
   const post = await db.post.findUnique({
@@ -382,7 +401,13 @@ export async function requestConnection(formData: FormData): Promise<void> {
   const session = await requireUserVerified();
   await rateLimitOrThrow(`connect:${session.user.id}`, "saveItem");
   const parsed = connectRequestSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[social] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
   const { recipientId, message } = parsed.data;
   if (recipientId === session.user.id) return;
 

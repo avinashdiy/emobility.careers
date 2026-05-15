@@ -9,6 +9,7 @@ import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { buildTsQuery } from "@/lib/search-fts";
 import type { InstitutionType } from "@prisma/client";
+import { optionalUrl } from "@/lib/forms/zod-url";
 
 /**
  * Lookup + create endpoints for the two "entity references" candidates can
@@ -83,7 +84,7 @@ export async function searchCompanies(q: string): Promise<CompanyMatch[]> {
 const CreateCompanySchema = z.object({
   name: z.string().min(2).max(120),
   hqLocation: z.string().max(120).optional(),
-  website: z.string().url().optional().or(z.literal("")),
+  website: optionalUrl,
 });
 
 export async function createCompanyLite(input: {
@@ -192,7 +193,7 @@ const CreateInstitutionSchema = z.object({
   type: z.enum(["UNIVERSITY", "COLLEGE", "SCHOOL", "ITI", "POLYTECHNIC", "RESEARCH_INSTITUTE", "TRAINING_CENTER", "OTHER"]),
   city: z.string().max(80).optional(),
   state: z.string().max(80).optional(),
-  website: z.string().url().optional().or(z.literal("")),
+  website: optionalUrl,
 });
 
 export async function createInstitutionLite(input: {

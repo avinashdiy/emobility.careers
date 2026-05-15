@@ -17,6 +17,7 @@ import {
 } from "@/lib/cms/wordpress-import";
 import { RESERVED_SLUGS, normalizeSlug } from "@/lib/reserved-slugs";
 import type { FormState } from "@/lib/form-state";
+import { optionalUrl } from "@/lib/forms/zod-url";
 
 /**
  * Lifecycle actions for the new `Page` CMS table. Kept minimal in
@@ -132,7 +133,7 @@ const pageInputSchema = z.object({
   slug: z.string().max(80).optional(),
   excerpt: z.string().max(500).optional(),
   body: z.string().min(1, "Paste some HTML to save."),
-  coverImageUrl: z.string().url().optional().or(z.literal("")),
+  coverImageUrl: optionalUrl,
   metaTitle: z.string().max(80).optional(),
   metaDescription: z.string().max(280).optional(),
   renderMode: z.nativeEnum(PageRenderMode).default(PageRenderMode.STANDALONE),

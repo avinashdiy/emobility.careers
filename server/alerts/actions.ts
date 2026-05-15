@@ -7,6 +7,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { NotificationChannel } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 const alertSchema = z.object({
   query: z.string().min(1).max(200),
@@ -33,7 +34,13 @@ export async function createJobAlert(formData: FormData) {
   const { profile } = await requireCandidate();
   await rateLimitOrThrow(`alert:${profile.userId}`, "saveItem");
   const parsed = alertSchema.safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return;
+  if (!parsed.success) {
+    logger.warn(
+      { fieldErrors: parsed.error.flatten().fieldErrors },
+      "[alerts] Zod validation failed — bare form action returns void; user sees no feedback.",
+    );
+    return;
+  }
 
   const { query, frequency, email, sms, ...filters } = parsed.data;
   const channels: NotificationChannel[] = [NotificationChannel.IN_APP];
