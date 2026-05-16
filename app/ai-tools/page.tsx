@@ -34,6 +34,18 @@ interface Tool {
 
 const TOOLS: Tool[] = [
   {
+    // Wave C #14 — first in the list because it answers the
+    // "what's my next move in EV?" question that every other tool
+    // operates downstream of. Public, no-auth.
+    href: "/career-explorer",
+    emoji: "🧭",
+    title: "EV Career Explorer",
+    blurb:
+      "Tell us your current role + skills, get 6-8 adjacent EV careers ranked by fit, with the exact skill gap to bridge each + INR salary bands and prep links. AI-mapped, share-linkable, 30-day cached.",
+    badge: { label: "New · Free", tone: "new" },
+    status: "live",
+  },
+  {
     href: "/ai-tools/interview-prep",
     emoji: "📚",
     title: "Interview Prep",

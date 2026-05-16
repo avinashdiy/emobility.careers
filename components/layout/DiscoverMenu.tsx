@@ -11,6 +11,9 @@ import {
   Building2,
   BookOpen,
   Calendar,
+  Compass,
+  Award,
+  ShieldCheck,
 } from "lucide-react";
 
 /**
@@ -21,6 +24,9 @@ import {
  */
 const ITEMS = [
   { href: "/jobs", label: "Jobs", desc: "EV roles across India", icon: Briefcase },
+  { href: "/career-explorer", label: "Career Explorer", desc: "AI-mapped next moves with skill gaps", icon: Compass },
+  { href: "/skills", label: "Verified skill badges", desc: "MCQ tests recruiters can filter on", icon: ShieldCheck },
+  { href: "/awards", label: "Best EV Employers", desc: "Annual rankings from real reviews", icon: Award },
   { href: "/articles", label: "Knowledge", desc: "Explainers, deep dives, career guides", icon: BookOpen },
   { href: "/fairs", label: "Job fairs", desc: "Multi-company recruitment drives", icon: Calendar },
   { href: "/competitions", label: "Competitions", desc: "Hackathons, case studies, ideathons", icon: Trophy },

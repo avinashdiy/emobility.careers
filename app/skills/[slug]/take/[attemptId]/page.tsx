@@ -7,9 +7,7 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { SkillAssessmentRunner } from "@/components/skills/SkillAssessmentRunner";
-import {
-  parseSkillAssessmentQuestions,
-} from "@/server/skills/actions";
+import { parseSkillAssessmentQuestions } from "@/server/skills/parse";
 
 export const metadata = {
   title: "Skill assessment in progress",

@@ -31,32 +31,11 @@ import { dispatchNotification } from "@/lib/notifications/dispatch";
  *   4. Profile + recruiter search surface the badge.
  */
 
-const skillAssessmentQuestionSchema = z.object({
-  id: z.string(),
-  text: z.string(),
-  options: z.array(z.string()).min(2).max(8),
-  correctOption: z.number().int().min(0).max(7),
-});
-
-export interface SkillAssessmentQuestion {
-  id: string;
-  text: string;
-  options: string[];
-  correctOption: number;
-}
-
-/** Reads the questions JSON off an Assessment row and validates it
- *  against the expected MCQ shape. Used by the runner so a malformed
- *  questions blob doesn't crash the page render. */
-export function parseSkillAssessmentQuestions(
-  questionsJson: unknown,
-): SkillAssessmentQuestion[] {
-  const parsed = z
-    .object({ questions: z.array(skillAssessmentQuestionSchema) })
-    .safeParse(questionsJson);
-  if (!parsed.success) return [];
-  return parsed.data.questions;
-}
+// Synchronous parser + question shape moved to server/skills/parse.ts
+// so this `"use server"` file only exports async server actions
+// (Next.js enforces that constraint at build time).
+import { parseSkillAssessmentQuestions } from "@/server/skills/parse";
+export type { SkillAssessmentQuestion } from "@/server/skills/parse";
 
 const startSchema = z.object({
   slug: z.string().trim().min(1).max(80),

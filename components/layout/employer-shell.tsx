@@ -14,6 +14,14 @@ const NAV = [
   { href: "/employer", label: "Dashboard" },
   { href: "/employer/jobs", label: "Jobs" },
   { href: "/employer/candidates", label: "Candidates" },
+  // Wave B + C — recruiter-superpowers cluster. These three live
+  // next to each other on the bar so a recruiter exploring the
+  // "automation" surface area lands in the right neighbourhood
+  // (cadences = scheduled outreach, automations = if-this-then-that
+  // rules, calling = vernacular phone screen).
+  { href: "/employer/cadences", label: "Cadences" },
+  { href: "/employer/automations", label: "Automations" },
+  { href: "/employer/calling", label: "Calling" },
   { href: "/employer/drives", label: "Drives" },
   { href: "/employer/competitions", label: "Competitions" },
   { href: "/employer/events", label: "Events" },

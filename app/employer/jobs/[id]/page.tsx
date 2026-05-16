@@ -58,6 +58,13 @@ export default async function EmployerJobDetail({
             <Button asChild variant="outline" size="sm">
               <Link href={`/employer/jobs/${job.id}/edit`}>Edit</Link>
             </Button>
+            {/* Wave C #22 — AI Hiring Assistant link. Sits next to
+                "Open ATS" because the assistant is the agentic
+                counterpart to the manual ATS triage; recruiter is
+                most likely to use them in the same session. */}
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/employer/jobs/${job.id}/assistant`}>🤖 AI assistant</Link>
+            </Button>
             <Button asChild size="sm">
               <Link href={`/employer/jobs/${job.id}/ats`}>Open ATS ({job._count.applications})</Link>
             </Button>

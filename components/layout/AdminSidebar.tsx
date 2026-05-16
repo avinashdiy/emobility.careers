@@ -99,6 +99,10 @@ function buildGroups(counts: Counts): Group[] {
         // Salary Compass moderation — anonymous submissions land
         // PENDING; admin approves/rejects to publish to /salaries.
         { href: "/admin/salaries", label: "Salary submissions", icon: Tag },
+        // Wave C #26 — Best EV Employer yearly award computation.
+        // Admin clicks "Compute YYYY rankings" to refresh; results
+        // surface at the public /awards page.
+        { href: "/admin/awards", label: "Best EV Employer", icon: Trophy },
       ],
     },
     {

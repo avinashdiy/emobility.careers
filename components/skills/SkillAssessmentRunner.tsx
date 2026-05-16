@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { submitSkillAssessment } from "@/server/skills/actions";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/ui/submit-button";
-import type { SkillAssessmentQuestion } from "@/server/skills/actions";
+import type { SkillAssessmentQuestion } from "@/server/skills/parse";
 
 /**
  * #28 — MCQ runner. Renders one question at a time with prev/next +
