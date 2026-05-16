@@ -80,19 +80,44 @@ export function startNotificationsWorker() {
       }
 
       // Per-event channel preferences. Map notification type prefix → preference field.
+      //
+      // New (Wave B/C) notification type prefixes — outreach.*,
+      // hiring-assistant.*, skill.*, recruiter.*, automation.* — are
+      // mapped onto the closest existing preference. These are all
+      // recruiter→candidate or system→user messages, so they ride
+      // alongside the messagesEmail / applicationUpdatesEmail flags
+      // rather than introducing new preference columns the user
+      // wouldn't know what to set. If a user wants to silence them
+      // specifically, future preference columns can be added later;
+      // for now the alternative (always-on) would mean users with a
+      // prefs row set never receive email for any new event type.
       const prefs = user.notificationPrefs;
       const wantEmail =
         !prefs ||
         (type.startsWith("application.") && prefs.applicationUpdatesEmail) ||
         (type.startsWith("message.") && prefs.messagesEmail) ||
         (type.startsWith("interview.") && prefs.interviewsEmail) ||
-        (type.startsWith("job.") && prefs.jobAlertsEmail);
+        (type.startsWith("job.") && prefs.jobAlertsEmail) ||
+        // Recruiter outreach + automation messages map to messagesEmail.
+        (type.startsWith("outreach.") && prefs.messagesEmail) ||
+        (type.startsWith("recruiter.") && prefs.messagesEmail) ||
+        (type.startsWith("automation.") && prefs.messagesEmail) ||
+        // AI Hiring Assistant summaries are recruiter-facing operational
+        // updates — gate behind applicationUpdatesEmail.
+        (type.startsWith("hiring-assistant.") && prefs.applicationUpdatesEmail) ||
+        // Skill-badge celebration emails ride on messagesEmail.
+        (type.startsWith("skill.") && prefs.messagesEmail);
       const wantSMS =
         !prefs ||
         (type.startsWith("application.") && prefs.applicationUpdatesSMS) ||
         (type.startsWith("message.") && prefs.messagesSMS) ||
         (type.startsWith("interview.") && prefs.interviewsSMS) ||
-        (type.startsWith("job.") && prefs.jobAlertsSMS);
+        (type.startsWith("job.") && prefs.jobAlertsSMS) ||
+        (type.startsWith("outreach.") && prefs.messagesSMS) ||
+        (type.startsWith("recruiter.") && prefs.messagesSMS) ||
+        (type.startsWith("automation.") && prefs.messagesSMS) ||
+        (type.startsWith("hiring-assistant.") && prefs.applicationUpdatesSMS) ||
+        (type.startsWith("skill.") && prefs.messagesSMS);
 
       if (ch.includes("EMAIL") && wantEmail && user.email) {
         // Notification fan-out goes through the bulk SES lane —

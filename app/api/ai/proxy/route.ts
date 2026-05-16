@@ -153,7 +153,18 @@ export async function POST(req: Request) {
   const featureLabel = ALLOWED_TOOL_LABELS.has(toolHeader)
     ? `ai-tools.${toolHeader}`
     : "ai-tools.proxy";
-  const usedModel = model ?? aiModels.parser;
+
+  // Model allow-list. The proxy is publicly callable (no auth), so a
+  // request that asks for `gpt-4-turbo` or any other expensive model
+  // would silently burn ~10× the per-token cost of our intended
+  // gpt-4o-mini default. We accept only the three models the platform
+  // is actually budgeted for: parser, rerank, embedding — all
+  // resolved from env so an ops swap doesn't need a code change.
+  const allowedModels = new Set(
+    [aiModels.parser, aiModels.rerank, aiModels.embedding].filter(Boolean),
+  );
+  const usedModel =
+    model && allowedModels.has(model) ? model : aiModels.parser;
 
   try {
     const completion = await trackAICall(

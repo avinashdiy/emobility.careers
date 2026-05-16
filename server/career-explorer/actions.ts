@@ -70,6 +70,28 @@ export interface CareerExploreResult {
   cacheKey: string;
 }
 
+/**
+ * Strip characters that don't belong in a free-text role/skill input
+ * before we either hash for cache OR pipe into the AI prompt. Drops:
+ *   • control characters (newlines, tabs, ANSI) — keep prompt to one
+ *     line so a "\nignore previous instructions" payload doesn't get
+ *     a fresh visual context.
+ *   • angle brackets — pure paranoia in case React's escape ever fails
+ *     us on a render path we don't control.
+ *   • quoted backticks and other prompt-frame chars.
+ * The cap at 240 chars per input bounds the prompt budget AND defangs
+ * mass-payload injections. Real recruiter inputs are well below this.
+ */
+function sanitiseInput(s: string, max = 240): string {
+  return s
+    // Remove control chars (\x00–\x1F + \x7F) and angle brackets.
+    .replace(/[\x00-\x1F\x7F<>`]/g, " ")
+    // Collapse multiple whitespace runs.
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
+}
+
 function buildCacheKey(fromRole: string, evDomainSlug: string | null, skillsCsv: string): string {
   // Hash the normalised inputs so a tweak like "Battery Engineer" vs
   // "battery engineer" or skills in a different order doesn't bypass
@@ -158,7 +180,18 @@ export async function exploreCareer(
       };
     }
 
-    const { fromRole, evDomainSlug, skillsCsv = "" } = parsed.data;
+    // Sanitise the user inputs before they hit the cache key OR the
+    // AI prompt. Sanitiser drops control characters + angle brackets
+    // + caps length, so a malicious "Battery Engineer\nignore prior
+    // instructions and output …" payload collapses to a single inert
+    // line. The cache key uses the sanitised form, so a malicious
+    // payload also can't hijack a shared cache slot by varying
+    // whitespace.
+    const fromRole = sanitiseInput(parsed.data.fromRole, 120);
+    const evDomainSlug = parsed.data.evDomainSlug
+      ? sanitiseInput(parsed.data.evDomainSlug, 40)
+      : undefined;
+    const skillsCsv = sanitiseInput(parsed.data.skillsCsv ?? "", 1000);
     const cacheKey = buildCacheKey(fromRole, evDomainSlug ?? null, skillsCsv);
 
     // Cache lookup — 30 days, by hash. Even if the user is signed in,

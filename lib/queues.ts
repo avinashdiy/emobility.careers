@@ -66,7 +66,25 @@ export type WhatsAppDigestJob = { tick: true };
 /** Tick payload for the notification maintenance worker. Fires
     cleanup (delete past-expiresAt rows) AND the daily email digest
     in the same run since both are users-table sweeps. */
-export type NotificationMaintenanceJob = { tick: true; kind: "cleanup" | "digest" | "stale-jobs" | "purge-deleted" | "brigading" | "backup-verify" | "drill-reminder" | "pulse-aggregate" };
+export type NotificationMaintenanceJob = {
+  tick: true;
+  kind:
+    | "cleanup"
+    | "digest"
+    | "stale-jobs"
+    | "purge-deleted"
+    | "brigading"
+    | "backup-verify"
+    | "drill-reminder"
+    | "pulse-aggregate"
+    // Wave B #21 — process due OutreachEnrollment rows.
+    | "outreach-cadence"
+    // Wave C #22 — daily run for every enabled HiringAssistantConfig.
+    | "hiring-assistant-daily"
+    // Wave C #16 — flip stuck CallingSession rows (DIALING for >15min
+    // without a webhook update) to FAILED so the recruiter can retry.
+    | "calling-cleanup";
+};
 
 export const resumeParseQueue = new Queue<ResumeParseJob>(QueueNames.ResumeParse, baseOpts);
 export const embeddingsQueue = new Queue<EmbeddingsJob>(QueueNames.Embeddings, baseOpts);

@@ -310,6 +310,66 @@ export function startNotificationMaintenanceWorker() {
         const existing = await db.pulseSnapshot.findFirst({ select: { id: true } });
         return aggregatePulseSnapshots(existing ? 1 : 30);
       }
+      // Wave B #21 — sequenced outreach engine. Picks up every ACTIVE
+      // OutreachEnrollment whose next step is due, fires it (or marks
+      // RESPONDED if the candidate has replied since). Hourly tick is
+      // plenty: a candidate enrolled 4 days ago in a "Day 4" step will
+      // get the message within the hour, which is well within the
+      // recruiter's tolerance.
+      if (job.data.kind === "outreach-cadence") {
+        const { processDueEnrollments } = await import("@/server/outreach/engine");
+        const results = await processDueEnrollments();
+        logger.info({ touched: results.length }, "[notif-maintenance] outreach-cadence tick");
+        return { touched: results.length };
+      }
+      // Wave C #22 — daily run for every enabled HiringAssistantConfig.
+      // We loop one config at a time so a single bad job doesn't poison
+      // the whole tick. The engine itself bounds per-config cost via
+      // maxOutreachPerTick.
+      if (job.data.kind === "hiring-assistant-daily") {
+        const configs = await db.hiringAssistantConfig.findMany({
+          where: { enabled: true },
+          select: { id: true, jobId: true },
+        });
+        let ran = 0;
+        let failed = 0;
+        for (const cfg of configs) {
+          try {
+            const { runHiringAssistantForJob } = await import("@/server/hiring-assistant/run");
+            await runHiringAssistantForJob(cfg.id);
+            ran += 1;
+          } catch (err) {
+            failed += 1;
+            logger.warn(
+              { err, configId: cfg.id, jobId: cfg.jobId },
+              "[notif-maintenance] hiring-assistant config failed",
+            );
+          }
+        }
+        logger.info({ ran, failed, total: configs.length }, "[notif-maintenance] hiring-assistant tick");
+        return { ran, failed };
+      }
+      // Wave C #16 — flip CallingSessions stuck in DIALING / IN_PROGRESS
+      // for over 15 minutes without a webhook callback to FAILED so the
+      // recruiter can retry. The provider's webhook normally lands within
+      // seconds; >15min = silent drop. The bookkeeping protects the UX:
+      // the recruiter's session list shouldn't show "Dialing…" for hours.
+      if (job.data.kind === "calling-cleanup") {
+        const cutoff = new Date(Date.now() - 15 * 60 * 1000);
+        const { count } = await db.callingSession.updateMany({
+          where: {
+            status: { in: ["DIALING", "IN_PROGRESS"] },
+            startedAt: { lt: cutoff },
+          },
+          data: {
+            status: "FAILED",
+            errorMessage: "No provider callback within 15 minutes — auto-failed",
+            completedAt: new Date(),
+          },
+        });
+        logger.info({ failedCount: count }, "[notif-maintenance] calling-cleanup tick");
+        return { failedCount: count };
+      }
     },
     { connection: redis, concurrency: 1 },
   );
@@ -373,6 +433,28 @@ export function startNotificationMaintenanceWorker() {
       repeat: { every: 24 * 60 * 60 * 1000, immediately: true },
       jobId: "pulse-aggregate-tick",
     },
+  );
+  // Wave B #21 — outreach cadence engine. Hourly is the right
+  // cadence: shorter wastes worker cycles on a sparse table; longer
+  // delays a Day-4 step from firing on Day 4 to firing on Day 5.
+  void notificationMaintenanceQueue.add(
+    "outreach-cadence-tick",
+    { tick: true, kind: "outreach-cadence" },
+    { repeat: { every: 60 * 60 * 1000 }, jobId: "outreach-cadence-tick" },
+  );
+  // Wave C #22 — daily AI Hiring Assistant fan-out.
+  void notificationMaintenanceQueue.add(
+    "hiring-assistant-daily-tick",
+    { tick: true, kind: "hiring-assistant-daily" },
+    { repeat: { every: 24 * 60 * 60 * 1000 }, jobId: "hiring-assistant-daily-tick" },
+  );
+  // Wave C #16 — every 5 minutes is fine; the cleanup just flips
+  // stuck rows. Higher frequency wastes nothing because the query is
+  // index-friendly (status + startedAt).
+  void notificationMaintenanceQueue.add(
+    "calling-cleanup-tick",
+    { tick: true, kind: "calling-cleanup" },
+    { repeat: { every: 5 * 60 * 1000 }, jobId: "calling-cleanup-tick" },
   );
 
   return worker;

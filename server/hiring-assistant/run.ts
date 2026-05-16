@@ -100,6 +100,21 @@ export async function runHiringAssistantForJob(
     logger.warn({ configId }, "[hiring-assistant] run skipped — config disabled");
     throw new Error("Assistant disabled");
   }
+  // The runner sends messages on behalf of the recruiter who enabled
+  // the assistant. If that recruiter's account was deleted (enabledById
+  // SetNull-ed), we can't pick an identity to send from — skip the
+  // tick so a different recruiter can re-enable + claim ownership.
+  if (!config.enabledById) {
+    logger.warn(
+      { configId, jobId: config.jobId },
+      "[hiring-assistant] run skipped — original recruiter deleted, needs re-enable",
+    );
+    throw new Error("Assistant has no owner — re-enable from a recruiter account");
+  }
+  // Local binding narrowed to non-null for the remainder of the
+  // function. The substitute below references this; do NOT rename
+  // back to config.enabledById without also handling the null case.
+  const enabledById = config.enabledById;
 
   const run = await db.hiringAssistantRun.create({
     data: { configId, status: "RUNNING" },
@@ -235,21 +250,21 @@ Skills: ${skillSummary || "(none listed)"}.`;
           data: {
             applicationId: app.id,
             candidateUserId: app.candidate.userId,
-            employerUserId: config.enabledById,
+            employerUserId: enabledById,
             lastMessageAt: new Date(),
           },
         });
         await db.message.create({
           data: {
             threadId: thread.id,
-            senderId: config.enabledById,
+            senderId: enabledById,
             body: data.body,
           },
         });
         try {
           await dispatchNotification({
             userId: app.candidate.userId,
-            actorId: config.enabledById,
+            actorId: enabledById,
             type: "message.new",
             title: `Message from ${config.job.company.name}`,
             body: data.subject ?? data.body.slice(0, 120),
@@ -316,7 +331,7 @@ Skills: ${skillSummary || "(none listed)"}.`;
         if (candidateResponded) continue;
         // Don't chase twice — only if the most recent message is from
         // the recruiter side and it's older than `followUpAfterDays`.
-        const lastFromRecruiter = lastMessages[0]?.senderId === config.enabledById;
+        const lastFromRecruiter = lastMessages[0]?.senderId === enabledById;
         if (!lastFromRecruiter) continue;
 
         const candidateName = `${thread.application.candidate.firstName} ${
@@ -352,7 +367,7 @@ Skills: ${skillSummary || "(none listed)"}.`;
           await db.message.create({
             data: {
               threadId: thread.id,
-              senderId: config.enabledById,
+              senderId: enabledById,
               body: data.body,
             },
           });
@@ -363,7 +378,7 @@ Skills: ${skillSummary || "(none listed)"}.`;
           try {
             await dispatchNotification({
               userId: candidateUserId,
-              actorId: config.enabledById,
+              actorId: enabledById,
               type: "message.new",
               title: `Follow-up from ${config.job.company.name}`,
               body: data.subject ?? data.body.slice(0, 120),
@@ -418,7 +433,7 @@ Skills: ${skillSummary || "(none listed)"}.`;
     // Send the recruiter their daily "your assistant did X" notification.
     try {
       await dispatchNotification({
-        userId: config.enabledById,
+        userId: enabledById,
         type: "hiring-assistant.run_summary",
         title: `Hiring assistant: ${draftedCount} drafted, ${chasedCount} chased`,
         body: summary.slice(0, 220),

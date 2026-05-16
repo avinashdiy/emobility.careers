@@ -1227,6 +1227,9 @@ model Application {
   callingSessions CallingSession[]
   // Wave B #21 — outreach sequence enrollments tied to this application
   outreachEnrollments OutreachEnrollment[]
+  // Wave C #23 — audit trail of automation rule evaluations against
+  // this application. Each evaluation (fired or no-op) logs one row.
+  automationLogs PipelineAutomationLog[]
 
   @@unique([jobId, candidateId])
   @@index([jobId, stage])
@@ -1403,6 +1406,10 @@ model AssessmentAttempt {
   passed        Boolean?
   answers       Json?
   proctorMeta   Json?
+
+  // Wave B #28 back-relation — the badge this attempt earned (when it
+  // passed at or above the SkillAssessmentMeta.badgeThreshold).
+  badge         VerifiedSkillBadge? @relation("BadgeSourceAttempt")
 
   @@index([candidateId])
   @@index([assessmentId])
@@ -4746,7 +4753,12 @@ model VerifiedSkillBadge {
   meta                SkillAssessmentMeta @relation(fields: [metaId], references: [id], onDelete: Cascade)
   /// Source attempt — the AssessmentAttempt that earned the badge.
   /// Lets the recruiter click through to the score breakdown.
+  /// Cascade-on-delete: if the attempt is purged (GDPR erasure or
+  /// data hygiene), the badge it earned goes with it. The score is
+  /// already denormalised below, so the user-facing badge surface
+  /// doesn't depend on the attempt row to render.
   attemptId           String              @unique
+  attempt             AssessmentAttempt   @relation("BadgeSourceAttempt", fields: [attemptId], references: [id], onDelete: Cascade)
   /// Snapshot of the score % at award time. Keeping it denormalised
   /// means we don't have to JOIN AssessmentAttempt on every badge
   /// surface render.
@@ -4792,8 +4804,12 @@ model PipelineAutomation {
   /// at the company level OR "for THIS senior battery role only".
   jobId         String?
   job           JobPosting?        @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  createdById   String
-  createdBy     User               @relation("AutomationCreator", fields: [createdById], references: [id])
+  /// Recruiter who created the rule. Nullable + SetNull so deleting
+  /// the creator (e.g. recruiter leaves the company) doesn't take the
+  /// company-level automation down with them — the rule belongs to
+  /// the company, not the individual.
+  createdById   String?
+  createdBy     User?              @relation("AutomationCreator", fields: [createdById], references: [id], onDelete: SetNull)
   /// Human-readable name for the rules UI — "Auto-shortlist DIYguru
   /// + 80% match".
   label         String
@@ -4836,7 +4852,13 @@ model PipelineAutomationLog {
   id           String             @id @default(cuid())
   automationId String
   automation   PipelineAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  /// Application this log row evaluated. Cascade-on-delete because
+  /// log rows reference a single application and lose meaning if the
+  /// application disappears (GDPR erasure, candidate-side withdraw
+  /// then purge). Was a bare String before — caused dangling refs
+  /// when applications were hard-deleted.
   applicationId String
+  application  Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   /// Whether the rule actually fired (true) or just evaluated and
   /// no-op'd (false). Lets us answer "how many candidates did this
   /// rule actually touch" vs "how many did it consider".
@@ -4868,8 +4890,13 @@ model HiringAssistantConfig {
   id                  String              @id @default(cuid())
   jobId               String              @unique
   job                 JobPosting          @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  enabledById         String
-  enabledBy           User                @relation("HiringAssistantOwner", fields: [enabledById], references: [id])
+  /// Recruiter who enabled the assistant. Nullable + SetNull so
+  /// the config persists if that recruiter leaves the company. The
+  /// daily worker tick still runs it on behalf of the company —
+  /// the run draft messages use the company's display name rather
+  /// than the original owner's identity when this is null.
+  enabledById         String?
+  enabledBy           User?               @relation("HiringAssistantOwner", fields: [enabledById], references: [id], onDelete: SetNull)
   enabled             Boolean             @default(true)
   /// How many of the top-ranked candidates to draft outreach for on
   /// each tick. Default 5 — small enough to feel curated, large enough
@@ -4969,8 +4996,11 @@ model CallingSession {
   candidate     CandidateProfile    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   jobId         String?
   job           JobPosting?         @relation(fields: [jobId], references: [id], onDelete: SetNull)
-  triggeredById String
-  triggeredBy   User                @relation("CallingTriggerer", fields: [triggeredById], references: [id])
+  /// Recruiter who triggered the call. Nullable + SetNull so the
+  /// audit trail (transcript, fit score, summary) survives the
+  /// triggering recruiter's account deletion.
+  triggeredById String?
+  triggeredBy   User?               @relation("CallingTriggerer", fields: [triggeredById], references: [id], onDelete: SetNull)
   language      CallingLanguage     @default(HI_IN)
   /// Question script the assistant follows. Each item: `{ id, text }`.
   /// Recruiter customises per job. We auto-suggest a script from the
@@ -5375,8 +5405,11 @@ model OutreachCadence {
   /// without rewriting the company default.
   jobId       String?
   job         JobPosting? @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  createdById String
-  createdBy   User     @relation("OutreachCadenceCreator", fields: [createdById], references: [id])
+  /// Cadence creator — nullable + SetNull so a recruiter leaving the
+  /// company doesn't take their cadences with them (cadences belong
+  /// to the company; enrollments continue firing).
+  createdById String?
+  createdBy   User?    @relation("OutreachCadenceCreator", fields: [createdById], references: [id], onDelete: SetNull)
   /// Friendly name for the rules list ("3-touch senior cadence",
   /// "Engineering screen pass").
   label       String
@@ -5434,8 +5467,12 @@ model OutreachEnrollment {
   application  Application?            @relation(fields: [applicationId], references: [id], onDelete: SetNull)
   candidateId  String
   candidate    CandidateProfile        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  enrolledById String
-  enrolledBy   User                    @relation("OutreachEnrolledBy", fields: [enrolledById], references: [id])
+  /// Recruiter who enrolled the candidate. Nullable + SetNull so an
+  /// in-flight cadence keeps firing even if the enrolling recruiter
+  /// leaves. The engine sends from the company's identity, not the
+  /// individual's, so this is purely an audit reference.
+  enrolledById String?
+  enrolledBy   User?                   @relation("OutreachEnrolledBy", fields: [enrolledById], references: [id], onDelete: SetNull)
   enrolledAt   DateTime                @default(now())
   /// Step index the engine is currently waiting to fire. Starts at 0
   /// (= "ready for first touch"). Increments after each send. The

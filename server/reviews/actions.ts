@@ -76,9 +76,14 @@ export async function submitCompanyReview(
         return { ok: false, message: "Slow down — try again in a moment." };
       }
     }
+    // Pass userId=null for anonymous reviewers — pgRateLimit then
+    // falls back to per-IP bucketing automatically. Previously we
+    // passed a single shared string "anon:review" which made every
+    // anonymous reviewer worldwide share one bucket, so one fast
+    // submitter could lock out the rest.
     const pg = await pgRateLimit({
       action: "review.submit",
-      userId: userId ?? "anon:review",
+      userId: userId ?? null,
     });
     if (!pg.ok) return { ok: false, message: pg.message };
 

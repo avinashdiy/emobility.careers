@@ -221,7 +221,54 @@ export async function enrollCandidatesInCadence(input: {
       }
     }
 
+    // ─── Cold-spam gate ─────────────────────────────────────────
+    // Without this, any company admin could enrol arbitrary
+    // candidates from the whole DB and start blasting them
+    // WhatsApp/email through the cadence engine. We require each
+    // candidate to have AT LEAST ONE pre-existing relationship with
+    // this recruiter or the company:
+    //   • application at any of the company's jobs, OR
+    //   • SavedCandidate row owned by the enrolling recruiter
+    // Candidates outside these sets are silently skipped (not
+    // rejected with an error) so a partly-valid batch still
+    // processes.
+    const candidateIdSet = new Set(parsed.data.candidateIds);
+    const [appCandidateIds, savedCandidateIds] = await Promise.all([
+      db.application
+        .findMany({
+          where: {
+            candidateId: { in: parsed.data.candidateIds },
+            job: { companyId: employer.companyId },
+          },
+          select: { candidateId: true },
+          distinct: ["candidateId"],
+        })
+        .then((rows) => new Set(rows.map((r) => r.candidateId))),
+      db.savedCandidate
+        .findMany({
+          where: {
+            candidateId: { in: parsed.data.candidateIds },
+            employerUserId: session.user.id,
+          },
+          select: { candidateId: true },
+        })
+        .then((rows) => new Set(rows.map((r) => r.candidateId))),
+    ]);
+    const allowedCandidateIds = new Set<string>();
+    for (const id of candidateIdSet) {
+      if (appCandidateIds.has(id) || savedCandidateIds.has(id)) {
+        allowedCandidateIds.add(id);
+      }
+    }
+
     for (const candidateId of parsed.data.candidateIds) {
+      if (!allowedCandidateIds.has(candidateId)) {
+        // No application or save → cold lead. Skip with no special
+        // error; the count surfaces in the result so the recruiter
+        // sees they need to save or apply first.
+        skipped += 1;
+        continue;
+      }
       try {
         const existing = await db.outreachEnrollment.findUnique({
           where: { cadenceId_candidateId: { cadenceId: cadence.id, candidateId } },

@@ -77,8 +77,43 @@ export async function bulkWhatsAppInvite(input: {
       return { ok: false, sent: 0, skipped: 0, failed: 0, message: "Hit the daily bulk-outreach cap (200/day)." };
     }
 
+    // ─── Cold-spam gate ─────────────────────────────────────────
+    // Same posture as enrollCandidatesInCadence: the recruiter must
+    // already have a relationship with each candidate before we'll
+    // send. Acceptable signals are an application at the company OR
+    // a SavedCandidate row owned by this recruiter. Candidates
+    // outside the set are silently skipped (counted as `skipped`
+    // in the result) so a partial-permission batch still works.
+    const [appCandidateIds, savedCandidateIds] = await Promise.all([
+      db.application
+        .findMany({
+          where: {
+            candidateId: { in: parsed.data.candidateIds },
+            job: { companyId: employer.companyId },
+          },
+          select: { candidateId: true },
+          distinct: ["candidateId"],
+        })
+        .then((rows) => new Set(rows.map((r) => r.candidateId))),
+      db.savedCandidate
+        .findMany({
+          where: {
+            candidateId: { in: parsed.data.candidateIds },
+            employerUserId: session.user.id,
+          },
+          select: { candidateId: true },
+        })
+        .then((rows) => new Set(rows.map((r) => r.candidateId))),
+    ]);
+    const allowedCandidateIds = new Set<string>();
+    for (const id of parsed.data.candidateIds) {
+      if (appCandidateIds.has(id) || savedCandidateIds.has(id)) {
+        allowedCandidateIds.add(id);
+      }
+    }
+
     const candidates = await db.candidateProfile.findMany({
-      where: { id: { in: parsed.data.candidateIds } },
+      where: { id: { in: Array.from(allowedCandidateIds) } },
       select: {
         id: true,
         userId: true,
@@ -90,7 +125,7 @@ export async function bulkWhatsAppInvite(input: {
     });
 
     let sent = 0;
-    let skipped = 0;
+    let skipped = parsed.data.candidateIds.length - allowedCandidateIds.size;
     let failed = 0;
 
     for (const c of candidates) {

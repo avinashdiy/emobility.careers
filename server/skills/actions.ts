@@ -178,26 +178,56 @@ export async function submitSkillAssessment(formData: FormData) {
   });
 
   if (passed) {
-    // Upsert badge — re-takes that score higher update the row;
-    // re-takes that score lower keep the prior badge intact.
-    const existing = await db.verifiedSkillBadge.findUnique({
+    // Idempotent badge write. The simple findUnique-then-upsert pattern
+    // had a TOCTOU race: two parallel submissions A=90 and B=75 could
+    // both pass the `!existing || existing.score < score` JS check
+    // (because both see no row), then both upsert — B's update path has
+    // no guard, so it stomps A's higher score. We do two writes here:
+    //
+    //   1. create-if-absent via upsert (the create branch is fine; the
+    //      update branch is a no-op that only refreshes `earnedAt`
+    //      with the current attempt's `score`).
+    //   2. THEN issue an updateMany conditioned on `score < newScore`.
+    //      Only the higher-score row wins; lower scores no-op.
+    //
+    // This way the badge always reflects the candidate's BEST attempt
+    // even under concurrent submissions.
+    let badgeChanged = false;
+    const created = await db.verifiedSkillBadge.upsert({
       where: { candidateId_metaId: { candidateId: profile.id, metaId: meta.id } },
+      create: {
+        candidateId: profile.id,
+        metaId: meta.id,
+        attemptId: attempt.id,
+        score,
+      },
+      update: {}, // no-op; bumps happen via the conditional update below
     });
-    if (!existing || existing.score < score) {
-      await db.verifiedSkillBadge.upsert({
-        where: { candidateId_metaId: { candidateId: profile.id, metaId: meta.id } },
-        create: {
+    badgeChanged = created.score === score && created.attemptId === attempt.id;
+    if (!badgeChanged) {
+      // Existing row — try to bump if our score is higher. The
+      // `where.score: { lt: score }` clause makes the update atomic;
+      // a concurrent higher-score submission would already have
+      // raised the score and this update would no-op.
+      const bumped = await db.verifiedSkillBadge.updateMany({
+        where: {
+          // updateMany doesn't accept the compound-unique shorthand
+          // `candidateId_metaId`; flatten to the individual columns.
+          // The pair is still unique by @@unique([candidateId,metaId])
+          // so at most one row matches.
           candidateId: profile.id,
           metaId: meta.id,
-          attemptId: attempt.id,
-          score,
+          score: { lt: score },
         },
-        update: {
+        data: {
           attemptId: attempt.id,
           score,
           earnedAt: new Date(),
         },
       });
+      badgeChanged = bumped.count > 0;
+    }
+    if (badgeChanged) {
       try {
         await audit({
           actorId: session.user!.id,

@@ -244,11 +244,36 @@ export async function scoreCallingSession(formData: FormData): Promise<void> {
 
     const session = await db.callingSession.findUnique({
       where: { id: sessionId },
-      include: { job: { select: { id: true, title: true, description: true, companyId: true } } },
+      include: {
+        job: { select: { id: true, title: true, description: true, companyId: true } },
+        // candidate.userId lets us cross-check ownership when the session
+        // has no job attached (the session was triggered for a sourced
+        // candidate before an application existed).
+        candidate: { select: { userId: true } },
+      },
     });
     if (!session) redirect("/employer?error=" + encodeURIComponent("Session not found."));
 
-    await requireJobOwner(session.jobId);
+    // Ownership gate. requireJobOwner only checks the company tied to
+    // session.jobId — and jobId is nullable on this row. Without the
+    // extra guard below, any signed-in employer could overwrite a
+    // CallingSession that has no jobId (a cross-tenant write). We require:
+    //   • If a jobId is set, requireJobOwner already gates by that
+    //     company's employer team.
+    //   • Otherwise (jobId null) the caller MUST be the original
+    //     triggerer OR an admin — there's no company anchor to verify
+    //     against, so the only safe ownership signal is the original
+    //     dial action.
+    const auth0 = await requireJobOwner(session.jobId);
+    if (!session.jobId) {
+      const isOriginalTriggerer =
+        session.triggeredById !== null &&
+        session.triggeredById === auth0.session.user.id;
+      const isAdmin = auth0.session.user.role === "ADMIN";
+      if (!isOriginalTriggerer && !isAdmin) {
+        redirect("/403");
+      }
+    }
 
     // Score the transcript vs the job description.
     try {

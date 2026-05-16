@@ -122,6 +122,30 @@ export async function processDueEnrollments(now: Date = new Date()): Promise<Fir
       continue;
     }
 
+    // The engine sends messages on behalf of the recruiter who enrolled
+    // the candidate. If that recruiter was deleted after enrollment
+    // (enrolledById is SetNull-able from the schema), we cancel the
+    // remaining steps with a clear reason so the audit trail explains
+    // why this cadence stopped mid-stream.
+    if (!e.enrolledById) {
+      await db.outreachEnrollment.update({
+        where: { id: e.id },
+        data: {
+          status: "CANCELLED",
+          cancelReason: "Enrolling recruiter account was deleted",
+        },
+      });
+      results.push({
+        enrollmentId: e.id,
+        stepIndex: e.nextStepIndex,
+        outcome: "FAILED",
+        reason: "enrolledBy account deleted",
+      });
+      continue;
+    }
+    // Local binding narrowed to non-null for the rest of the iteration.
+    const enrolledById = e.enrolledById;
+
     const step = e.cadence.steps[e.nextStepIndex];
     if (!step) {
       // Past the last step — mark COMPLETED.
@@ -159,7 +183,7 @@ export async function processDueEnrollments(now: Date = new Date()): Promise<Fir
           ? { applicationId: e.application.id }
           : {
               candidateUserId: e.candidate.userId,
-              employerUserId: e.enrolledById,
+              employerUserId: enrolledById,
             },
       },
       select: { id: true },
@@ -201,7 +225,7 @@ export async function processDueEnrollments(now: Date = new Date()): Promise<Fir
           create: {
             applicationId: e.application.id,
             candidateUserId: e.candidate.userId,
-            employerUserId: e.enrolledById,
+            employerUserId: enrolledById,
             lastMessageAt: new Date(),
           },
           update: { lastMessageAt: new Date() },
@@ -210,7 +234,7 @@ export async function processDueEnrollments(now: Date = new Date()): Promise<Fir
       } else {
         let existing = await db.messageThread.findFirst({
           where: {
-            employerUserId: e.enrolledById,
+            employerUserId: enrolledById,
             candidateUserId: e.candidate.userId,
             applicationId: null,
           },
@@ -219,7 +243,7 @@ export async function processDueEnrollments(now: Date = new Date()): Promise<Fir
         if (!existing) {
           existing = await db.messageThread.create({
             data: {
-              employerUserId: e.enrolledById,
+              employerUserId: enrolledById,
               candidateUserId: e.candidate.userId,
               lastMessageAt: new Date(),
             },
@@ -232,7 +256,7 @@ export async function processDueEnrollments(now: Date = new Date()): Promise<Fir
       await db.message.create({
         data: {
           threadId,
-          senderId: e.enrolledById,
+          senderId: enrolledById,
           body,
         },
       });
@@ -244,7 +268,7 @@ export async function processDueEnrollments(now: Date = new Date()): Promise<Fir
       try {
         await dispatchNotification({
           userId: e.candidate.userId,
-          actorId: e.enrolledById,
+          actorId: enrolledById,
           type: "outreach.cadence_step",
           title: subject ?? `Message from ${ctx.companyName}`,
           body: body.slice(0, 200),

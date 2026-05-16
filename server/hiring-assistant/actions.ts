@@ -128,6 +128,12 @@ export async function runHiringAssistantNow(formData: FormData): Promise<void> {
     try {
       await runHiringAssistantForJob(config.id);
     } catch (err) {
+      // Re-throw Next.js router-control signals (NEXT_REDIRECT,
+      // NEXT_NOT_FOUND). If runHiringAssistantForJob ever gains a
+      // redirect() call inside its dispatch chain, this catch would
+      // otherwise eat the signal and the recruiter would see a generic
+      // "Run failed" message instead of the intended navigation.
+      if (isRouterControlError(err)) throw err;
       logger.error({ err, configId: config.id }, "[hiring-assistant.runNow] failed");
       redirect(
         `/employer/jobs/${jobId}/assistant?error=` +
