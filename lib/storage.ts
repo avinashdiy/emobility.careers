@@ -94,8 +94,35 @@ export async function presignDownload(
   bucket: BucketName,
   key: string,
   expiresIn = 60 * 5,
+  options?: {
+    /**
+     * Force the response's `Content-Disposition` to `inline` so the
+     * browser renders the file in the current tab / iframe instead of
+     * triggering a download. Set this when the URL feeds an
+     * `<iframe src>` PDF preview — without it, MinIO/S3 return
+     * whatever disposition was stored at upload time (often
+     * `attachment`), and Chrome refuses to render inline, leaving the
+     * iframe blank with the broken-document icon.
+     *
+     * Pair with `contentType: "application/pdf"` when you know the
+     * resource is a PDF — that overrides any stored
+     * `application/octet-stream` from older uploads so the browser
+     * actually invokes its PDF viewer.
+     */
+    inline?: boolean;
+    contentType?: string;
+  },
 ): Promise<string> {
-  const cmd = new GetObjectCommand({ Bucket: buckets[bucket], Key: key });
+  const cmd = new GetObjectCommand({
+    Bucket: buckets[bucket],
+    Key: key,
+    ...(options?.inline
+      ? { ResponseContentDisposition: "inline" }
+      : {}),
+    ...(options?.contentType
+      ? { ResponseContentType: options.contentType }
+      : {}),
+  });
   return getSignedUrl(s3Public, cmd, { expiresIn });
 }
 

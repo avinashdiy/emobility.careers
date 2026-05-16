@@ -67,8 +67,23 @@ export async function ensureApplicationSummary(applicationId: string): Promise<{
     select: { id: true, aiSummary: true, aiSummaryAt: true, job: { select: { companyId: true } } },
   });
   if (!app) return { summary: null, freshlyGenerated: false };
-  if (app.aiSummary) {
-    return { summary: app.aiSummary, freshlyGenerated: false };
+  // Cache-hit indicator is `aiSummaryAt`, not the truthiness of
+  // `aiSummary`. A pre-fix code path that wrote an empty string on
+  // a degenerate AI response would otherwise re-fire generation on
+  // every ATS page render — burning OpenAI tokens until a successful
+  // response landed. Treat any row where `aiSummaryAt` is set as
+  // "already attempted"; if the summary itself is empty/short the
+  // caller sees null and renders nothing, but we don't re-prompt.
+  if (app.aiSummaryAt) {
+    const cached = (app.aiSummary ?? "").trim();
+    // Only return the cached value when it's actually meaningful
+    // text (≥30 chars). Below that, return null but DON'T regenerate
+    // — the original generation failed in a way our prompt couldn't
+    // fix. Manual "Refresh" button still works to force a retry.
+    return {
+      summary: cached.length >= 30 ? cached : null,
+      freshlyGenerated: false,
+    };
   }
   return generateApplicationSummary(applicationId);
 }
@@ -172,14 +187,26 @@ Profile summary: ${app.candidate.summary?.slice(0, 800) ?? "(none)"}`;
     // JSON if it isn't already set, so the existing match-score
     // breakdown UI gains them for free.
     const summary = (data.summary ?? "").trim();
+    // Persist `aiSummaryAt` either way — that's the "we attempted"
+    // marker the cache-hit branch uses. But only persist a non-empty
+    // `aiSummary` when it cleared the 30-char meaningful threshold;
+    // a degenerate AI response (trimmed to empty / "Cannot
+    // determine") would otherwise pollute the cache and the recruiter
+    // sees a sad blank inset on every load. Below threshold → store
+    // empty + the timestamp, and the ensureApplicationSummary
+    // cache-hit branch returns null without re-prompting.
+    const cacheable = summary.length >= 30 ? summary : "";
     await db.application.update({
       where: { id: applicationId },
       data: {
-        aiSummary: summary,
+        aiSummary: cacheable,
         aiSummaryAt: new Date(),
       },
     });
-    return { summary, freshlyGenerated: true };
+    return {
+      summary: cacheable || null,
+      freshlyGenerated: true,
+    };
   } catch (err) {
     const cause = err instanceof StructuredAIError ? err.cause : "API_ERROR";
     logger.warn({ err, applicationId, cause }, "[waveb.applicant-summary] generate failed");

@@ -37,11 +37,17 @@ const buttonVariants = cva(
         link: "text-emce-dark underline-offset-4 hover:underline",
         destructive:
           "bg-emce-red text-white hover:bg-emce-red/90",
-        // Glow: lime gradient with soft halo. The halo sits below via
-        // shadow so the glow doesn't shift layout. Hover bumps the glow
-        // intensity; press squeezes it inward via emce-press.
+        // Glow (renamed in intent, kept the name to avoid touching
+        // every call site): the platform's primary call-to-action.
+        // Pre-redesign this was a 3-stop lime gradient with a
+        // double-layer rest-state halo + hover brightness boost —
+        // which read as "retail banner CTA" rather than "professional
+        // platform". Now it's a clean lime solid with a soft hover
+        // lift only. Same brand colour, same visual weight, none of
+        // the gradient noise. `emce-press` handles the press feedback;
+        // hover gets a subtle ring + 1px translate for tactility.
         glow:
-          "bg-gradient-to-br from-emce-light via-emce-mid to-emce-mid-muted text-emce-darkest shadow-[0_4px_16px_rgba(143,210,153,0.4),0_0_0_1px_rgba(143,210,153,0.5)] hover:shadow-[0_6px_24px_rgba(143,210,153,0.55),0_0_0_1px_rgba(143,210,153,0.7)] hover:brightness-105",
+          "bg-emce-light text-emce-darkest border border-emce-mid/40 hover:bg-emce-mid hover:-translate-y-px hover:shadow-emce",
       },
       size: {
         default: "h-10 px-5 py-2.5",

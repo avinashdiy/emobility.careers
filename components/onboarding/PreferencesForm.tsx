@@ -29,6 +29,10 @@ export function PreferencesForm({
     expectedCtcMin: number | null;
     expectedCtcMax: number | null;
     openToWork: boolean;
+    /// #5 Skill-trade pairing — optional list of skills the candidate
+    /// is actively trying to learn. Empty array on existing accounts
+    /// before they set anything.
+    learningSkills?: string[];
   };
 }) {
   const [state, formAction] = useActionState<FormState, FormData>(
@@ -94,6 +98,29 @@ export function PreferencesForm({
           defaultValue={v.preferredCities ?? initial.preferredCities.join(", ")}
           placeholder="e.g. Bengaluru, Pune, Hyderabad"
         />
+      </div>
+
+      {/* #5 Skill-trade pairing — what the candidate is actively
+          trying to LEARN (distinct from their validated skills on
+          CandidateSkill). Powers the /me/skill-swap matching engine
+          that pairs candidates with complementary teach/learn axes.
+          Stored as a string array (free-form, not joined to the
+          canonical Skill table) because what people want to learn
+          is often vaguer than what their resume claims. */}
+      <div className="sm:col-span-2">
+        <Label htmlFor="learningSkills">
+          Skills you&apos;re actively learning (comma-separated, optional)
+        </Label>
+        <Input
+          id="learningSkills"
+          name="learningSkills"
+          defaultValue={v.learningSkills ?? (initial.learningSkills ?? []).join(", ")}
+          placeholder="e.g. BMS architecture, OCPP, motor control"
+        />
+        <p className="mt-1 text-hint text-emce-text-muted">
+          We&apos;ll pair you with candidates who know what you&apos;re learning, and want to learn what you know — peer skill-swap, not formal mentorship. See your matches at{" "}
+          <Link href="/me/skill-swap" className="font-bold text-emce-dark hover:underline">/me/skill-swap</Link>.
+        </p>
       </div>
 
       <div>

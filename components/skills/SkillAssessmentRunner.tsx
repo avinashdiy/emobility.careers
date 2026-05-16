@@ -66,15 +66,24 @@ export function SkillAssessmentRunner({
 
   return (
     <div>
-      {/* Progress strip. The status row is wrapped in a polite live
-          region so screen-reader users hear "3 of 10 answered" updates
-          as they advance — without this, the runner is essentially
-          invisible to SR users between clicks. */}
-      <div className="mb-4 flex items-center justify-between" role="status" aria-live="polite">
+      {/* Progress strip. The "Question N of M" position is announced
+          by SR users via the progressbar's aria-valuenow change below,
+          not via this row — so we kept the wrapper but dropped the
+          live-region. Pre-fix, BOTH the position and the answered-
+          count were wrapped in `role="status" aria-live="polite"`,
+          which made SRs re-announce the entire row on every Next /
+          Prev click. Now only the answered-count is in a live region;
+          position changes flow through the progressbar's aria-valuenow
+          which SRs handle politely without re-reading the whole row. */}
+      <div className="mb-4 flex items-center justify-between">
         <p className="text-hint font-bold uppercase tracking-wider text-emce-text-muted">
           Question {idx + 1} of {questions.length}
         </p>
-        <p className="text-hint text-emce-text-sec tabular-nums">
+        <p
+          className="text-hint text-emce-text-sec tabular-nums"
+          role="status"
+          aria-live="polite"
+        >
           {answeredCount}/{questions.length} answered ({completion}%)
         </p>
       </div>
@@ -95,17 +104,23 @@ export function SkillAssessmentRunner({
       {/* Question card */}
       {q && (
         <div key={q.id} className="mt-6 animate-fade-up">
-          <p id={`q-text-${q.id}`} className="text-section text-emce-text">
-            {q.text}
-          </p>
-          {/* radiogroup + aria-labelledby ties the option list to the
-              question text. Without this, SR users hear each option in
-              isolation with no context about what they're answering. */}
-          <ul
-            className="mt-4 space-y-2"
-            role="radiogroup"
-            aria-labelledby={`q-text-${q.id}`}
-          >
+          {/* `<fieldset>`/`<legend>` is the standards-correct way to
+              group a set of radios under a question. Pre-fix we used
+              `role="radiogroup"` on a `<ul>` with `<li>` children, but
+              ARIA radiogroup requires direct-children with
+              `role="radio"`. The `<li>` wrappers in between confused
+              NVDA + JAWS — SR users heard each option in isolation
+              with no group binding. Fieldset+legend works natively
+              without ARIA gymnastics and the native
+              `<input type="radio" name>` already forms the SR group. */}
+          <fieldset className="border-0 p-0">
+            <legend
+              id={`q-text-${q.id}`}
+              className="text-section text-emce-text"
+            >
+              {q.text}
+            </legend>
+            <ul className="mt-4 space-y-2">
             {q.options.map((opt, i) => {
               const isPicked = selected === i;
               return (
@@ -129,7 +144,8 @@ export function SkillAssessmentRunner({
                 </li>
               );
             })}
-          </ul>
+            </ul>
+          </fieldset>
         </div>
       )}
 

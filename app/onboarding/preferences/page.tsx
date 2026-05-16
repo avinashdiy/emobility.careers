@@ -38,6 +38,7 @@ export default async function PreferencesStep() {
           expectedCtcMin: profile.expectedCtcMin ? Number(profile.expectedCtcMin) : null,
           expectedCtcMax: profile.expectedCtcMax ? Number(profile.expectedCtcMax) : null,
           openToWork: profile.openToWork,
+          learningSkills: profile.learningSkills,
         }}
       />
     </Card>

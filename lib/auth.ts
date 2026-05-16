@@ -313,12 +313,36 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth(asy
       const slugSeed = fullName || dbUser.email?.split("@")[0] || "member";
 
       // Propagate the OAuth-provided picture into CandidateProfile.
-      // For LinkedIn / Google sign-ins this is the user's avatar
-      // they've already approved for sharing — pre-filling means the
-      // profile card looks complete from the first session, no
-      // separate "upload an avatar" step required.
-      const profilePhotoUrl =
+      // We mirror the photo into our own MinIO bucket because some
+      // providers (LinkedIn's `media.licdn.com` specifically) refuse
+      // to serve images to outside referers — hotlinking their URL
+      // means the avatar 403s the moment a candidate views their own
+      // profile from anywhere outside linkedin.com. Mirroring is
+      // best-effort; on any failure we fall back to null and the
+      // profile shows the silhouette until the candidate uploads
+      // their own photo.
+      const oauthPhotoUrl =
         (dbUser.image ?? user.image)?.toString() || null;
+      let profilePhotoUrl: string | null = oauthPhotoUrl;
+      if (oauthPhotoUrl) {
+        try {
+          const { mirrorOAuthPhoto, shouldMirrorPhoto } = await import(
+            "@/lib/avatar-mirror"
+          );
+          if (shouldMirrorPhoto(oauthPhotoUrl)) {
+            const mirrored = await mirrorOAuthPhoto(oauthPhotoUrl);
+            // If the mirror succeeded, use the MinIO URL we own. If
+            // it failed (network blip, LinkedIn rate-limit), drop the
+            // upstream URL too — we'd rather show the silhouette than
+            // a broken-image placeholder with the candidate's name
+            // baked into the alt text (the bug this fixes).
+            profilePhotoUrl = mirrored;
+          }
+        } catch (err) {
+          logger.warn({ err, userId: user.id }, "[auth] avatar mirror failed");
+          profilePhotoUrl = null;
+        }
+      }
 
       try {
         const { withUniqueSlug } = await import("@/lib/slug");

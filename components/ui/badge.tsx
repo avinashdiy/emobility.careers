@@ -31,8 +31,14 @@ const badgeVariants = cva(
           "bg-gradient-to-r from-emce-orange-light to-emce-orange/40 text-emce-orange-deep border border-emce-orange/50",
         live:
           "bg-white text-emce-success-deep border border-emce-mid/40 gap-1.5",
+        // Glow — toned down to match the cleaned-up button glow.
+        // Same intent ("premium / top-tier signal") delivered with a
+        // clean solid + a soft border instead of a 3-stop gradient
+        // with shadow. The verified + diyguru variants above keep
+        // their subtler 2-stop gradients because those serve as
+        // status-pill decoration, not the loud "🔥 highlight" role.
         glow:
-          "bg-gradient-to-r from-emce-light via-emce-mid/60 to-emce-light text-emce-darkest border border-emce-mid/50 shadow-[0_2px_8px_rgba(143,210,153,0.3)]",
+          "bg-emce-light text-emce-darkest border border-emce-mid/50",
       },
       size: {
         // Standard pill — used on profile cards, list rows, anywhere

@@ -8,6 +8,10 @@ import { Button } from "@/components/ui/button";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { AIProgress } from "@/components/ui/ai-progress";
+import {
+  parseApplicationQuestions,
+  parseApplicationAnswers,
+} from "@/server/jobs/application-questions";
 import { Badge } from "@/components/ui/badge";
 // Wave B #17 — AI applicant summary
 import { ensureApplicationSummary, refreshApplicationSummary } from "@/server/ai-summary/actions";
@@ -69,7 +73,10 @@ export default async function ApplicationDetail({
   const application = await db.application.findUnique({
     where: { id },
     include: {
-      job: { select: { id: true, title: true, companyId: true } },
+      // applicationQuestions added for #2 — recruiter's prompts that
+      // the candidate answered at apply time, surfaced alongside the
+      // cover letter in the detail view.
+      job: { select: { id: true, title: true, companyId: true, applicationQuestions: true } },
       candidate: {
         include: {
           experiences: { orderBy: { startDate: "desc" }, take: 5 },
@@ -99,6 +106,12 @@ export default async function ApplicationDetail({
     },
   });
   if (!application) notFound();
+
+  // #2 Structured application narrative — parse questions + answers
+  // here so the JSX renders predictable arrays/maps instead of
+  // having to handle Json|null inline.
+  const applicationQuestions = parseApplicationQuestions(application.job.applicationQuestions);
+  const applicationAnswers = parseApplicationAnswers(application.questionAnswers);
   if (session.user.role !== "ADMIN" && application.job.companyId !== employer.companyId) redirect("/403");
 
   const c = application.candidate;
@@ -398,6 +411,50 @@ export default async function ApplicationDetail({
 
         <div className="mt-4 grid gap-4 lg:grid-cols-3">
           <div className="space-y-4 lg:col-span-2">
+            {/* #2 Structured application narrative — recruiter sees
+                answers grouped by question, with the original prompt
+                inline so the answer's context is unambiguous when
+                scanning across 200 applicants. Rendered ABOVE the
+                generic cover-letter card because these are the
+                higher-signal answers; the cover letter is the
+                catch-all anything-else. */}
+            {applicationQuestions.length > 0 && (
+              <Card className="p-6">
+                <h2 className="text-section text-emce-text">
+                  Application answers
+                </h2>
+                <ul className="mt-3 space-y-3">
+                  {applicationQuestions.map((q) => {
+                    const answer = applicationAnswers[q.id]?.trim();
+                    return (
+                      <li
+                        key={q.id}
+                        className="border-l-2 border-emce-mid/40 pl-3"
+                      >
+                        <p className="text-hint font-bold text-emce-text-sec">
+                          {q.prompt}
+                          {q.required && (
+                            <span className="ml-1 text-[10px] uppercase tracking-wide text-emce-orange-deep">
+                              · required
+                            </span>
+                          )}
+                        </p>
+                        {answer ? (
+                          <p className="mt-1 whitespace-pre-line text-body text-emce-text">
+                            {answer}
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-hint italic text-emce-text-muted">
+                            (no answer)
+                          </p>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </Card>
+            )}
+
             {application.coverLetter && (
               <Card className="p-6">
                 <h2 className="text-section text-emce-text">Cover letter</h2>

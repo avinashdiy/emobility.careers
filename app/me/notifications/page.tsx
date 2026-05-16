@@ -10,6 +10,8 @@ import { Avatar } from "@/components/ui/avatar";
 import { EmptyState } from "@/components/ui/empty-state";
 import { relativeTime } from "@/lib/utils";
 import { MarkAllReadButton } from "@/components/notifications/MarkAllReadButton";
+import { ClearAllNotificationsButton } from "@/components/notifications/ClearAllNotificationsButton";
+import { DismissNotificationButton } from "@/components/notifications/DismissNotificationButton";
 
 export const metadata = { title: "Notifications" };
 
@@ -152,9 +154,14 @@ export default async function NotificationsPage({
             )}
           </h1>
         </div>
-        {/* Renders only when there's something to clear — keeps the
-            header tidy for users who already cleared their queue. */}
-        {totalUnread > 0 && <MarkAllReadButton />}
+        {/* Action cluster — "Mark all read" only renders when there's
+            an unread to mark; "Clear all" shows whenever the inbox
+            has any row, since the user might want to wipe even
+            already-read history. */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {totalUnread > 0 && <MarkAllReadButton />}
+          {all.length > 0 && <ClearAllNotificationsButton />}
+        </div>
       </div>
       <nav className="mt-4 flex gap-1 overflow-x-auto rounded-md border border-emce-border p-1">
         {TABS.map((t) => (
@@ -191,9 +198,15 @@ export default async function NotificationsPage({
               : n.actor?.name ?? null;
             return (
               <li key={n.id}>
-                <Link href={n.link ?? "#"}>
-                  <Card className={`p-4 ${unread ? "ring-2 ring-emce-mid" : ""}`}>
-                    <div className="flex items-start gap-3">
+                {/* Row layout — the body is a Link to the notification's
+                    target, and the dismiss button sits as a SIBLING (not
+                    a child of the Link) so clicking × doesn't trigger
+                    navigation. The wrapper is a relative-positioned
+                    Card so we can absolute-position the × in the top
+                    corner without affecting content flow. */}
+                <Card className={`relative p-4 ${unread ? "ring-2 ring-emce-mid" : ""}`}>
+                  <Link href={n.link ?? "#"} className="block">
+                    <div className="flex items-start gap-3 pr-8">
                       {/* Actor avatar when available — shows who triggered
                           the notification. Falls back to a category icon
                           (system events, job alerts, etc). */}
@@ -217,8 +230,11 @@ export default async function NotificationsPage({
                         </p>
                       </div>
                     </div>
-                  </Card>
-                </Link>
+                  </Link>
+                  <div className="absolute right-2 top-2">
+                    <DismissNotificationButton id={n.id} />
+                  </div>
+                </Card>
               </li>
             );
           })}

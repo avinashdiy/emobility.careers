@@ -142,7 +142,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={cn(inter.variable, "font-sans bg-emce-light-bg text-emce-text antialiased pb-[calc(env(safe-area-inset-bottom)+3.5rem)] sm:pb-0")}>
+      <body className={cn(inter.variable, "font-sans bg-emce-light-bg text-emce-text antialiased")}>
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_JSON_LD) }}

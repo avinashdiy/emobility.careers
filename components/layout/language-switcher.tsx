@@ -81,8 +81,10 @@ export function LanguageSwitcher({
     // picker still show the full language names ("EN · English", etc.)
     // so users know what they're choosing.
     <label
-      className={`relative inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors ${
-        variant === "dark" ? "text-white/80 hover:bg-white/10 hover:text-white" : "text-emce-text-sec hover:bg-emce-light-soft hover:text-emce-dark"
+      className={`relative inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors focus-within:ring-2 focus-within:ring-emce-mid focus-within:ring-offset-2 ${
+        variant === "dark"
+          ? "text-white/80 hover:bg-white/10 hover:text-white focus-within:ring-offset-emce-darkest"
+          : "text-emce-text-sec hover:bg-emce-light-soft hover:text-emce-dark focus-within:ring-offset-white"
       } ${pending ? "opacity-60" : ""}`}
       aria-label="Language"
       title="Language"

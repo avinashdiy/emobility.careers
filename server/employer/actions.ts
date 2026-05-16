@@ -15,6 +15,32 @@ import { sanitizeJobHtml, plainTextLength } from "@/lib/cms/job-sanitize";
 import { snapshotFormData, type FormState } from "@/lib/form-state";
 import { audit } from "@/lib/audit";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import {
+  normalizeApplicationQuestions,
+  type ApplicationQuestion,
+} from "@/server/jobs/application-questions";
+
+/**
+ * Parse a JSON string from the recruiter's hidden form field into a
+ * normalised array of application questions. Returns [] on null /
+ * malformed input — never throws, so a bad payload can't block the
+ * job-save action.
+ */
+function parseAndNormalizeQuestions(raw: string | undefined): ApplicationQuestion[] {
+  if (!raw) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  return normalizeApplicationQuestions(
+    parsed.filter((p): p is { prompt: string; id?: string; required?: boolean } =>
+      typeof p === "object" && p !== null && typeof (p as { prompt?: unknown }).prompt === "string",
+    ),
+  );
+}
 import { optionalUrl } from "@/lib/forms/zod-url";
 import {
   CompanyType,
@@ -349,6 +375,11 @@ const jobSchema = z.object({
   publishNow: z.coerce.boolean().optional(),
   evDomainSlugs: z.string().optional(),
   skillNames: z.string().optional(),
+  /// #2 Structured application narrative — JSON-serialised array of
+  /// `{ id?, prompt, required? }` (up to 3). The client-side editor
+  /// composes this hidden input and the server normalises + persists.
+  /// Empty / unset = no questions on this job (the default).
+  applicationQuestionsJson: z.string().optional(),
 });
 
 /**
@@ -442,6 +473,12 @@ export async function createJob(
     : [];
   const disclosure = resolveSalaryDisclosure(data.audience, data.salaryHidden);
 
+  // #2 Structured application narrative — parse the JSON the editor
+  // composed in a hidden field. Bad JSON / over-cap entries silently
+  // drop; we never want a malformed questions payload to block the
+  // entire job-save flow (recruiter can fix it later).
+  const normalizedQuestions = parseAndNormalizeQuestions(data.applicationQuestionsJson);
+
   const job = await db.$transaction(
     async (tx) => {
       const created = await withUniqueSlug(`${data.title}-${employer.company.slug}`, (slug) =>
@@ -470,6 +507,10 @@ export async function createJob(
             audience: disclosure.audience,
             status: data.publishNow ? JobStatus.OPEN : JobStatus.DRAFT,
             publishedAt: data.publishNow ? new Date() : null,
+            applicationQuestions:
+              normalizedQuestions.length > 0
+                ? (normalizedQuestions as unknown as Prisma.InputJsonValue)
+                : Prisma.JsonNull,
           },
         }),
       );
@@ -622,6 +663,9 @@ export async function updateJob(
     : [];
   const disclosure = resolveSalaryDisclosure(data.audience, data.salaryHidden);
 
+  // #2 — same normalize step as createJob.
+  const normalizedQuestions = parseAndNormalizeQuestions(data.applicationQuestionsJson);
+
   // First-publish stamps `publishedAt`; re-publishing an already-open job
   // leaves the original publish date intact (so the URL keeps a stable
   // date for SEO + the "posted X days ago" badge stays sensible).
@@ -655,6 +699,10 @@ export async function updateJob(
           audience: disclosure.audience,
           status: nextStatus,
           publishedAt: nextPublishedAt,
+          applicationQuestions:
+            normalizedQuestions.length > 0
+              ? (normalizedQuestions as unknown as Prisma.InputJsonValue)
+              : Prisma.JsonNull,
         },
       });
 
@@ -921,6 +969,20 @@ export async function saveCandidate(formData: FormData) {
     create: { candidateId, employerUserId: session.user.id, note },
     update: { note },
   });
+  // #1 Mutual-interest auto-thread — if this candidate has saved
+  // any of this recruiter's company's OPEN jobs, mint a peer thread
+  // + notify both sides. Best-effort; failures logged inside helper.
+  try {
+    const { checkAndMintForRecruiterSave } = await import(
+      "@/server/messaging/mutual-interest"
+    );
+    await checkAndMintForRecruiterSave({
+      candidateId,
+      employerUserId: session.user.id,
+    });
+  } catch (err) {
+    logger.warn({ err }, "[saveCandidate] mutual-interest check failed");
+  }
   revalidatePath("/employer/saved");
   revalidatePath(`/${candidateId}`);
 }

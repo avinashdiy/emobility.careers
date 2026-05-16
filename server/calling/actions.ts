@@ -10,6 +10,7 @@ import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { isRouterControlError } from "@/lib/server-action-errors";
+import { rateLimitOrThrow } from "@/lib/rate-limit";
 import {
   getCallingProvider,
   CALLING_LANGUAGE_NAMES,
@@ -104,6 +105,20 @@ export async function queueScreenCall(formData: FormData): Promise<void> {
     if (!application) redirect("/employer?error=" + encodeURIComponent("Application not found."));
 
     const { session: authSession } = await requireJobOwner(application.job.id);
+
+    // Rate-limit AFTER ownership is confirmed but BEFORE any AI /
+    // PSTN call. Without this, a recruiter (or a stuck client retry)
+    // can mash the Call button to burn OpenAI tokens on script
+    // translation AND drive PSTN minutes via Exotel.
+    try {
+      await rateLimitOrThrow(`calling-queue:${authSession.user.id}`, "ai");
+    } catch (err) {
+      if (isRouterControlError(err)) throw err;
+      redirect(
+        `/employer/applications/${applicationId}?error=` +
+          encodeURIComponent("You're queueing calls very fast — try again in a minute."),
+      );
+    }
 
     if (!application.candidate.phone) {
       redirect(
@@ -273,6 +288,17 @@ export async function scoreCallingSession(formData: FormData): Promise<void> {
       if (!isOriginalTriggerer && !isAdmin) {
         redirect("/403");
       }
+    }
+
+    // Rate-limit AFTER ownership. A 50KB transcript through gpt-4o
+    // is the single most expensive call in this codebase; without
+    // a gate, a stuck retry or a hostile admin can replay-score the
+    // same session unboundedly to burn tokens.
+    try {
+      await rateLimitOrThrow(`calling-score:${auth0.session.user.id}`, "ai");
+    } catch (err) {
+      if (isRouterControlError(err)) throw err;
+      redirect("/employer?error=" + encodeURIComponent("You're scoring calls very fast — try again in a minute."));
     }
 
     // Score the transcript vs the job description.

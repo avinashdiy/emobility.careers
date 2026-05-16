@@ -10,6 +10,13 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { logger } from "@/lib/logger";
 import { COMPLETENESS_THRESHOLDS } from "@/lib/profile-completeness";
+// Prisma is needed for both types (InputJsonValue) and runtime values
+// (Prisma.JsonNull) so the value-import is mandatory here.
+import { Prisma } from "@prisma/client";
+import {
+  parseApplicationQuestions,
+  answersFromFormData,
+} from "@/server/jobs/application-questions";
 import { ApplicationSource, ApplicationStage } from "@prisma/client";
 
 export async function applyToJob(formData: FormData) {
@@ -101,6 +108,21 @@ export async function applyToJob(formData: FormData) {
     redirect(`/jobs/${jobId}?error=` + encodeURIComponent("This job is no longer accepting applications"));
   }
 
+  // #2 Structured application narrative — collect candidate answers
+  // to the recruiter's job-specific prompts. Required questions
+  // missing → bounce back to the job page with a clear error so the
+  // candidate can answer and retry. Optional empties drop silently.
+  const questions = parseApplicationQuestions(job.applicationQuestions);
+  const { answers, missingRequired } = answersFromFormData(formData, questions);
+  if (missingRequired.length > 0) {
+    redirect(
+      `/jobs/${jobId}?error=` +
+        encodeURIComponent(
+          `Please answer the required question${missingRequired.length === 1 ? "" : "s"} before applying.`,
+        ),
+    );
+  }
+
   // Audience gate — DIYGURU_ONLY jobs are blocked at apply time for
   // candidates without isDIYguruVerified. The job detail page also
   // hides DIYGURU_ONLY listings from non-students, so this is
@@ -166,6 +188,13 @@ export async function applyToJob(formData: FormData) {
         recruitmentDriveId: resolvedDriveId,
         coverLetter: coverLetter || null,
         resumeSnapshotUrl: profile.resumeUrl,
+        // #2 — persist structured answers when the candidate gave at
+        // least one. Empty object becomes null so ATS rendering
+        // doesn't render a "(no answers)" placeholder unnecessarily.
+        questionAnswers:
+          Object.keys(answers).length > 0
+            ? (answers as unknown as Prisma.InputJsonValue)
+            : Prisma.JsonNull,
       },
     });
     await tx.jobPosting.update({
@@ -275,6 +304,21 @@ export async function saveJob(formData: FormData) {
     create: { candidateId: profile.id, jobId },
     update: {},
   });
+  // #1 Mutual-interest auto-thread — fire-and-forget. If any
+  // recruiter at this company has already saved this candidate,
+  // mint a peer thread + notify both sides. Failures are logged
+  // inside the helper and never bubble up to the save action.
+  try {
+    const { checkAndMintForCandidateSave } = await import(
+      "@/server/messaging/mutual-interest"
+    );
+    await checkAndMintForCandidateSave({
+      candidateProfileId: profile.id,
+      jobId,
+    });
+  } catch (err) {
+    logger.warn({ err }, "[saveJob] mutual-interest check failed");
+  }
   // Revalidate the canonical slug URL — `/jobs/{id}` no longer renders
   // its own content (it 308-redirects), so its cache key is irrelevant.
   revalidatePath(`/job/${job.slug}`);

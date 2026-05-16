@@ -86,6 +86,7 @@ on the server AFTER step 5 (and only when introduced):
 | -------------------------------------------------------- | ---------------------------------------------------- | ---------------------------------------- |
 | `scripts/setup-fts.sql`                                  | Full-text search tsvector + GENERATED columns        | Once at first deploy; idempotent re-runs OK |
 | `scripts/migrations/2026-05-message-thread-peer-uniq.sql` | Partial unique index on MessageThread peer threads   | Once, after the `bulkWhatsAppInvite` race is in prod |
+| `scripts/migrations/2026-05-networking-perf.sql`          | Education functional index (LOWER) + CandidateProfile GIN index on learningSkills | Once, after networking features ship (#1, #3, #5)    |
 
 Run them with:
 

@@ -338,6 +338,20 @@ export default async function PublicCandidateProfile({
       viewerUserId: session?.user?.id ?? null,
       source: "profile-direct",
     });
+    // #6 Privacy-preserving recruiter peek — if the viewer is a
+    // logged-in recruiter, fire an anonymized in-app notification
+    // to the candidate ("Someone at a mid-size EV battery company
+    // in Pune viewed your profile"). 7-day dedup per recruiter
+    // happens inside the helper. Fire-and-forget; failures are
+    // logged inside.
+    if (session?.user?.id) {
+      void import("@/server/profile/recruiter-peek").then(({ maybeNotifyRecruiterPeek }) =>
+        maybeNotifyRecruiterPeek({
+          viewedUserId: profile.userId,
+          viewerUserId: session.user!.id,
+        }),
+      );
+    }
   }
 
   // k-anonymity gate on the precise experience-years display. Hides the

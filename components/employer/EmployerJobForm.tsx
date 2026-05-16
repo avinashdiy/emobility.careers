@@ -8,6 +8,8 @@ import { NativeSelect } from "@/components/ui/select";
 import { FieldError } from "@/components/ui/field-error";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { JDAssistant } from "@/components/jobs/JDAssistant";
+import { ApplicationQuestionsEditor } from "@/components/employer/ApplicationQuestionsEditor";
+import type { ApplicationQuestion } from "@/server/jobs/application-questions";
 import {
   createJob,
   updateJob,
@@ -46,6 +48,9 @@ export interface EmployerJobInitial {
   evDomainSlugs?: string[] | null;
   skillNames?: string[] | null;
   status?: string | null;
+  /// #2 Structured application narrative — initial questions from
+  /// the saved job (edit mode). null/empty in create mode.
+  applicationQuestions?: ApplicationQuestion[] | null;
 }
 
 interface Props {
@@ -356,6 +361,15 @@ export function EmployerJobForm({ evDomains, jobId, initial }: Props) {
             name="skillNames"
             defaultValue={v.skillNames ?? ""}
             placeholder="e.g. BMS, Cell Chemistry, Battery Testing"
+          />
+        </div>
+
+        {/* #2 Structured application narrative — JSON-serialised
+            into a hidden `applicationQuestionsJson` field that the
+            createJob/updateJob server actions parse + normalise. */}
+        <div className="sm:col-span-2 border-t border-emce-border pt-4">
+          <ApplicationQuestionsEditor
+            defaultValue={initial?.applicationQuestions ?? []}
           />
         </div>
 

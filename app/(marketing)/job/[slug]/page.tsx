@@ -12,6 +12,9 @@ import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { applyToJob, saveJob } from "@/server/jobs/actions";
+import { parseApplicationQuestions } from "@/server/jobs/application-questions";
+import { findWarmIntros } from "@/server/networking/warm-intros";
+import { requestWarmIntro } from "@/server/networking/actions";
 import { getJobResponseStats } from "@/lib/sla";
 import { ResponseTimePill } from "@/components/recruiter/ResponseTimePill";
 import { ReportJobButton } from "@/components/jobs/ReportJobButton";
@@ -109,6 +112,11 @@ export default async function PublicJobDetail({
     logger.warn({ slug }, "[job-detail] 404 — slug not found in jobPosting");
     notFound();
   }
+  // #2 — Recruiter-defined application questions surface in the
+  // apply form. Parsed once here so we know shape (and emptiness)
+  // up-front and can also reuse for the open-graph / job-card
+  // signal "has questions" elsewhere later.
+  const applicationQuestions = parseApplicationQuestions(job.applicationQuestions);
   // 404 if the parent company has been admin-banned (REJECTED).
   // Mirrors the gate on /company/[slug] so deep-links from old shares
   // / search-engine cache stop resolving to the company's content.
@@ -233,6 +241,9 @@ export default async function PublicJobDetail({
   // sidebar card and any inline references can share the same payload
   // without re-querying.
   let candidateMatch: Awaited<ReturnType<typeof getOrComputeCandidateMatch>> = null;
+  // #3 Warm-intro graph — alumni at this company who share an alma
+  // mater with the viewing candidate.
+  let warmIntros: Awaited<ReturnType<typeof findWarmIntros>> = [];
   if (session?.user && session.user.role === "CANDIDATE") {
     const profile = await db.candidateProfile.findUnique({
       where: { userId: session.user.id },
@@ -251,6 +262,15 @@ export default async function PublicJobDetail({
         getOrComputeCandidateMatch(profile.id, job.id),
         new Promise<null>((resolve) => setTimeout(() => resolve(null), 4000)),
       ]);
+      // #3 Warm-intro graph — pull alumni at the target company who
+      // share an alma mater with this candidate. Capped at 4 cards
+      // to keep the sidebar tight; the helper is fast (single
+      // findMany with `take: 60`) so we don't race a timeout.
+      warmIntros = await findWarmIntros({
+        forCandidateId: profile.id,
+        companyId: job.companyId,
+        limit: 4,
+      });
     }
   }
 
@@ -483,10 +503,45 @@ export default async function PublicJobDetail({
                   {fairId && (
                     <input type="hidden" name="recruitmentDriveId" value={fairId} />
                   )}
+                  {/* #2 Structured application narrative — render
+                      the recruiter's job-specific prompts INLINE in
+                      the apply form. Empty array = no prompts (most
+                      jobs at first); we still show the cover-letter
+                      textarea below as the universal fallback. */}
+                  {applicationQuestions.length > 0 && (
+                    <div className="space-y-3 rounded-md border border-emce-mid/30 bg-emce-light-soft/40 p-3">
+                      <p className="text-hint font-bold uppercase tracking-wider text-emce-mid-muted">
+                        ✦ A few questions from the recruiter
+                      </p>
+                      {applicationQuestions.map((q) => (
+                        <div key={q.id}>
+                          <label
+                            htmlFor={`apply-${q.id}`}
+                            className="block text-sm font-bold text-emce-text"
+                          >
+                            {q.prompt}
+                            {q.required && <span className="ml-1 text-emce-red-deep">*</span>}
+                          </label>
+                          <Textarea
+                            id={`apply-${q.id}`}
+                            name={`answer-${q.id}`}
+                            rows={3}
+                            maxLength={1000}
+                            required={q.required}
+                            placeholder="2–3 lines is plenty — recruiters scan these side-by-side"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <Textarea
                     name="coverLetter"
                     rows={4}
-                    placeholder="Optional cover letter / why you're a great fit"
+                    placeholder={
+                      applicationQuestions.length > 0
+                        ? "Anything else you'd like the recruiter to know (optional)"
+                        : "Optional cover letter / why you're a great fit"
+                    }
                     maxLength={4000}
                   />
                   <SubmitButton className="w-full" size="lg" pendingLabel="Submitting…">
@@ -533,6 +588,66 @@ export default async function PublicJobDetail({
                 ☆ Save for later
               </Button>
             </form>
+          )}
+
+          {/* #3 Warm-intro graph — alumni at this company who share
+              an alma mater with the viewing candidate. Renders only
+              when there's at least one match; absent for everyone
+              else. Each card carries a one-click "Request intro"
+              form pre-filled with a templated polite message. */}
+          {warmIntros.length > 0 && (
+            <Card className="p-5">
+              <h3 className="text-section text-emce-text">
+                ✦ Warm intros at {job.company.name}
+              </h3>
+              <p className="mt-1 text-hint text-emce-text-sec">
+                Alumni from your college work here. A 5-min chat with
+                them is the warmest way to learn about the role.
+              </p>
+              <ul className="mt-3 space-y-3">
+                {warmIntros.map((intro) => (
+                  <li
+                    key={intro.candidateProfileId}
+                    className="rounded-md border border-emce-border p-3 space-y-2"
+                  >
+                    <Link
+                      href={`/${intro.slug}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="block font-bold text-emce-text hover:underline"
+                    >
+                      {intro.firstName} {intro.lastName ?? ""}
+                    </Link>
+                    {intro.roleAtCompany && (
+                      <p className="text-hint text-emce-text-sec">
+                        {intro.roleAtCompany}
+                      </p>
+                    )}
+                    <p className="text-[10px] uppercase tracking-wide text-emce-mid-muted">
+                      ↪ via {intro.bridgeInstitution}
+                    </p>
+                    <form action={requestWarmIntro} className="space-y-2">
+                      <input type="hidden" name="targetSlug" value={intro.slug} />
+                      <input type="hidden" name="jobId" value={job.id} />
+                      {/* Personalised note — optional but encouraged.
+                          Without this the recipient gets identical
+                          templated messages from every requester,
+                          which reads as bot-spam. Server falls back
+                          to a polite template if left blank. */}
+                      <Textarea
+                        name="note"
+                        rows={2}
+                        maxLength={400}
+                        placeholder={`Add a line about why you'd like to chat (optional)`}
+                      />
+                      <SubmitButton variant="outline" size="sm" className="w-full" pendingLabel="Sending…">
+                        Request 5-min intro
+                      </SubmitButton>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+            </Card>
           )}
 
           {/* Share — full row of platform icons (LinkedIn / X /

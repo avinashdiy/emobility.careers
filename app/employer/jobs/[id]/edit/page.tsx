@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import { EmployerJobForm } from "@/components/employer/EmployerJobForm";
+import { parseApplicationQuestions } from "@/server/jobs/application-questions";
 
 export const metadata = { title: "Edit job" };
 
@@ -90,6 +91,8 @@ export default async function EditJobPage({
               evDomainSlugs: job.evDomains.map((d) => d.evDomain.slug),
               skillNames: job.skills.map((s) => s.skill.name),
               status: job.status,
+              // #2 — saved questions for the editor to seed
+              applicationQuestions: parseApplicationQuestions(job.applicationQuestions),
             }}
           />
         </Card>

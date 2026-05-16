@@ -43,13 +43,13 @@ enum AccountStatus {
 /// AccountStatus for the auth gate; the user-facing /me/account page
 /// reads AccountState for the warning copy.
 enum AccountState {
-  ACTIVE     /// Default — full platform access.
-  WARNED     /// 1-2 strikes. Banner shown on /me explaining the next
-             /// strike triggers a 7-day suspension.
-  SUSPENDED  /// 3-4 strikes. 7-day cool-off; can read but not post,
-             /// comment, answer, apply, or message. Auto-restored
-             /// after 7 days back to WARNED.
-  BANNED     /// 5+ strikes. Permanent. Login blocked entirely.
+  ACTIVE /// Default — full platform access.
+  WARNED /// 1-2 strikes. Banner shown on /me explaining the next
+  /// strike triggers a 7-day suspension.
+  SUSPENDED /// 3-4 strikes. 7-day cool-off; can read but not post,
+  /// comment, answer, apply, or message. Auto-restored
+  /// after 7 days back to WARNED.
+  BANNED /// 5+ strikes. Permanent. Login blocked entirely.
 }
 
 /// Reasons an admin can issue a strike. Drives the "what happened"
@@ -58,14 +58,14 @@ enum AccountState {
 /// row carries an optional free-text `note` that admins use for
 /// edge cases.
 enum StrikeReason {
-  COMMENT_HIDDEN          /// Comment hidden by a moderator
-  POST_REMOVED            /// Post hidden / removed by a moderator
-  REPORT_UPHELD           /// User reported; report was actioned
-  HARASSMENT              /// Repeated inappropriate behaviour
-  IMPERSONATION           /// Pretending to be another person / brand
-  SPAM                    /// Spammy posting / messaging
-  TOS_VIOLATION           /// Generic catch-all
-  OTHER                   /// Free-text reason (see `note`)
+  COMMENT_HIDDEN /// Comment hidden by a moderator
+  POST_REMOVED /// Post hidden / removed by a moderator
+  REPORT_UPHELD /// User reported; report was actioned
+  HARASSMENT /// Repeated inappropriate behaviour
+  IMPERSONATION /// Pretending to be another person / brand
+  SPAM /// Spammy posting / messaging
+  TOS_VIOLATION /// Generic catch-all
+  OTHER /// Free-text reason (see `note`)
 }
 
 /// Grievance ticket lifecycle. Maps to Indian IT Rules 2021's
@@ -74,44 +74,44 @@ enum StrikeReason {
 /// elapses (worker tick — closes the SLA window even if no human
 /// looked).
 enum GrievanceStatus {
-  OPEN          /// New, no admin has touched it yet
-  ACKNOWLEDGED  /// Admin opened / commented (24h SLA met)
-  IN_PROGRESS   /// Admin actively working on it
-  RESOLVED      /// Admin closed with resolution notes
-  REJECTED      /// Out of scope / spam / duplicate
+  OPEN /// New, no admin has touched it yet
+  ACKNOWLEDGED /// Admin opened / commented (24h SLA met)
+  IN_PROGRESS /// Admin actively working on it
+  RESOLVED /// Admin closed with resolution notes
+  REJECTED /// Out of scope / spam / duplicate
 }
 
 model User {
-  id              String        @id @default(cuid())
-  email           String        @unique
-  emailVerifiedAt DateTime?
-  passwordHash    String?
-  name            String?
-  image           String?
-  role            Role          @default(CANDIDATE)
-  status          AccountStatus @default(ACTIVE)
+  id               String        @id @default(cuid())
+  email            String        @unique
+  emailVerifiedAt  DateTime?
+  passwordHash     String?
+  name             String?
+  image            String?
+  role             Role          @default(CANDIDATE)
+  status           AccountStatus @default(ACTIVE)
   /// Shadow-ban: posts and comments created while this is set are
   /// auto-hidden from public surfaces (visibility=PRIVATE on creation,
   /// hiddenAt stamped on comments). The user themselves still sees
   /// their content so they don't realise — that's the whole point of
   /// shadow-banning, vs an outright SUSPENDED status.
-  shadowBannedAt  DateTime?
+  shadowBannedAt   DateTime?
   shadowBannedById String?
-  shadowBanReason String?       @db.Text
+  shadowBanReason  String?       @db.Text
   /// Cumulative moderation strikes — see model Strike + enum
   /// AccountState. Helper `lib/strikes.ts` is the only writer.
-  strikes         Int           @default(0)
-  accountState    AccountState  @default(ACTIVE)
+  strikes          Int           @default(0)
+  accountState     AccountState  @default(ACTIVE)
   /// Auto-set to (now + 7d) when accountState transitions to
   /// SUSPENDED at 3 strikes. The notification-maintenance worker
   /// tick reads this to auto-restore at expiry.
-  suspendedUntil  DateTime?
-  locale          String        @default("en")
-  phone           String?
-  phoneVerifiedAt DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  lastLoginAt     DateTime?
+  suspendedUntil   DateTime?
+  locale           String        @default("en")
+  phone            String?
+  phoneVerifiedAt  DateTime?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+  lastLoginAt      DateTime?
 
   // Anti-spam signals captured at signup. signupIp + signupUserAgent give
   // moderators something to triage by when a wave of fake accounts shows
@@ -119,7 +119,7 @@ model User {
   // failedLoginCount + lockedUntil drive a temporary lockout after N bad
   // password attempts so credential-stuffing slows itself down.
   signupIp         String?
-  signupUserAgent  String?  @db.Text
+  signupUserAgent  String?   @db.Text
   failedLoginCount Int       @default(0)
   lockedUntil      DateTime?
 
@@ -134,50 +134,50 @@ model User {
   // without seeing the rest of /admin (moderation, settings, etc.).
   isPlacementOfficer Boolean @default(false)
 
-  accounts            Account[]
-  sessions            Session[]
-  candidateProfile    CandidateProfile?
-  employerProfile     EmployerProfile?
-  ownedCompanies      Company[]               @relation("CompanyOwner")
-  postedJobs          JobPosting[]            @relation("JobPoster")
-  notifications       Notification[]          @relation("NotificationRecipient")
-  notificationsActedOn Notification[]         @relation("NotificationActor")
+  accounts                Account[]
+  sessions                Session[]
+  candidateProfile        CandidateProfile?
+  employerProfile         EmployerProfile?
+  ownedCompanies          Company[]               @relation("CompanyOwner")
+  postedJobs              JobPosting[]            @relation("JobPoster")
+  notifications           Notification[]          @relation("NotificationRecipient")
+  notificationsActedOn    Notification[]          @relation("NotificationActor")
   // Inverse of CandidateProfile.idVerificationReviewedBy — admin actions
   // recorded on the candidate's verification request. Audit-trailable
   // without a separate join table because the reviewer is always a User.
-  idVerificationReviews CandidateProfile[]    @relation("IDVerificationReviewer")
+  idVerificationReviews   CandidateProfile[]      @relation("IDVerificationReviewer")
   // Inverse of PostComment.hiddenById — comments this admin has hidden.
-  hiddenComments        PostComment[]         @relation("CommentHider")
+  hiddenComments          PostComment[]           @relation("CommentHider")
   // Subscriptions / billing scaffolding (v1: schema only, no UI flow).
-  subscriptions         Subscription[]        @relation("SubscriptionUser")
+  subscriptions           Subscription[]          @relation("SubscriptionUser")
   // Hashtag policies + announcements + experiments authored by this admin.
-  hashtagPolicies       HashtagPolicy[]       @relation("HashtagPolicyAuthor")
-  announcements         Announcement[]        @relation("AnnouncementAuthor")
-  experiments           Experiment[]          @relation("ExperimentAuthor")
-  notificationPrefs   NotificationPreference?
-  sentMessages        Message[]               @relation("MessageSender")
-  applicationNotes    ApplicationNote[]
-  stageHistoryActions StageHistory[]          @relation("StageActor")
-  auditEntries        AuditLog[]
-  diyguruImports      DIYguruImportBatch[]
-  verificationReviews VerificationRequest[]   @relation("VerificationReviewer")
-  teamInvitesSent     TeamInvite[]            @relation("TeamInviteInviter")
-  recommendationsGiven    Recommendation[]    @relation("RecommendationGiver")
-  recommendationsReceived Recommendation[]    @relation("RecommendationReceiver")
-  skillEndorsementsGiven  SkillEndorsement[]  @relation("SkillEndorser")
+  hashtagPolicies         HashtagPolicy[]         @relation("HashtagPolicyAuthor")
+  announcements           Announcement[]          @relation("AnnouncementAuthor")
+  experiments             Experiment[]            @relation("ExperimentAuthor")
+  notificationPrefs       NotificationPreference?
+  sentMessages            Message[]               @relation("MessageSender")
+  applicationNotes        ApplicationNote[]
+  stageHistoryActions     StageHistory[]          @relation("StageActor")
+  auditEntries            AuditLog[]
+  diyguruImports          DIYguruImportBatch[]
+  verificationReviews     VerificationRequest[]   @relation("VerificationReviewer")
+  teamInvitesSent         TeamInvite[]            @relation("TeamInviteInviter")
+  recommendationsGiven    Recommendation[]        @relation("RecommendationGiver")
+  recommendationsReceived Recommendation[]        @relation("RecommendationReceiver")
+  skillEndorsementsGiven  SkillEndorsement[]      @relation("SkillEndorser")
 
   // Q&A — answers the user has authored, and the helpful-votes they've cast
-  answersAuthored      Answer[]         @relation("AnswerAuthor")
-  answerHelpfulVotes   AnswerHelpful[]  @relation("AnswerVoter")
+  answersAuthored    Answer[]        @relation("AnswerAuthor")
+  answerHelpfulVotes AnswerHelpful[] @relation("AnswerVoter")
 
   // Events — events the user has created (as a company admin) and
   // registrations they hold.
-  eventsCreated     Event[]              @relation("EventCreator")
+  eventsCreated      Event[]             @relation("EventCreator")
   eventRegistrations EventRegistration[] @relation("EventAttendee")
 
   // Social graph
-  connectionRequests  Connection[]   @relation("ConnectionRequester")
-  connectionsReceived Connection[]   @relation("ConnectionRecipient")
+  connectionRequests           Connection[]          @relation("ConnectionRequester")
+  connectionsReceived          Connection[]          @relation("ConnectionRecipient")
   // Contact-share request flow — recruiter side (sent) + candidate
   // side (received). See `model ContactShareRequest` for the
   // lifecycle. Cascade-on-user-delete is fine: requests are tied to
@@ -190,12 +190,12 @@ model User {
   // Grievance officer ticket queue (filer + assignee).
   grievancesFiled              GrievanceTicket[]     @relation("GrievanceFiler")
   grievancesAssigned           GrievanceTicket[]     @relation("GrievanceAssignee")
-  followingUsers      Follow[]       @relation("Follower")
-  followers           Follow[]       @relation("FolloweeUser")
-  posts               Post[]         @relation("PostAuthor")
-  postReactions       PostReaction[]
-  postComments        PostComment[]
-  pollVotes           PollVote[]     @relation("PollVoter")
+  followingUsers               Follow[]              @relation("Follower")
+  followers                    Follow[]              @relation("FolloweeUser")
+  posts                        Post[]                @relation("PostAuthor")
+  postReactions                PostReaction[]
+  postComments                 PostComment[]
+  pollVotes                    PollVote[]            @relation("PollVoter")
 
   // Mentorship
   mentorProfile      MentorProfile?
@@ -240,15 +240,15 @@ model User {
   featuredSlotsCurated FeaturedSlot[] @relation("FeaturedCurator")
 
   // Wave C back-relations
-  automationsCreated   PipelineAutomation[]   @relation("AutomationCreator")
-  hiringAssistantsOwned HiringAssistantConfig[] @relation("HiringAssistantOwner")
-  callingSessionsTriggered CallingSession[]   @relation("CallingTriggerer")
-  companyReviewsAuthored   CompanyReview[]    @relation("CompanyReviewAuthor")
-  companyReviewsModerated  CompanyReview[]    @relation("CompanyReviewModerator")
-  careerExplorations       CareerExplorationLog[] @relation("CareerExplorerUser")
+  automationsCreated       PipelineAutomation[]    @relation("AutomationCreator")
+  hiringAssistantsOwned    HiringAssistantConfig[] @relation("HiringAssistantOwner")
+  callingSessionsTriggered CallingSession[]        @relation("CallingTriggerer")
+  companyReviewsAuthored   CompanyReview[]         @relation("CompanyReviewAuthor")
+  companyReviewsModerated  CompanyReview[]         @relation("CompanyReviewModerator")
+  careerExplorations       CareerExplorationLog[]  @relation("CareerExplorerUser")
 
   // Wave A back-relations
-  groupMemberships     GroupMembership[]      @relation("GroupMember")
+  groupMemberships GroupMembership[] @relation("GroupMember")
 
   // Wave B back-relations
   outreachCadencesCreated OutreachCadence[]    @relation("OutreachCadenceCreator")
@@ -329,7 +329,7 @@ model Skill {
   // Prisma's `db push` can't generate the GENERATED ALWAYS expression
   // — the ALTER lives in setup-fts.sql and runs idempotently on every
   // setup-vps.sh. See lib/search-fts.ts for query usage.
-  searchTsv  Unsupported("tsvector")?
+  searchTsv Unsupported("tsvector")?
 
   @@index([evDomainId])
   @@index([category])
@@ -445,6 +445,16 @@ model CandidateProfile {
   twitterUrl            String?
   websiteUrl            String?
   languagesSpoken       String[]           @default([])
+  /// Design-thinking #5 — Skill-trade pairing.
+  /// Free-form list of skills the candidate is actively trying to
+  /// LEARN (vs the validated skills on CandidateSkill). Used to pair
+  /// candidates with complementary teach/learn axes — "Sahil knows
+  /// battery, learning motor; Priya knows motor, learning battery →
+  /// suggest a knowledge swap". Stored as a string array (free
+  /// strings, not skill IDs) because what someone wants to learn is
+  /// often vaguer than their resume claims ("EV powertrain", "rust"
+  /// — not necessarily in our canonical taxonomy yet).
+  learningSkills        String[]           @default([])
   cvVisibility          CVVisibility       @default(EVERYONE)
   // ContactVisibility gates email + phone display on every public surface
   // (profile page, mentor page, search result hover). PRIVATE is the
@@ -502,20 +512,20 @@ model CandidateProfile {
   // approves or rejects without recording the number anywhere. After
   // approval we surface the verification but never the underlying
   // document.
-  idVerificationStatus  IDVerificationStatus @default(NONE)
-  idVerificationDocUrl  String?
-  idVerificationSubmittedAt DateTime?
-  idVerificationReviewedAt  DateTime?
+  idVerificationStatus       IDVerificationStatus @default(NONE)
+  idVerificationDocUrl       String?
+  idVerificationSubmittedAt  DateTime?
+  idVerificationReviewedAt   DateTime?
   idVerificationReviewedById String?
-  idVerificationReviewedBy   User?         @relation("IDVerificationReviewer", fields: [idVerificationReviewedById], references: [id])
-  idVerificationNotes   String?           @db.Text
+  idVerificationReviewedBy   User?                @relation("IDVerificationReviewer", fields: [idVerificationReviewedById], references: [id])
+  idVerificationNotes        String?              @db.Text
 
   // Optional Cohort link. A "primary cohort" — the course/batch this
   // candidate graduated from. Set when an admin or TPO claims a roster
   // entry against the candidate. Drives the TPO dashboard's per-cohort
   // funnel + placement-rate breakdown.
-  cohortId          String?
-  cohort            Cohort?   @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+  cohortId String?
+  cohort   Cohort? @relation(fields: [cohortId], references: [id], onDelete: SetNull)
 
   // Onboarding & parsing state
   onboardingCompletedAt DateTime?
@@ -529,7 +539,7 @@ model CandidateProfile {
   // The breakdown of which sections are filled lives in
   // `lib/profile-completeness.ts` so the gauge UI can show "+8% if you
   // add 1 experience" hints without re-querying.
-  profileCompleteness   Int       @default(0)
+  profileCompleteness Int @default(0)
 
   // Social graph (LinkedIn-style)
   personType          PersonType @default(PROFESSIONAL)
@@ -552,22 +562,22 @@ model CandidateProfile {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  evDomains          CandidateEVDomain[]
-  skills             CandidateSkill[]
-  experiences        Experience[]
-  education          Education[]
-  certifications     Certification[]
-  projects           Project[]
-  awards             Award[]
-  volunteerExperiences VolunteerExperience[]
-  applications       Application[]
-  savedJobs          SavedJob[]
-  savedByEmployers   SavedCandidate[]
-  jobAlerts          JobAlert[]
-  documents          CandidateDocument[]
-  assessmentAttempts AssessmentAttempt[]
-  featuredSlots      FeaturedSlot[]
-  jobMatchCache      JobMatchCache[]
+  evDomains              CandidateEVDomain[]
+  skills                 CandidateSkill[]
+  experiences            Experience[]
+  education              Education[]
+  certifications         Certification[]
+  projects               Project[]
+  awards                 Award[]
+  volunteerExperiences   VolunteerExperience[]
+  applications           Application[]
+  savedJobs              SavedJob[]
+  savedByEmployers       SavedCandidate[]
+  jobAlerts              JobAlert[]
+  documents              CandidateDocument[]
+  assessmentAttempts     AssessmentAttempt[]
+  featuredSlots          FeaturedSlot[]
+  jobMatchCache          JobMatchCache[]
   jobChangeAnnouncements JobChangeAnnouncement[]
 
   /// Whether the platform should write a public JobChangeAnnouncement
@@ -583,19 +593,19 @@ model CandidateProfile {
   /// viewer invisible on viewed users' /me/views pages but ALSO
   /// hides the viewer's own list on /me/views — they trade
   /// the data both ways. Toggleable from /me/views.
-  viewerVisibility  ViewerVisibility @default(VISIBLE)
+  viewerVisibility ViewerVisibility @default(VISIBLE)
 
   // FTS — see Skill.searchTsv comment for the pattern.
   searchTsv Unsupported("tsvector")?
 
   // Wave C back-relations
-  verifiedSkillBadges    VerifiedSkillBadge[]
-  callingSessions        CallingSession[]
-  credentialsHeld        CandidateCredential[]
+  verifiedSkillBadges VerifiedSkillBadge[]
+  callingSessions     CallingSession[]
+  credentialsHeld     CandidateCredential[]
   // Wave A #10 — recruiter-search appearance tracker
-  searchAppearances      ProfileSearchAppearance[]
+  searchAppearances   ProfileSearchAppearance[]
   // Wave B #21 — outreach sequence enrollments
-  outreachEnrollments    OutreachEnrollment[]
+  outreachEnrollments OutreachEnrollment[]
 
   @@index([profileMode, availabilityStatus, openToWork])
   @@index([isDIYguruVerified])
@@ -675,11 +685,11 @@ model Experience {
   // Stamped on the Experience row directly (not a separate table) since
   // there's never more than one verification per row, and the audit
   // fields (`verifiedEmail`, `verifiedByUserId`) capture how it was earned.
-  verifiedAt        DateTime?
-  verifiedMethod    ExperienceVerifyMethod?
-  verifiedEmail     String?
-  verifiedByUserId  String?
-  verifiedBy        User?    @relation("ExperienceVerifier", fields: [verifiedByUserId], references: [id], onDelete: SetNull)
+  verifiedAt       DateTime?
+  verifiedMethod   ExperienceVerifyMethod?
+  verifiedEmail    String?
+  verifiedByUserId String?
+  verifiedBy       User?                   @relation("ExperienceVerifier", fields: [verifiedByUserId], references: [id], onDelete: SetNull)
 
   @@index([companyId])
   @@index([candidateId, verifiedAt])
@@ -789,14 +799,14 @@ enum IDVerificationStatus {
 /// State machine for a recruiter's request to see a candidate's email
 /// + phone. Documented next to the field on `ContactShareRequest`.
 enum ContactShareStatus {
-  PENDING    /// Recruiter has asked; candidate hasn't responded.
-  GRANTED    /// Candidate approved; recruiter can see contact.
-  DENIED     /// Candidate refused. Recruiter can re-request only after a
-             /// cool-off — enforced server-side in requestContactShare.
-  REVOKED    /// Candidate previously granted but later changed their mind.
-  EXPIRED    /// PENDING request that aged past `expiresAt`. Set by the
-             /// notification-maintenance cleanup tick so stale rows
-             /// stop counting against rate limits / dashboard counts.
+  PENDING /// Recruiter has asked; candidate hasn't responded.
+  GRANTED /// Candidate approved; recruiter can see contact.
+  DENIED /// Candidate refused. Recruiter can re-request only after a
+  /// cool-off — enforced server-side in requestContactShare.
+  REVOKED /// Candidate previously granted but later changed their mind.
+  EXPIRED /// PENDING request that aged past `expiresAt`. Set by the
+  /// notification-maintenance cleanup tick so stale rows
+  /// stop counting against rate limits / dashboard counts.
 }
 
 /// Per-call OpenAI usage record. Written by `lib/ai/track-cost.ts` after
@@ -878,27 +888,27 @@ model Company {
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
 
-  team           EmployerProfile[]
-  invites        TeamInvite[]
-  jobs           JobPosting[]
-  customStages   CustomPipelineStage[]
-  slaConfigs     SLAConfig[]
-  webhooks       Webhook[]
-  apiKeys        ApiKey[]
-  campusDrives   CampusDrive[]
-  salarySubmissions SalarySubmission[] @relation("SalaryCompany")
+  team                 EmployerProfile[]
+  invites              TeamInvite[]
+  jobs                 JobPosting[]
+  customStages         CustomPipelineStage[]
+  slaConfigs           SLAConfig[]
+  webhooks             Webhook[]
+  apiKeys              ApiKey[]
+  campusDrives         CampusDrive[]
+  salarySubmissions    SalarySubmission[]    @relation("SalaryCompany")
   // Inverse of WebhookEvent.companyId + Subscription.companyId —
   // outbound webhook log + (future) billing subscriptions for this
   // company.
-  webhookEvents     WebhookEvent[]
-  companySubscriptions Subscription[]    @relation("SubscriptionCompany")
+  webhookEvents        WebhookEvent[]
+  companySubscriptions Subscription[]        @relation("SubscriptionCompany")
   // Social: people who represent this company (founders / PMs)
-  reps           CandidateProfile[]    @relation("CompanyRep")
+  reps                 CandidateProfile[]    @relation("CompanyRep")
   // One-way follows on the company page
-  followedBy     Follow[]              @relation("FolloweeCompany")
+  followedBy           Follow[]              @relation("FolloweeCompany")
   // Posts published as this company
-  postsAsCompany Post[]                @relation("PostAsCompany")
-  followersCount Int                   @default(0)
+  postsAsCompany       Post[]                @relation("PostAsCompany")
+  followersCount       Int                   @default(0)
 
   // Competitions hosted by this company
   competitions Competition[] @relation("CompanyCompetitions")
@@ -912,7 +922,7 @@ model Company {
 
   // Job-change announcements landing at this company (Who's Moving feed).
   // Inverse of JobChangeAnnouncement.toCompanyRef.
-  incomingHires JobChangeAnnouncement[] @relation("JobChangeToCompany")
+  incomingHires                  JobChangeAnnouncement[]   @relation("JobChangeToCompany")
   // Recruitment-drive (job fair) participation.
   recruitmentDriveParticipations RecruitmentDriveCompany[] @relation("RecruitmentDriveCompany")
   recruitmentDriveJobs           RecruitmentDriveJob[]     @relation("RecruitmentDriveJobCompany")
@@ -931,13 +941,13 @@ model Company {
   /// Nullable until the admin classifies a company; defaults to null
   /// rather than OTHER so the UI can show "not classified" instead of
   /// silently bucketing OEMs as "Other".
-  companyTier        CompanyTier?
-  automations        PipelineAutomation[]
-  reviews            CompanyReview[]
-  awards             EmployerAward[]
+  companyTier CompanyTier?
+  automations PipelineAutomation[]
+  reviews     CompanyReview[]
+  awards      EmployerAward[]
 
   // Wave B #21 — outreach cadences scoped to the company
-  outreachCadences   OutreachCadence[]
+  outreachCadences OutreachCadence[]
 
   @@index([verificationStatus])
 }
@@ -1031,88 +1041,97 @@ enum SeniorityLevel {
 }
 
 model JobPosting {
-  id               String         @id @default(cuid())
-  slug             String         @unique
-  companyId        String
-  company          Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  postedById       String
-  postedBy         User           @relation("JobPoster", fields: [postedById], references: [id])
-  title            String
-  description      String         @db.Text
-  responsibilities String?        @db.Text
-  requirements     String?        @db.Text
-  benefits         String?        @db.Text
-  profileMode      ProfileMode    @default(EXPERIENCED)
-  employmentType   EmploymentType @default(FULL_TIME)
-  workMode         WorkMode       @default(ONSITE)
-  seniorityLevel   SeniorityLevel @default(MID)
-  locations        String[]       @default([])
-  experienceMin    Int?
-  experienceMax    Int?
-  salaryMin        Decimal?       @db.Decimal(12, 2)
-  salaryMax        Decimal?       @db.Decimal(12, 2)
-  salaryCurrency   String         @default("INR")
+  id                   String         @id @default(cuid())
+  slug                 String         @unique
+  companyId            String
+  company              Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  postedById           String
+  postedBy             User           @relation("JobPoster", fields: [postedById], references: [id])
+  title                String
+  description          String         @db.Text
+  responsibilities     String?        @db.Text
+  requirements         String?        @db.Text
+  benefits             String?        @db.Text
+  /// Design-thinking #2 — Structured application narrative.
+  /// Up to 3 recruiter-defined questions asked of every applicant at
+  /// apply time. Shape: `[{ id: string, prompt: string, required?: bool }]`.
+  /// Null when the recruiter didn't define any (most jobs at first).
+  /// The point: replace "tell us why you're interested" (low-signal)
+  /// with role-specific prompts like "describe a project where you
+  /// implemented OCPP 1.6 in 2-3 lines" (high-signal). Answers land
+  /// on `Application.questionAnswers` for ATS-side comparison.
+  applicationQuestions Json?
+  profileMode          ProfileMode    @default(EXPERIENCED)
+  employmentType       EmploymentType @default(FULL_TIME)
+  workMode             WorkMode       @default(ONSITE)
+  seniorityLevel       SeniorityLevel @default(MID)
+  locations            String[]       @default([])
+  experienceMin        Int?
+  experienceMax        Int?
+  salaryMin            Decimal?       @db.Decimal(12, 2)
+  salaryMax            Decimal?       @db.Decimal(12, 2)
+  salaryCurrency       String         @default("INR")
   // Period the salary band is quoted against. YEARLY is the
   // overwhelming majority case (full-time roles). MONTHLY lets
   // recruiters post internships / contract stipends naturally —
   // "₹10,000/month" is how candidates think about a stipend, not
   // "₹120,000/year". Existing rows pre-migration default to YEARLY,
   // preserving their original meaning.
-  salaryPeriod     SalaryPeriod   @default(YEARLY)
+  salaryPeriod         SalaryPeriod   @default(YEARLY)
   // Salary disclosure rule: `salaryHidden` is opt-in by default for
   // PUBLIC jobs. For DIYGURU_ONLY jobs the createJob/updateJob server
   // actions force this to `false` regardless of what the form sends —
   // students shouldn't apply blind.
-  salaryHidden     Boolean        @default(false)
+  salaryHidden         Boolean        @default(false)
   // Visibility audience. PUBLIC = visible everywhere; DIYGURU_ONLY =
   // visible + applicable only to DIYguru-verified candidates; INVITE_ONLY
   // = no browse listing, only reachable via direct invite. Defaults to
   // PUBLIC so existing jobs round-trip cleanly through the migration.
-  audience         JobAudience    @default(PUBLIC)
-  status           JobStatus      @default(DRAFT)
-  applicationUrl   String?
-  applicationEmail String?
-  headerImageUrl   String?
-  appliesCount     Int            @default(0)
-  viewsCount       Int            @default(0)
-  publishedAt      DateTime?
-  closesAt         DateTime?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
+  audience             JobAudience    @default(PUBLIC)
+  status               JobStatus      @default(DRAFT)
+  applicationUrl       String?
+  applicationEmail     String?
+  headerImageUrl       String?
+  appliesCount         Int            @default(0)
+  viewsCount           Int            @default(0)
+  publishedAt          DateTime?
+  closesAt             DateTime?
+  createdAt            DateTime       @default(now())
+  updatedAt            DateTime       @updatedAt
 
   jdEmbedding Unsupported("vector(3072)")?
 
-  evDomains        JobEVDomain[]
-  skills           JobSkill[]
-  applications     Application[]
-  savedBy          SavedJob[]
-  jobAlerts        JobAlert[]
-  assessments      Assessment[]
-  campusDrives     CampusDriveJob[]
-  reports          JobReport[]
-  matchCache       JobMatchCache[]
+  evDomains            JobEVDomain[]
+  skills               JobSkill[]
+  applications         Application[]
+  savedBy              SavedJob[]
+  jobAlerts            JobAlert[]
+  assessments          Assessment[]
+  campusDrives         CampusDriveJob[]
+  reports              JobReport[]
+  matchCache           JobMatchCache[]
   recruitmentDriveJobs RecruitmentDriveJob[]
   // Posts that attach this job to the social feed
-  feedPosts        Post[]
+  feedPosts            Post[]
   // Competitions linked to this job (winner-perk pipeline)
-  competitionPerks CompetitionPerk[]
+  competitionPerks     CompetitionPerk[]
 
   // Wave C — #29 facet axes for this job
   /// Powertrain area this role lives in — Battery / BMS / Motor /
   /// Charging / etc. Optional because non-engineering roles (sales,
   /// HR) don't have a powertrain area.
-  powertrainArea   PowertrainArea?
+  powertrainArea PowertrainArea?
   /// Battery pack size (kWh) the role touches. Used as a numeric
   /// filter facet — "I want roles working with packs over 50 kWh".
   /// Null when irrelevant.
-  packSizeKwh      Int?
+  packSizeKwh    Int?
   /// Charger output (kW) the role designs / installs. Same pattern as
   /// packSizeKwh — first-class numeric filter when set.
-  chargerKw        Int?
+  chargerKw      Int?
   /// Pulled-down filter: "Diversity hire preferred" / "Veteran-friendly" /
   /// "Women-returner programme". Free text comma-list — small enough to
   /// stay strings rather than another join table.
-  diversityTags    String[]   @default([])
+  diversityTags  String[]        @default([])
 
   credentials      JobCredential[]
   hiringAssistant  HiringAssistantConfig?
@@ -1190,6 +1209,14 @@ model Application {
   resumeSnapshotUrl String?
   matchScore        Float?
   matchExplanation  Json?
+  /// Design-thinking #2 — Structured application narrative.
+  /// Candidate's answers to the job's `applicationQuestions` (asked at
+  /// apply time). Shape: `{ [questionId]: string }`. Null when the
+  /// candidate skipped them or the job has no questions defined.
+  /// Recruiters see these side-by-side in the ATS so they can compare
+  /// "did this candidate actually answer the OCPP question" across 200
+  /// applicants without opening every detail page.
+  questionAnswers   Json?
   /// Wave B #17 — AI-generated one-paragraph "why this candidate
   /// matches" summary, cached after first generation so the ATS
   /// card doesn't re-prompt OpenAI on every render. Null until the
@@ -1205,12 +1232,12 @@ model Application {
   withdrawnAt       DateTime?
   rejectedReason    String?
 
-  notes              ApplicationNote[]
-  history            StageHistory[]
-  interviews         Interview[]
-  messageThread      MessageThread?
-  assessmentAttempts AssessmentAttempt[]
-  slaBreaches        SLABreach[]
+  notes                ApplicationNote[]
+  history              StageHistory[]
+  interviews           Interview[]
+  messageThread        MessageThread?
+  assessmentAttempts   AssessmentAttempt[]
+  slaBreaches          SLABreach[]
   // Contact-share requests filed from this application's ATS row.
   // Optional 1:N — a recruiter could re-request if a previous one
   // expired or was denied.
@@ -1224,12 +1251,12 @@ model Application {
   recruitmentDrive   RecruitmentDrive? @relation(fields: [recruitmentDriveId], references: [id], onDelete: SetNull)
 
   // Wave C #16 — vernacular calling agent
-  callingSessions CallingSession[]
+  callingSessions     CallingSession[]
   // Wave B #21 — outreach sequence enrollments tied to this application
   outreachEnrollments OutreachEnrollment[]
   // Wave C #23 — audit trail of automation rule evaluations against
   // this application. Each evaluation (fired or no-op) logs one row.
-  automationLogs PipelineAutomationLog[]
+  automationLogs      PipelineAutomationLog[]
 
   @@unique([jobId, candidateId])
   @@index([jobId, stage])
@@ -1379,7 +1406,7 @@ model Assessment {
   createdAt    DateTime       @default(now())
   updatedAt    DateTime       @updatedAt
 
-  attempts AssessmentAttempt[]
+  attempts             AssessmentAttempt[]
   // Inverse of RecruitmentDriveJob.challengeAssessment — same
   // assessment can be reused as the challenge across multiple
   // fairs / drive-jobs without duplicating questions JSON.
@@ -1409,7 +1436,7 @@ model AssessmentAttempt {
 
   // Wave B #28 back-relation — the badge this attempt earned (when it
   // passed at or above the SkillAssessmentMeta.badgeThreshold).
-  badge         VerifiedSkillBadge? @relation("BadgeSourceAttempt")
+  badge VerifiedSkillBadge? @relation("BadgeSourceAttempt")
 
   @@index([candidateId])
   @@index([assessmentId])
@@ -1424,6 +1451,16 @@ model MessageThread {
   // For cold outreach (no application yet)
   candidateUserId String?
   employerUserId  String?
+  /// Free-form label identifying who/what created this thread. Null
+  /// for the historical default (recruiter-initiated cold outreach
+  /// + application-derived threads). Set to one of:
+  ///   "MUTUAL_INTEREST" — both sides saved each other (#1)
+  ///   "WARM_INTRO"      — alum-mediated request (#3)
+  ///   "SKILL_TRADE"     — complementary-skills pairing (#5)
+  ///   "HIRING_ASST"     — drafted by the AI hiring assistant
+  /// Lets the UI add context badges ("This thread started because you
+  /// both saved each other") without inferring from message content.
+  source          String?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
   lastMessageAt   DateTime?
@@ -1586,8 +1623,8 @@ model DIYguruRoster {
   // First-class cohort link — see model Cohort below. Optional because
   // legacy roster rows imported before cohorts existed should still
   // round-trip; new uploads always attach a cohort at admin-time.
-  cohortId        String?
-  cohort          Cohort?            @relation(fields: [cohortId], references: [id], onDelete: SetNull)
+  cohortId String?
+  cohort   Cohort? @relation(fields: [cohortId], references: [id], onDelete: SetNull)
 
   @@unique([importBatchId, email])
   @@index([email])
@@ -1615,31 +1652,31 @@ enum WhatsAppSubscriptionStatus {
 }
 
 model WhatsAppDigestSubscription {
-  id                  String                       @id @default(cuid())
+  id                String                     @id @default(cuid())
   // E.164-normalised phone number — the unique key. Multiple users can
   // share a number (family device) so we don't link against User.phone.
-  phone               String                       @unique
+  phone             String                     @unique
   // Optional link to a User account. Set when a signed-in user
   // subscribes; null when the subscriber came in via the public /digest
   // form anonymously.
-  userId              String?
-  user                User?                        @relation("DigestSubscriber", fields: [userId], references: [id], onDelete: SetNull)
+  userId            String?
+  user              User?                      @relation("DigestSubscriber", fields: [userId], references: [id], onDelete: SetNull)
   // Filter prefs — empty = all jobs.
-  evDomainSlugs       String[]                     @default([])
-  location            String?
-  profileMode         ProfileMode?
-  status              WhatsAppSubscriptionStatus   @default(PENDING)
-  confirmedAt         DateTime?
+  evDomainSlugs     String[]                   @default([])
+  location          String?
+  profileMode       ProfileMode?
+  status            WhatsAppSubscriptionStatus @default(PENDING)
+  confirmedAt       DateTime?
   // Last successful digest send + the URL-safe token used in the
   // unsubscribe link inside each message. We rotate this on every send
   // so a leaked link only unsubscribes the next batch.
-  lastSentAt          DateTime?
-  unsubscribeToken    String                       @unique
+  lastSentAt        DateTime?
+  unsubscribeToken  String                     @unique
   // Auto-pause guardrail: count consecutive WA send failures. 5 strikes
   // and the worker flips status to PAUSED.
-  failedSendsInARow   Int                          @default(0)
-  createdAt           DateTime                     @default(now())
-  updatedAt           DateTime                     @updatedAt
+  failedSendsInARow Int                        @default(0)
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
 
   @@index([status, lastSentAt])
 }
@@ -1682,26 +1719,26 @@ model FeaturedSlot {
 /// `anonId` cookie lets returning users reach their previous roasts. When
 /// a roaster signs up, we link the row via `claimedByUserId`.
 model ResumeRoast {
-  id            String   @id @default(cuid())
+  id              String   @id @default(cuid())
   // Anonymous browser cookie ID — lets a visitor see "your past roasts"
   // before they sign up. Optional because some roasts are admin-tools.
-  anonId        String?
+  anonId          String?
   // Once the visitor signs up, link the roast to them so it shows on
   // /me/profile as "your most recent roast" with a fix-it CTA.
   claimedByUserId String?
   // 0..100 overall — the headline number on the share card.
-  scoreOverall  Int
+  scoreOverall    Int
   // Per-domain breakdown (battery / charging / motors / software /
   // experience / clarity). JSON because the rubric may evolve.
-  scoreBreakdown Json
+  scoreBreakdown  Json
   // 3-5 specific actionable items, structured as { title, body, severity }.
-  feedback      Json
+  feedback        Json
   // The resume text length in chars — used as a sanity signal in the
   // admin moderation view; never the raw text itself.
-  textLength    Int
+  textLength      Int
   // IP at time of roast — abuse triage only. Auto-purge after 30 days.
-  ip            String?
-  createdAt     DateTime @default(now())
+  ip              String?
+  createdAt       DateTime @default(now())
 
   @@index([anonId])
   @@index([claimedByUserId])
@@ -1727,9 +1764,9 @@ enum CohortStatus {
 model Cohort {
   id          String       @id @default(cuid())
   slug        String       @unique
-  name        String       // "EV Powertrain — Mar 2025"
-  courseName  String       // "EV Powertrain"
-  courseSlug  String?      // "ev-powertrain"
+  name        String // "EV Powertrain — Mar 2025"
+  courseName  String // "EV Powertrain"
+  courseSlug  String? // "ev-powertrain"
   // ISO-8601 batch identifier, e.g. "2025-03". Helps sort + group.
   batchCode   String?
   startDate   DateTime?
@@ -1877,8 +1914,8 @@ model Institution {
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
-  educationLinks    Education[]
-  competitionTeams  CompetitionRegistration[] @relation("CompetitionTeamInstitution")
+  educationLinks   Education[]
+  competitionTeams CompetitionRegistration[] @relation("CompetitionTeamInstitution")
 
   // FTS — see Skill.searchTsv for the rationale. Built across name +
   // shortName (tier A) + city/state (tier B) + about (tier C).
@@ -2009,39 +2046,39 @@ enum SalarySubmissionStatus {
 }
 
 model SalarySubmission {
-  id              String                 @id @default(cuid())
+  id                String                 @id @default(cuid())
   // Optional FK to Company. Free-text companyName is always required so
   // submissions for unlisted companies still aggregate.
-  companyId       String?
-  company         Company?               @relation("SalaryCompany", fields: [companyId], references: [id], onDelete: SetNull)
-  companyName     String
-  jobTitle        String
-  evDomainId      String?
-  evDomain        EVDomain?              @relation(fields: [evDomainId], references: [id], onDelete: SetNull)
-  profileMode     ProfileMode            @default(EXPERIENCED)
-  yearsExp        Int
-  location        String?
+  companyId         String?
+  company           Company?               @relation("SalaryCompany", fields: [companyId], references: [id], onDelete: SetNull)
+  companyName       String
+  jobTitle          String
+  evDomainId        String?
+  evDomain          EVDomain?              @relation(fields: [evDomainId], references: [id], onDelete: SetNull)
+  profileMode       ProfileMode            @default(EXPERIENCED)
+  yearsExp          Int
+  location          String?
   // Total CTC in lakhs (INR-default). Stored as Float (not Decimal)
   // because aggregation maths needs JS doubles and we never use these
   // for billing precision.
-  ctcLakhs        Float
+  ctcLakhs          Float
   // Optional split — base / bonus / esop in lakhs. Recruiters love this
   // breakdown; we ask but don't require it.
-  baseLakhs       Float?
-  bonusLakhs      Float?
-  esopLakhs       Float?
-  currency        String                 @default("INR")
-  status          SalarySubmissionStatus @default(PENDING)
+  baseLakhs         Float?
+  bonusLakhs        Float?
+  esopLakhs         Float?
+  currency          String                 @default("INR")
+  status            SalarySubmissionStatus @default(PENDING)
   // Anonymity: only set when the submitter explicitly opts in via the
   // "Tag this to my profile" toggle on the form. Default null.
   submittedByUserId String?
   // Anti-spam audit fields. Cookie ID lets us honour "one submission per
   // browser per day" without auth.
-  ip              String?
-  cookieId        String?
-  reviewedAt      DateTime?
-  reviewedById    String?
-  createdAt       DateTime               @default(now())
+  ip                String?
+  cookieId          String?
+  reviewedAt        DateTime?
+  reviewedById      String?
+  createdAt         DateTime               @default(now())
 
   @@index([companyId, status])
   @@index([status, createdAt])
@@ -2152,23 +2189,23 @@ model Connection {
 /// asked for your contact about your application to {Job Title}"
 /// in the inbox card.
 model ContactShareRequest {
-  id              String              @id @default(cuid())
+  id              String             @id @default(cuid())
   requesterUserId String
-  requester       User                @relation("ContactShareRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
+  requester       User               @relation("ContactShareRequester", fields: [requesterUserId], references: [id], onDelete: Cascade)
   /// Always a candidate userId (i.e. CandidateProfile.userId). We
   /// don't bother adding a FK to CandidateProfile because the
   /// User → CandidateProfile relation is 1:1 and User is the more
   /// reliable join key (employer user → candidate user).
   targetUserId    String
-  target          User                @relation("ContactShareTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
-  status          ContactShareStatus  @default(PENDING)
+  target          User               @relation("ContactShareTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  status          ContactShareStatus @default(PENDING)
   /// Free-text "why I want your contact" message from the recruiter.
   /// Surfaced verbatim in the candidate's inbox card. 1000 char cap
   /// enforced server-side.
-  message         String?             @db.Text
+  message         String?            @db.Text
   /// Optional ATS context — see model docstring.
   applicationId   String?
-  application     Application?        @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  application     Application?       @relation(fields: [applicationId], references: [id], onDelete: SetNull)
   /// PENDING requests auto-expire 30 days after creation. We stamp
   /// this at insert time rather than computing on read so cleanup
   /// can use a simple WHERE expiresAt < NOW() index scan.
@@ -2182,9 +2219,9 @@ model ContactShareRequest {
   /// Optional reason given by the candidate when they DENIED the
   /// request. Surfaced to the recruiter in their dashboard but
   /// never to other admins / users. Most candidates leave it null.
-  denyReason      String?             @db.Text
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
+  denyReason      String?            @db.Text
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
 
   /// One open / decided thread per pair — re-submission reuses the
   /// row. Composite unique handles both the create-or-update case
@@ -2312,7 +2349,7 @@ model Post {
   // Denormalised count, kept in sync inside the same transaction as
   // answer create/delete. Mirrors `commentsCount` so feed cards can
   // surface "12 answers" without a per-row aggregate query.
-  answerCount Int @default(0)
+  answerCount Int              @default(0)
 
   @@index([authorId, createdAt])
   @@index([visibility, createdAt])
@@ -2404,17 +2441,17 @@ model PostReaction {
 }
 
 model PostComment {
-  id        String        @id @default(cuid())
-  postId    String
-  post      Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
-  authorId  String
-  author    User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  body      String        @db.Text
-  parentId  String?
-  parent    PostComment?  @relation("CommentReply", fields: [parentId], references: [id], onDelete: Cascade)
-  replies   PostComment[] @relation("CommentReply")
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  id           String        @id @default(cuid())
+  postId       String
+  post         Post          @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId     String
+  author       User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body         String        @db.Text
+  parentId     String?
+  parent       PostComment?  @relation("CommentReply", fields: [parentId], references: [id], onDelete: Cascade)
+  replies      PostComment[] @relation("CommentReply")
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
   /// Soft-hide for moderation. When `hiddenAt` is non-null the comment
   /// disappears from the public thread and is surfaced as
   /// "[hidden by a moderator]" to non-author viewers. The author still
@@ -2425,8 +2462,8 @@ model PostComment {
   /// the author when they next view their comment.
   hiddenAt     DateTime?
   hiddenById   String?
-  hiddenBy     User?    @relation("CommentHider", fields: [hiddenById], references: [id], onDelete: SetNull)
-  hiddenReason String?  @db.Text
+  hiddenBy     User?         @relation("CommentHider", fields: [hiddenById], references: [id], onDelete: SetNull)
+  hiddenReason String?       @db.Text
 
   @@index([postId, createdAt])
   @@index([parentId, createdAt])
@@ -2465,8 +2502,8 @@ model Answer {
 }
 
 model AnswerHelpful {
-  answerId String
-  userId   String
+  answerId  String
+  userId    String
   createdAt DateTime @default(now())
 
   answer Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
@@ -2504,15 +2541,15 @@ enum EventRegistrationStatus {
 }
 
 model Event {
-  id          String      @id @default(cuid())
-  slug        String      @unique
+  id          String  @id @default(cuid())
+  slug        String  @unique
   companyId   String
-  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company     Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   // Nullable so SetNull can fire when a creator is deleted — events
   // outlive their creator (recruiter leaves the company, event stays
   // bookable for everyone who already registered).
   createdById String?
-  createdBy   User?       @relation("EventCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?   @relation("EventCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
   title       String
   description String      @db.Text
@@ -2523,10 +2560,10 @@ model Event {
   // don't need a hard end. timezone is the IANA name shown to users
   // alongside the local-time conversion ("19:00 IST"). All timestamps
   // are stored in UTC.
-  startsAt              DateTime
-  endsAt                DateTime?
-  timezone              String   @default("Asia/Kolkata")
-  registrationDeadline  DateTime?
+  startsAt             DateTime
+  endsAt               DateTime?
+  timezone             String    @default("Asia/Kolkata")
+  registrationDeadline DateTime?
 
   // For IN_PERSON / HYBRID events. Optional — falls back to "TBA" in UI.
   location String?
@@ -3031,51 +3068,51 @@ model CompetitionRegistration {
   /// URL-safe slug for /teams/[slug]. NULL until the captain creates one
   /// (registration row creates first, captain enters team profile next).
   /// Globally unique so team URLs are stable + sharable.
-  teamSlug             String?              @unique
+  teamSlug           String?                @unique
   /// Square logo (square crop preferred, 256×256 minimum). Stored in MinIO
   /// avatars bucket like Company logos.
-  teamLogoUrl          String?
-  teamBio              String?              @db.Text
+  teamLogoUrl        String?
+  teamBio            String?                @db.Text
   /// The real-world event the team is preparing for ("eBAJA SAEINDIA 2026",
   /// "Formula Bharat 2025"). Free text in v1; v2 swaps to canonical
   /// ExternalEvent table.
-  externalEvent        String?
+  externalEvent      String?
   /// Their team number / ID at the external event (eBAJA team #234).
-  externalTeamId       String?
+  externalTeamId     String?
   /// College the team represents — free-text fallback.
   /// Captured even when `institutionId` is set so the public team
   /// page can render a name without joining (and so legacy rows
   /// created before the canonical FK existed keep displaying).
-  institution          String?
+  institution        String?
   /// Optional FK to the canonical Institution table. When set, the
   /// public team page links the institution name to /institutions/[slug]
   /// and counts the team toward the institution's leaderboard.
   /// NULL is fine — captains can pick from the autocomplete or type
   /// free text; we don't force them to find a canonical entry.
-  institutionId        String?
-  institutionRef       Institution?         @relation("CompetitionTeamInstitution", fields: [institutionId], references: [id], onDelete: SetNull)
-  facultyAdvisor       String?
+  institutionId      String?
+  institutionRef     Institution?           @relation("CompetitionTeamInstitution", fields: [institutionId], references: [id], onDelete: SetNull)
+  facultyAdvisor     String?
   /// Used during verification — admin pings this address to confirm the
   /// team is real. Required for VERIFIED status.
-  facultyEmail         String?
+  facultyEmail       String?
   /// JSON: { instagram?, linkedin?, website?, youtube?, github? }. Same
   /// shape as Company.socialLinks so we can reuse the URL-validation +
   /// render helpers.
-  socialLinks          Json?
+  socialLinks        Json?
   /// Page visibility ladder. DRAFT until captain explicitly publishes
   /// (and team is VERIFIED). HIDDEN if captain or admin pulled it.
-  publicPageStatus     TeamPagePublicStatus @default(DRAFT)
-  publishedAt          DateTime?
+  publicPageStatus   TeamPagePublicStatus   @default(DRAFT)
+  publishedAt        DateTime?
   /// Verification ladder. UNVERIFIED → captain submits docs →
   /// PENDING_REVIEW → admin approves → VERIFIED. Only VERIFIED teams
   /// can publish + receive prize disbursement; submission and member
   /// onboarding work at any state (so we never lose growth signups
   /// while waiting for admin review).
-  verificationStatus   TeamVerificationStatus @default(UNVERIFIED)
-  verificationNote     String?               @db.Text
-  verifiedAt           DateTime?
-  verifiedById         String?
-  verifiedBy           User?                 @relation("CompetitionTeamVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
+  verificationStatus TeamVerificationStatus @default(UNVERIFIED)
+  verificationNote   String?                @db.Text
+  verifiedAt         DateTime?
+  verifiedById       String?
+  verifiedBy         User?                  @relation("CompetitionTeamVerifier", fields: [verifiedById], references: [id], onDelete: SetNull)
 
   members     CompetitionTeamMember[]
   submissions CompetitionSubmission[]
@@ -3105,33 +3142,33 @@ enum TeamPagePublicStatus {
 
 /// Admin-driven verification state.
 enum TeamVerificationStatus {
-  UNVERIFIED       // freshly registered
-  PENDING_REVIEW   // captain submitted for review
-  VERIFIED         // admin approved
-  REJECTED         // admin rejected (with note)
+  UNVERIFIED // freshly registered
+  PENDING_REVIEW // captain submitted for review
+  VERIFIED // admin approved
+  REJECTED // admin rejected (with note)
 }
 
 model CompetitionTeamMember {
-  id             String                  @id @default(cuid())
-  registrationId String
-  registration   CompetitionRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  id              String                  @id @default(cuid())
+  registrationId  String
+  registration    CompetitionRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
   // Either userId (existing platform user) or invitedEmail (pending signup).
-  userId         String?
-  user           User?                   @relation("CompetitionMember", fields: [userId], references: [id])
-  invitedEmail   String?
-  inviteToken    String?                 @unique
-  role           TeamMemberRole          @default(MEMBER)
-  status         TeamMemberStatus        @default(INVITED)
+  userId          String?
+  user            User?                   @relation("CompetitionMember", fields: [userId], references: [id])
+  invitedEmail    String?
+  inviteToken     String?                 @unique
+  role            TeamMemberRole          @default(MEMBER)
+  status          TeamMemberStatus        @default(INVITED)
   /// When the invite expires. Captain can resend (regenerates the
   /// token + bumps this). NULL on rows created before the team-
   /// challenge feature shipped — `acceptTeamInvite` treats NULL as
   /// non-expiring for backwards compat.
-  invitedAt      DateTime                @default(now())
+  invitedAt       DateTime                @default(now())
   inviteExpiresAt DateTime?
-  acceptedAt     DateTime?
+  acceptedAt      DateTime?
   /// Free-text role assigned by the captain — "Driver", "Suspension
   /// Lead", "Powertrain Engineer". Surfaces on the public team page.
-  positionTitle  String?
+  positionTitle   String?
 
   @@unique([registrationId, invitedEmail])
   @@index([registrationId])
@@ -3139,23 +3176,23 @@ model CompetitionTeamMember {
 }
 
 model CompetitionSubmission {
-  id             String                  @id @default(cuid())
-  registrationId String
-  registration   CompetitionRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
-  stageId        String
-  stage          CompetitionStage        @relation(fields: [stageId], references: [id], onDelete: Cascade)
-  title          String
-  summary        String?                 @db.Text
-  body           String?                 @db.Text // rich write-up
-  attachmentUrls String[]                @default([])
-  externalUrl    String? // GitHub / Figma / Drive
+  id                String                  @id @default(cuid())
+  registrationId    String
+  registration      CompetitionRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  stageId           String
+  stage             CompetitionStage        @relation(fields: [stageId], references: [id], onDelete: Cascade)
+  title             String
+  summary           String?                 @db.Text
+  body              String?                 @db.Text // rich write-up
+  attachmentUrls    String[]                @default([])
+  externalUrl       String? // GitHub / Figma / Drive
   /// First-class field for a working-prototype video. Validated as a
   /// YouTube / Vimeo / MinIO URL on the server action. Surfaced on the
   /// public team page when the team has published. Optional — not all
   /// competition formats want a video deliverable.
   prototypeVideoUrl String?
-  submittedAt    DateTime                @default(now())
-  isLate         Boolean                 @default(false)
+  submittedAt       DateTime                @default(now())
+  isLate            Boolean                 @default(false)
 
   scores CompetitionScore[]
 
@@ -3347,7 +3384,6 @@ model Recommendation {
   @@index([toUserId, status])
 }
 
-
 // ─── Email / SMS delivery telemetry ─────────────────────────
 //
 // Provider webhooks (SES SNS, Resend, MSG91 DLR) post here so the
@@ -3382,26 +3418,26 @@ enum DeliveryEventKind {
 }
 
 model EmailDeliveryEvent {
-  id          String            @id @default(cuid())
-  channel     DeliveryChannel
-  kind        DeliveryEventKind
+  id                String            @id @default(cuid())
+  channel           DeliveryChannel
+  kind              DeliveryEventKind
   /// The recipient address as the provider reported it. We hash on
   /// presentation in the admin dashboard so PII isn't loose in
   /// rendering, but store raw so support tickets can correlate.
-  recipient   String
+  recipient         String
   /// Provider name: "ses", "resend", "msg91", etc.
-  provider    String
+  provider          String
   /// Provider-specific message id (X-SES-Message-ID, Resend's id, etc.)
   /// — useful to correlate with provider dashboards during outages.
   providerMessageId String?
   /// Optional reason / diagnostic from the provider (bounce reason
   /// code, complaint feedback type, etc.) so the dashboard can show
   /// "why did 12% of yesterday's emails bounce".
-  reason      String?           @db.Text
+  reason            String?           @db.Text
   /// Free-form provider event payload for forensics.
-  rawPayload  Json?
-  occurredAt  DateTime
-  createdAt   DateTime          @default(now())
+  rawPayload        Json?
+  occurredAt        DateTime
+  createdAt         DateTime          @default(now())
 
   @@index([channel, kind, occurredAt])
   @@index([occurredAt])
@@ -3470,21 +3506,21 @@ model WebhookEvent {
 // allocation model assumes opt-in, not multi-armed bandits.
 
 enum ExperimentStatus {
-  DRAFT       /// Not yet running — admins can edit.
-  RUNNING     /// Allocating traffic; collecting events.
-  PAUSED      /// Allocation frozen; existing users keep their variant.
-  COMPLETED   /// Winner selected; experiment archived.
+  DRAFT /// Not yet running — admins can edit.
+  RUNNING /// Allocating traffic; collecting events.
+  PAUSED /// Allocation frozen; existing users keep their variant.
+  COMPLETED /// Winner selected; experiment archived.
 }
 
 model Experiment {
-  id          String            @id @default(cuid())
+  id          String           @id @default(cuid())
   /// Stable key referenced from code — e.g. "feed-cta-copy" or
   /// "match-rerank-prompt". Snake / kebab case preferred so it reads
   /// well in logs.
-  key         String            @unique
+  key         String           @unique
   name        String
-  hypothesis  String?           @db.Text
-  status      ExperimentStatus  @default(DRAFT)
+  hypothesis  String?          @db.Text
+  status      ExperimentStatus @default(DRAFT)
   /// Variants stored as JSON: `[{ key: "control", weight: 50 }, { key: "v2", weight: 50 }]`.
   /// Weights sum to 100; admin UI enforces.
   variants    Json
@@ -3495,9 +3531,9 @@ model Experiment {
   startedAt   DateTime?
   endedAt     DateTime?
   createdById String
-  createdBy   User              @relation("ExperimentAuthor", fields: [createdById], references: [id])
-  createdAt   DateTime          @default(now())
-  updatedAt   DateTime          @updatedAt
+  createdBy   User             @relation("ExperimentAuthor", fields: [createdById], references: [id])
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
 
   allocations ExperimentAllocation[]
   events      ExperimentEvent[]
@@ -3600,27 +3636,27 @@ enum AnnouncementSeverity {
 }
 
 model Announcement {
-  id          String                @id @default(cuid())
+  id          String               @id @default(cuid())
   title       String
-  body        String                @db.Text
+  body        String               @db.Text
   ctaLabel    String?
   ctaUrl      String?
-  audience    AnnouncementAudience  @default(EVERYONE)
-  severity    AnnouncementSeverity  @default(INFO)
+  audience    AnnouncementAudience @default(EVERYONE)
+  severity    AnnouncementSeverity @default(INFO)
   /// Active window — outside this range the banner doesn't render.
   /// startsAt null = effective immediately on save; endsAt null =
   /// runs forever until manually disabled.
   startsAt    DateTime?
   endsAt      DateTime?
-  isActive    Boolean               @default(true)
+  isActive    Boolean              @default(true)
   /// When true, users can click to dismiss for the rest of their
   /// session via a localStorage key. Critical announcements set this
   /// false so it can't be hidden.
-  dismissible Boolean               @default(true)
+  dismissible Boolean              @default(true)
   createdById String
-  createdBy   User                  @relation("AnnouncementAuthor", fields: [createdById], references: [id])
-  createdAt   DateTime              @default(now())
-  updatedAt   DateTime              @updatedAt
+  createdBy   User                 @relation("AnnouncementAuthor", fields: [createdById], references: [id])
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
 
   @@index([isActive, startsAt, endsAt])
 }
@@ -3649,25 +3685,25 @@ enum PlanScope {
 }
 
 model Plan {
-  id            String        @id @default(cuid())
+  id          String       @id @default(cuid())
   /// Public stable key: "candidate-pro", "employer-startup-monthly".
-  key           String        @unique
-  name          String
-  scope         PlanScope
+  key         String       @unique
+  name        String
+  scope       PlanScope
   /// Pricing in lowest currency unit (paise for INR, cents for USD).
   /// Zero is allowed for free / placeholder plans.
-  amountMinor   Int           @default(0)
-  currency      String        @default("INR")
-  interval      PlanInterval
+  amountMinor Int          @default(0)
+  currency    String       @default("INR")
+  interval    PlanInterval
   /// Admin-friendly description shown on the (future) checkout page.
-  description   String?       @db.Text
+  description String?      @db.Text
   /// Feature limits encoded as JSON: `{ jobsPerMonth: 50,
   /// aiMatchesPerWeek: 200 }`. Server-side feature gates can read
   /// the active subscription's plan.features.
-  features      Json?
-  isActive      Boolean       @default(true)
-  createdAt     DateTime      @default(now())
-  updatedAt     DateTime      @updatedAt
+  features    Json?
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
 
   subscriptions Subscription[]
 }
@@ -3681,15 +3717,15 @@ enum SubscriptionStatus {
 }
 
 model Subscription {
-  id          String              @id @default(cuid())
-  planId      String
-  plan        Plan                @relation(fields: [planId], references: [id])
+  id                 String             @id @default(cuid())
+  planId             String
+  plan               Plan               @relation(fields: [planId], references: [id])
   /// Either a user (CANDIDATE plan) or a company (EMPLOYER plan).
-  userId      String?
-  user        User?               @relation("SubscriptionUser", fields: [userId], references: [id], onDelete: SetNull)
-  companyId   String?
-  company     Company?            @relation("SubscriptionCompany", fields: [companyId], references: [id], onDelete: SetNull)
-  status      SubscriptionStatus  @default(TRIALING)
+  userId             String?
+  user               User?              @relation("SubscriptionUser", fields: [userId], references: [id], onDelete: SetNull)
+  companyId          String?
+  company            Company?           @relation("SubscriptionCompany", fields: [companyId], references: [id], onDelete: SetNull)
+  status             SubscriptionStatus @default(TRIALING)
   /// Current period bounds. For ONE_TIME plans both are set to the
   /// purchase moment + plan duration; for recurring, billing extends
   /// these on each successful renewal.
@@ -3700,8 +3736,8 @@ model Subscription {
   /// Razorpay subscription id (or other provider id) so we can
   /// reconcile webhooks with our row.
   providerId         String?
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
 
   @@index([userId, status])
   @@index([companyId, status])
@@ -3753,28 +3789,28 @@ model RateLimitEvent {
 // Helper `lib/strikes.ts` writes here AND updates the User's
 // `strikes` counter + `accountState` in one transaction.
 model Strike {
-  id        String       @id @default(cuid())
-  targetUserId String
-  target    User         @relation("StrikeTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
+  id              String       @id @default(cuid())
+  targetUserId    String
+  target          User         @relation("StrikeTarget", fields: [targetUserId], references: [id], onDelete: Cascade)
   /// The admin who issued the strike. Null only when the strike was
   /// auto-issued by the system (e.g. banned-word auto-flag → upheld).
-  authorId  String?
-  author    User?        @relation("StrikeAuthor", fields: [authorId], references: [id], onDelete: SetNull)
-  reason    StrikeReason
+  authorId        String?
+  author          User?        @relation("StrikeAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  reason          StrikeReason
   /// Free-text note shown to the user. Required for OTHER, optional
   /// otherwise. The user sees this verbatim on /me/account.
-  note      String?      @db.Text
+  note            String?      @db.Text
   /// Optional link back to the offending content. Format depends on
   /// reason — for COMMENT_HIDDEN it's the postComment.id, for
   /// REPORT_UPHELD it's the audit-log id, etc. Free-form so the
   /// admin UI can link contextually.
-  evidenceRef String?
+  evidenceRef     String?
   /// Strike-state transition snapshot — what the user's strikes
   /// counter was AFTER this strike was issued. Useful for
   /// "this was your 3rd strike → 7-day suspension" copy.
-  newStrikeCount Int
+  newStrikeCount  Int
   newAccountState AccountState
-  createdAt DateTime     @default(now())
+  createdAt       DateTime     @default(now())
 
   @@index([targetUserId, createdAt])
   @@index([reason, createdAt])
@@ -3791,39 +3827,39 @@ model Strike {
 // elapses (notification-maintenance tick — closes the window even
 // if no human looked, so we can prove SLA compliance via audit log).
 model GrievanceTicket {
-  id          String          @id @default(cuid())
+  id               String          @id @default(cuid())
   /// Optional — anonymous grievances are allowed by IT Rules. When
   /// the filer is signed in we store the userId for follow-up.
-  filerId     String?
-  filer       User?           @relation("GrievanceFiler", fields: [filerId], references: [id], onDelete: SetNull)
+  filerId          String?
+  filer            User?           @relation("GrievanceFiler", fields: [filerId], references: [id], onDelete: SetNull)
   /// Required even for anonymous filings — used for the 24h ack
   /// email + correspondence.
-  filerEmail  String
-  filerName   String
-  filerPhone  String?
+  filerEmail       String
+  filerName        String
+  filerPhone       String?
   /// Free-text — what the user is complaining about. 2000 char cap.
-  subject     String
-  body        String          @db.Text
+  subject          String
+  body             String          @db.Text
   /// Optional category — drives routing in the future. Free string
   /// for now.
-  category    String?
-  status      GrievanceStatus @default(OPEN)
+  category         String?
+  status           GrievanceStatus @default(OPEN)
   /// First admin to view / comment — sets ACK and stamps this.
   acknowledgedAt   DateTime?
   acknowledgedById String?
   /// The grievance officer assigned to action it. Initially null;
   /// set when an admin claims the ticket.
-  assigneeId  String?
-  assignee    User?           @relation("GrievanceAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  resolvedAt  DateTime?
-  resolution  String?         @db.Text
+  assigneeId       String?
+  assignee         User?           @relation("GrievanceAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  resolvedAt       DateTime?
+  resolution       String?         @db.Text
   /// Deadline for resolution (filed + 15 days). Stamped at create
   /// time so SLA reports work even after the rule changes.
-  slaDueAt    DateTime
+  slaDueAt         DateTime
   /// Best-effort client IP captured at filing for forensics.
-  filerIp     String?
-  createdAt   DateTime        @default(now())
-  updatedAt   DateTime        @updatedAt
+  filerIp          String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
 
   @@index([status, createdAt])
   @@index([slaDueAt])
@@ -3847,19 +3883,19 @@ model GrievanceTicket {
 // `expiresAt` will recompute. The 7-day stale window is acceptable
 // because the score is advisory ("look here first"), not a gate.
 model JobMatchCache {
-  id            String           @id @default(cuid())
-  candidateId   String
-  candidate     CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  jobId         String
-  job           JobPosting       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id          String           @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId       String
+  job         JobPosting       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   /// 0..1 weighted score from server/matching/score.ts
-  score         Float
+  score       Float
   /// JSON breakdown: { vectorScore, skillScore, domainScore, diyguruBoost,
   /// matchedSkills: string[], reasons: { positive: string[], negative: string[] } }
-  breakdown     Json
-  computedAt    DateTime         @default(now())
-  expiresAt     DateTime
-  createdAt     DateTime         @default(now())
+  breakdown   Json
+  computedAt  DateTime         @default(now())
+  expiresAt   DateTime
+  createdAt   DateTime         @default(now())
 
   @@unique([candidateId, jobId])
   @@index([candidateId, expiresAt])
@@ -3925,30 +3961,30 @@ model PulseSnapshot {
 //   • the announcement is `published = true` (the candidate hasn't
 //     since hidden it from /me/preferences)
 model JobChangeAnnouncement {
-  id              String           @id @default(cuid())
-  candidateId     String
-  candidate       CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  id            String           @id @default(cuid())
+  candidateId   String
+  candidate     CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   /// New employer — free text always (matches Experience.company).
-  toCompany       String
+  toCompany     String
   /// Optional FK to the canonical Company row when one exists.
-  toCompanyId     String?
-  toCompanyRef    Company?         @relation("JobChangeToCompany", fields: [toCompanyId], references: [id], onDelete: SetNull)
-  toTitle         String
+  toCompanyId   String?
+  toCompanyRef  Company?         @relation("JobChangeToCompany", fields: [toCompanyId], references: [id], onDelete: SetNull)
+  toTitle       String
   /// Previous employer (free text). Nullable for the candidate's
   /// first job.
-  fromCompany     String?
-  fromTitle       String?
+  fromCompany   String?
+  fromTitle     String?
   /// User's authored note ("Excited to join — building the next-gen
   /// fast-charging stack"). 280 char cap so it fits the feed card.
-  note            String?
+  note          String?
   /// Whether the user wants the announcement on /pulse. Defaults to
   /// true; flip to false to retract without deleting (so we keep
   /// the audit row).
-  published       Boolean          @default(true)
+  published     Boolean          @default(true)
   /// Reactions count (mirrors Post — no separate Reaction table).
-  congratsCount   Int              @default(0)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  congratsCount Int              @default(0)
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 
   @@index([candidateId, createdAt])
   @@index([published, createdAt])
@@ -3986,61 +4022,61 @@ enum RecruitmentDriveStatus {
 }
 
 model RecruitmentDrive {
-  id                  String                 @id @default(cuid())
-  slug                String                 @unique
-  title               String
-  tagline             String?
+  id             String  @id @default(cuid())
+  slug           String  @unique
+  title          String
+  tagline        String?
   /// Rich description (markdown / plain text). Renders on the
   /// public landing under the hero.
-  description         String?                @db.Text
-  bannerImageUrl      String?
+  description    String? @db.Text
+  bannerImageUrl String?
   /// Optional secondary hero — the photo of the venue or last
   /// year's fair. Falls back to the brand gradient when null.
-  heroImageUrl        String?
+  heroImageUrl   String?
 
   // ─── Venue ─────────────────────────────────────────────────
-  city                String
-  state               String?
-  country             String                 @default("IN")
-  venueName           String?
-  venueAddress        String?
+  city         String
+  state        String?
+  country      String   @default("IN")
+  venueName    String?
+  venueAddress String?
   /// Optional map pin so we can render an embedded map on the
   /// public page. Stored as Decimal so we don't lose precision on
   /// FP round-trips.
-  venueLat            Decimal?               @db.Decimal(10, 7)
-  venueLng            Decimal?               @db.Decimal(10, 7)
+  venueLat     Decimal? @db.Decimal(10, 7)
+  venueLng     Decimal? @db.Decimal(10, 7)
 
   // ─── Dates ─────────────────────────────────────────────────
   /// When the fair itself happens (start of day 1 of the event).
-  startsAt            DateTime
+  startsAt             DateTime
   /// End of the event window. Same as startsAt for a one-day fair.
-  endsAt              DateTime
+  endsAt               DateTime
   /// When candidate registration / job applications open. We use a
   /// separate window from the event itself so candidates can apply
   /// in advance — companies often want pre-screened pipelines
   /// before opening their booths.
-  registrationOpensAt DateTime?
+  registrationOpensAt  DateTime?
   registrationClosesAt DateTime?
 
   // ─── Lifecycle ─────────────────────────────────────────────
-  status              RecruitmentDriveStatus @default(DRAFT)
-  publishedAt         DateTime?
+  status      RecruitmentDriveStatus @default(DRAFT)
+  publishedAt DateTime?
   /// When set, the fair appears in the homepage / pulse "featured
   /// events" rail. Admin-toggled.
-  featuredAt          DateTime?
+  featuredAt  DateTime?
 
   // ─── Audit ─────────────────────────────────────────────────
-  createdById         String
-  createdBy           User                   @relation("RecruitmentDriveCreator", fields: [createdById], references: [id])
-  createdAt           DateTime               @default(now())
-  updatedAt           DateTime               @updatedAt
+  createdById String
+  createdBy   User     @relation("RecruitmentDriveCreator", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   /// Denorm counters — kept fresh inside the same transactions
   /// that mutate the related rows. Saves the public landing from a
   /// COUNT(*) per render.
-  participatingCount  Int                    @default(0)
-  jobsCount           Int                    @default(0)
-  applicationsCount   Int                    @default(0)
+  participatingCount Int @default(0)
+  jobsCount          Int @default(0)
+  applicationsCount  Int @default(0)
 
   participatingCompanies RecruitmentDriveCompany[]
   driveJobs              RecruitmentDriveJob[]
@@ -4064,26 +4100,26 @@ enum RecruitmentDriveCompanyStatus {
 }
 
 model RecruitmentDriveCompany {
-  id            String                          @id @default(cuid())
-  driveId       String
-  drive         RecruitmentDrive                @relation(fields: [driveId], references: [id], onDelete: Cascade)
-  companyId     String
-  company       Company                         @relation("RecruitmentDriveCompany", fields: [companyId], references: [id], onDelete: Cascade)
-  status        RecruitmentDriveCompanyStatus   @default(INVITED)
+  id          String                        @id @default(cuid())
+  driveId     String
+  drive       RecruitmentDrive              @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  companyId   String
+  company     Company                       @relation("RecruitmentDriveCompany", fields: [companyId], references: [id], onDelete: Cascade)
+  status      RecruitmentDriveCompanyStatus @default(INVITED)
   /// Display label for the booth ("Booth 7", "Hall B / Booth 12").
   /// Free text — admins can leave blank for virtual fairs.
-  boothLabel    String?
+  boothLabel  String?
   /// Per-fair pitch — different from Company.about, which is the
   /// permanent corporate copy. This is what the company is
   /// specifically looking for AT THIS FAIR ("hiring 5 battery
   /// engineers + 2 cell QA leads — talk to us at Booth 7").
-  aboutAtFair   String?                         @db.Text
+  aboutAtFair String?                       @db.Text
   /// Set by admin on invite + on accept.
-  invitedAt     DateTime                        @default(now())
-  confirmedAt   DateTime?
-  withdrawnAt   DateTime?
+  invitedAt   DateTime                      @default(now())
+  confirmedAt DateTime?
+  withdrawnAt DateTime?
 
-  driveJobs     RecruitmentDriveJob[]
+  driveJobs RecruitmentDriveJob[]
 
   @@unique([driveId, companyId])
   @@index([companyId, status])
@@ -4094,28 +4130,28 @@ model RecruitmentDriveCompany {
 /// same job can be at multiple fairs (e.g. Pune fair + Bangalore
 /// fair) without duplicating the JobPosting row.
 model RecruitmentDriveJob {
-  id              String                  @id @default(cuid())
-  driveId         String
-  drive           RecruitmentDrive        @relation(fields: [driveId], references: [id], onDelete: Cascade)
-  jobId           String
-  job             JobPosting              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id                    String                  @id @default(cuid())
+  driveId               String
+  drive                 RecruitmentDrive        @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  jobId                 String
+  job                   JobPosting              @relation(fields: [jobId], references: [id], onDelete: Cascade)
   /// Denormalised so we can `where: { driveId, companyId }` in one
   /// query instead of joining to the participation row. Auto-set
   /// from JobPosting.companyId at attach-time.
-  companyId       String
-  company         Company                 @relation("RecruitmentDriveJobCompany", fields: [companyId], references: [id], onDelete: Cascade)
-  participationId String
-  participation   RecruitmentDriveCompany @relation(fields: [participationId], references: [id], onDelete: Cascade)
+  companyId             String
+  company               Company                 @relation("RecruitmentDriveJobCompany", fields: [companyId], references: [id], onDelete: Cascade)
+  participationId       String
+  participation         RecruitmentDriveCompany @relation(fields: [participationId], references: [id], onDelete: Cascade)
   /// Optional pre-screening challenge. When set, applying triggers
   /// the existing ATS gate (Assessment.gateAdvance) — the candidate
   /// must complete the challenge before the recruiter can move them
   /// past ASSESSMENT stage.
   challengeAssessmentId String?
-  challengeAssessment   Assessment? @relation("RecruitmentDriveJobChallenge", fields: [challengeAssessmentId], references: [id], onDelete: SetNull)
+  challengeAssessment   Assessment?             @relation("RecruitmentDriveJobChallenge", fields: [challengeAssessmentId], references: [id], onDelete: SetNull)
   /// Display order on the fair page (admin or company can sort
   /// hot jobs first). Defaults to row creation time.
-  sortOrder       Int                     @default(0)
-  attachedAt      DateTime                @default(now())
+  sortOrder             Int                     @default(0)
+  attachedAt            DateTime                @default(now())
 
   @@unique([driveId, jobId])
   @@index([driveId, companyId])
@@ -4150,42 +4186,42 @@ enum CompanyClaimStatus {
 }
 
 model CompanyClaim {
-  id             String             @id @default(cuid())
+  id             String  @id @default(cuid())
   companyId      String
-  company        Company            @relation("CompanyClaims", fields: [companyId], references: [id], onDelete: Cascade)
+  company        Company @relation("CompanyClaims", fields: [companyId], references: [id], onDelete: Cascade)
   claimantUserId String
-  claimant       User               @relation("CompanyClaimant", fields: [claimantUserId], references: [id], onDelete: Cascade)
+  claimant       User    @relation("CompanyClaimant", fields: [claimantUserId], references: [id], onDelete: Cascade)
 
   // ─── Proof ────────────────────────────────────────────────
   /// Optional work email (ideally on the company's domain). When the
   /// domain matches `Company.emailDomains` the admin queue surfaces
   /// a green check so the reviewer can fast-path obvious matches.
-  workEmail      String?
+  workEmail   String?
   /// Optional public LinkedIn URL — admin reads it to corroborate
   /// the role + tenure the claimant typed in `proofText`.
-  linkedinUrl    String?
+  linkedinUrl String?
   /// Free-text justification ("I'm Senior Battery Engineer reporting
   /// to Anita; my LinkedIn shows 3 years here"). 2000 char cap.
-  proofText      String             @db.Text
+  proofText   String          @db.Text
   /// Role the claimant wants on approval. Defaults to RECRUITER
   /// (no admin permissions). Admin can override on approve.
-  desiredRole    CompanyTeamRole    @default(RECRUITER)
+  desiredRole CompanyTeamRole @default(RECRUITER)
   /// Job title the claimant uses inside the company. Cosmetic —
   /// shown on the team page after approval.
-  designation    String?
+  designation String?
 
   // ─── Review state ─────────────────────────────────────────
-  status         CompanyClaimStatus @default(PENDING)
-  reviewedAt     DateTime?
-  reviewedById   String?
-  reviewedBy     User?              @relation("CompanyClaimReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  status       CompanyClaimStatus @default(PENDING)
+  reviewedAt   DateTime?
+  reviewedById String?
+  reviewedBy   User?              @relation("CompanyClaimReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   /// Admin's free-text decision note. On REJECTED, this is sent in
   /// the rejection email so the claimant knows what to fix; on
   /// APPROVED it's optional and just lives in the audit trail.
-  reviewerNote   String?            @db.Text
+  reviewerNote String?            @db.Text
 
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // One open claim per (company, user). The unique implicitly
   // covers all statuses — re-submission after a REJECTED requires
@@ -4224,71 +4260,71 @@ enum ArticleStatus {
 }
 
 model ArticleCategory {
-  id          String    @id @default(cuid())
-  slug        String    @unique
+  id          String   @id @default(cuid())
+  slug        String   @unique
   name        String
   description String?
   /// Display order on the /articles index. Lower numbers float up.
   /// Two categories with the same order tie-break by name asc.
-  sortOrder   Int       @default(100)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  sortOrder   Int      @default(100)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  articles    Article[]
+  articles Article[]
 
   @@index([sortOrder, name])
 }
 
 model Article {
-  id              String        @id @default(cuid())
-  slug            String        @unique
-  title           String
+  id            String  @id @default(cuid())
+  slug          String  @unique
+  title         String
   /// Short description used as: SEO meta description, the index-card
   /// preview text, and the OpenGraph description. ~160 char cap so it
   /// fits search-result snippets cleanly.
-  excerpt         String?
+  excerpt       String?
   /// Long-form body. Markdown for v1 (renders via the same pipeline
   /// as job-description bodies — already in lib/og/* helpers). HTML
   /// stored verbatim is also fine; we don't sanitise here, the
   /// renderer does.
-  body            String        @db.Text
+  body          String  @db.Text
   /// Wide hero image — used both inline at the top of the article
   /// page AND as the OG share card. 1500×500 ideal (3:1).
-  coverImageUrl   String?
+  coverImageUrl String?
 
   // ─── Categorisation ───────────────────────────────────────
-  categoryId      String?
-  category        ArticleCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  categoryId String?
+  category   ArticleCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   /// Free-text tags — same conceptual shape as Post.hashtags.
   /// Used for "related articles" + future tag-cloud surfaces.
-  tags            String[]      @default([])
+  tags       String[]         @default([])
 
   // ─── Author ───────────────────────────────────────────────
-  authorId        String
-  author          User          @relation("ArticleAuthor", fields: [authorId], references: [id])
+  authorId String
+  author   User   @relation("ArticleAuthor", fields: [authorId], references: [id])
 
   // ─── Lifecycle ────────────────────────────────────────────
-  status          ArticleStatus @default(DRAFT)
-  publishedAt     DateTime?
+  status      ArticleStatus @default(DRAFT)
+  publishedAt DateTime?
   /// When set, article appears in the homepage "Featured editorial"
   /// rail (a future surface). Admin-toggled.
-  featuredAt      DateTime?
+  featuredAt  DateTime?
 
   // ─── Reader signals ───────────────────────────────────────
   /// Pre-computed reading time (minutes). Filled at create/update
   /// time using the body's word count ÷ 220 wpm. Avoids re-computing
   /// on every page render.
-  readingTimeMins Int           @default(3)
+  readingTimeMins Int @default(3)
   /// Denormalised view counter — incremented inside a fire-and-forget
   /// update on the article-detail page. Used for "popular articles"
   /// rails.
-  viewCount       Int           @default(0)
+  viewCount       Int @default(0)
 
   // ─── FTS — same pattern as our other searchable models ────
-  searchTsv       Unsupported("tsvector")?
+  searchTsv Unsupported("tsvector")?
 
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([status, publishedAt])
   @@index([categoryId, publishedAt])
@@ -4354,7 +4390,7 @@ model HashtagSubscription {
 // "company-page-team", "post-author") so the UI can show "viewed
 // from search" — useful for recruiters tuning their funnel later.
 enum ViewerVisibility {
-  VISIBLE   // viewer's name + headline shown to the viewed user
+  VISIBLE // viewer's name + headline shown to the viewed user
   ANONYMOUS // viewed user sees "Someone in EV Engineering" — no identity
 }
 
@@ -4435,9 +4471,9 @@ enum PageRenderMode {
 /// "edit" surface (a manual page goes to a rich editor; a WP-
 /// imported page opens its source HTML for paste-style edits).
 enum PageSourceKind {
-  MANUAL   // Hand-authored via /admin/pages/new
-  WP_PAGE  // Imported from a WP <wp:post_type>page</wp:post_type>
-  WP_POST  // Imported from a WP <wp:post_type>post</wp:post_type>
+  MANUAL // Hand-authored via /admin/pages/new
+  WP_PAGE // Imported from a WP <wp:post_type>page</wp:post_type>
+  WP_POST // Imported from a WP <wp:post_type>post</wp:post_type>
 }
 
 model Page {
@@ -4477,16 +4513,16 @@ model Page {
   // Provenance — link back to the WordPress import that birthed
   // this row, so admins can re-import + diff, or bulk-archive
   // pages from a bad import without nuking hand-authored ones.
-  importBatchId   String?
-  importBatch     WordPressImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
+  importBatchId String?
+  importBatch   WordPressImportBatch? @relation(fields: [importBatchId], references: [id], onDelete: SetNull)
   /// Source `<wp:post_id>` from the WP XML. Lets re-imports
   /// match-and-update by stable ID instead of slug (which a WP
   /// admin can rename without warning). Unique per batch but not
   /// globally unique — different WordPress sites could collide.
-  wpPostId        Int?
+  wpPostId      Int?
 
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Public listing on /admin/pages defaults to status + recency.
   @@index([status, updatedAt])
@@ -4497,7 +4533,7 @@ model Page {
 }
 
 model WordPressImportBatch {
-  id            String   @id @default(cuid())
+  id            String  @id @default(cuid())
   /// Filename the admin uploaded. Surface only — not unique.
   fileName      String
   /// SHA-256 of the uploaded XML. Lets us refuse a re-upload of
@@ -4505,7 +4541,7 @@ model WordPressImportBatch {
   /// payload produced which page set.
   fileSha256    String
   uploadedById  String
-  uploadedBy    User     @relation("WordPressImporter", fields: [uploadedById], references: [id])
+  uploadedBy    User    @relation("WordPressImporter", fields: [uploadedById], references: [id])
   /// Counts after parse.
   itemsTotal    Int
   itemsImported Int
@@ -4513,11 +4549,11 @@ model WordPressImportBatch {
   /// Free-form notes on what was skipped + why ("3 attachments
   /// ignored", "1 page had empty body"). Truncated to 4KB; full
   /// detail goes to the structured logger.
-  notes         String?  @db.Text
+  notes         String? @db.Text
 
-  pages         Page[]
+  pages Page[]
 
-  createdAt     DateTime @default(now())
+  createdAt DateTime @default(now())
 
   @@index([uploadedById, createdAt])
 }
@@ -4544,52 +4580,52 @@ enum InterviewSessionStatus {
 }
 
 model InterviewSession {
-  id              String                 @id @default(cuid())
+  id     String  @id @default(cuid())
   /// Null for anonymous practice runs — the page lets signed-out
   /// visitors try the tool before signing up. On signup we don't
   /// claim back anon sessions (transient practice content).
-  userId          String?
-  user            User?                  @relation("InterviewSessionUser", fields: [userId], references: [id], onDelete: Cascade)
+  userId String?
+  user   User?   @relation("InterviewSessionUser", fields: [userId], references: [id], onDelete: Cascade)
 
-  kind            InterviewSessionKind
-  status          InterviewSessionStatus @default(ACTIVE)
+  kind   InterviewSessionKind
+  status InterviewSessionStatus @default(ACTIVE)
 
   /// Target role string. Free-form so we can index whatever the
   /// user types ("Battery Engineer", "BMS Firmware Lead").
-  targetRole      String
+  targetRole     String
   /// Experience tier the interviewer should pitch the questions at.
   /// Matches SeniorityLevel values but stored as a free-form string
   /// to avoid a coupling that would force us to migrate when one
   /// side changes.
-  seniorityLevel  String                 @default("MID")
+  seniorityLevel String  @default("MID")
   /// EV domain slug (battery-tech, motor-control, …). Optional —
   /// when set, the system prompt nudges the AI to ask domain-
   /// specific questions instead of generic EV-industry ones.
-  evDomainSlug    String?
+  evDomainSlug   String?
 
   /// SIMULATOR-only: company being role-played + interviewer
   /// persona ("tough technical lead", "warm HR generalist"). MOCK
   /// sessions leave both null.
-  targetCompany   String?
+  targetCompany      String?
   interviewerPersona String?
 
   /// Transcript. JSON array of { role: "user" | "assistant",
   /// content: string, ts: ISO string } messages, oldest-first.
   /// Kept in-row instead of a separate Message table because
   /// practice sessions are short and never queried out-of-order.
-  messages        Json                   @default("[]")
+  messages Json @default("[]")
 
   /// Filled by the summarise pass after the candidate ends the
   /// session. Mirrors the RoastResult shape so the same UI
   /// components can render both.
-  scoreOverall    Int?
-  scoreBreakdown  Json?
-  feedback        Json?
-  summary         String?                @db.Text
+  scoreOverall   Int?
+  scoreBreakdown Json?
+  feedback       Json?
+  summary        String? @db.Text
 
-  createdAt       DateTime               @default(now())
-  updatedAt       DateTime               @updatedAt
-  completedAt     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  completedAt DateTime?
 
   @@index([userId, createdAt])
   @@index([status, updatedAt])
@@ -4699,75 +4735,75 @@ enum CompanyTier {
 // assessments separately in the UI.
 
 enum SkillAssessmentDifficulty {
-  FOUNDATION   // ~30 min; verifies the basics. Almost any engineer can clear.
+  FOUNDATION // ~30 min; verifies the basics. Almost any engineer can clear.
   INTERMEDIATE // ~45 min; hands-on practitioner level.
-  ADVANCED     // ~60 min; specialist signal. Few candidates clear.
+  ADVANCED // ~60 min; specialist signal. Few candidates clear.
 }
 
 model SkillAssessmentMeta {
-  id                 String                    @id @default(cuid())
-  assessmentId       String                    @unique
-  assessment         Assessment                @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  id               String                    @id @default(cuid())
+  assessmentId     String                    @unique
+  assessment       Assessment                @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
   /// Stable slug for the URL — e.g. "battery-fundamentals",
   /// "bms-architecture", "ccs-charging-protocols". Used in
   /// `/skills/[slug]/take` + lookup keys for badge filters.
-  slug               String                    @unique
+  slug             String                    @unique
   /// EV domain this skill assessment belongs to. Drives the browse
   /// page's grouping ("Battery", "Charging", etc.) and powers the
   /// recruiter filter "candidate verified in {domain}".
-  evDomainSlug       String
-  difficulty         SkillAssessmentDifficulty @default(INTERMEDIATE)
+  evDomainSlug     String
+  difficulty       SkillAssessmentDifficulty @default(INTERMEDIATE)
   /// Marketing blurb for the browse card. ~140 chars.
-  blurb              String                    @db.Text
+  blurb            String                    @db.Text
   /// Estimated minutes — shown on the take-this-assessment card before
   /// the candidate commits.
-  estimatedMinutes   Int                       @default(30)
+  estimatedMinutes Int                       @default(30)
   /// Suggested prep links (3-5 URLs). Renders as "Brush up" hints
   /// before the test starts. JSON: `[{title, url}]`.
-  prepLinks          Json?
+  prepLinks        Json?
   /// Score % at or above which the candidate earns the badge. Defaults
   /// to 70 — distinct from the underlying Assessment.passingScore which
   /// may be lower for in-application MCQs.
-  badgeThreshold     Int                       @default(70)
+  badgeThreshold   Int                       @default(70)
   /// Recruiter-visible weight — drives the boost in candidate search
   /// rank when a recruiter filters by "verified in X". 1-5.
-  recruiterWeight    Int                       @default(3)
+  recruiterWeight  Int                       @default(3)
   /// Public flag — admin-only assessments stay hidden from browse.
-  isPublic           Boolean                   @default(true)
+  isPublic         Boolean                   @default(true)
   /// Sort order in the browse page within an EV domain group.
-  sortOrder          Int                       @default(0)
-  createdAt          DateTime                  @default(now())
-  updatedAt          DateTime                  @updatedAt
+  sortOrder        Int                       @default(0)
+  createdAt        DateTime                  @default(now())
+  updatedAt        DateTime                  @updatedAt
 
-  earnedBadges       VerifiedSkillBadge[]
+  earnedBadges VerifiedSkillBadge[]
 
   @@index([evDomainSlug, isPublic])
   @@index([difficulty])
 }
 
 model VerifiedSkillBadge {
-  id                  String              @id @default(cuid())
-  candidateId         String
-  candidate           CandidateProfile    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  metaId              String
-  meta                SkillAssessmentMeta @relation(fields: [metaId], references: [id], onDelete: Cascade)
+  id          String              @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  metaId      String
+  meta        SkillAssessmentMeta @relation(fields: [metaId], references: [id], onDelete: Cascade)
   /// Source attempt — the AssessmentAttempt that earned the badge.
   /// Lets the recruiter click through to the score breakdown.
   /// Cascade-on-delete: if the attempt is purged (GDPR erasure or
   /// data hygiene), the badge it earned goes with it. The score is
   /// already denormalised below, so the user-facing badge surface
   /// doesn't depend on the attempt row to render.
-  attemptId           String              @unique
-  attempt             AssessmentAttempt   @relation("BadgeSourceAttempt", fields: [attemptId], references: [id], onDelete: Cascade)
+  attemptId   String              @unique
+  attempt     AssessmentAttempt   @relation("BadgeSourceAttempt", fields: [attemptId], references: [id], onDelete: Cascade)
   /// Snapshot of the score % at award time. Keeping it denormalised
   /// means we don't have to JOIN AssessmentAttempt on every badge
   /// surface render.
-  score               Int
+  score       Int
   /// Optional expiry — for skills where the field moves fast (e.g.
   /// CCS protocols, OTA software) we may re-issue badges every 24 mo.
   /// Null = never expires.
-  expiresAt           DateTime?
-  earnedAt            DateTime            @default(now())
+  expiresAt   DateTime?
+  earnedAt    DateTime            @default(now())
 
   @@unique([candidateId, metaId])
   @@index([candidateId])
@@ -4783,33 +4819,33 @@ model VerifiedSkillBadge {
 // recruiter team, or fires a templated message to the candidate.
 
 enum AutomationTrigger {
-  APPLICATION_RECEIVED  // fires when a new application lands
-  STAGE_CHANGED         // fires when an existing application moves
+  APPLICATION_RECEIVED // fires when a new application lands
+  STAGE_CHANGED // fires when an existing application moves
 }
 
 enum AutomationAction {
-  AUTO_MOVE_STAGE       // move the application to a given stage
-  NOTIFY_TEAM           // ping the recruiter inbox
-  SEND_TEMPLATE         // send a templated message to the candidate
-  REJECT_WITH_REASON    // move to REJECTED + send the candidate a kind note
+  AUTO_MOVE_STAGE // move the application to a given stage
+  NOTIFY_TEAM // ping the recruiter inbox
+  SEND_TEMPLATE // send a templated message to the candidate
+  REJECT_WITH_REASON // move to REJECTED + send the candidate a kind note
 }
 
 model PipelineAutomation {
-  id            String             @id @default(cuid())
+  id            String            @id @default(cuid())
   companyId     String
-  company       Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company       Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   /// Nullable — when null, the rule applies to ALL jobs in the company.
   /// When set, it scopes to one job only. Lets a recruiter say
   /// "auto-move 80%+ matches to Shortlisted across every BMS role"
   /// at the company level OR "for THIS senior battery role only".
   jobId         String?
-  job           JobPosting?        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  job           JobPosting?       @relation(fields: [jobId], references: [id], onDelete: Cascade)
   /// Recruiter who created the rule. Nullable + SetNull so deleting
   /// the creator (e.g. recruiter leaves the company) doesn't take the
   /// company-level automation down with them — the rule belongs to
   /// the company, not the individual.
   createdById   String?
-  createdBy     User?              @relation("AutomationCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy     User?             @relation("AutomationCreator", fields: [createdById], references: [id], onDelete: SetNull)
   /// Human-readable name for the rules UI — "Auto-shortlist DIYguru
   /// + 80% match".
   label         String
@@ -4835,38 +4871,38 @@ model PipelineAutomation {
   ///   SEND_TEMPLATE:   { subject?: string, body: string }
   ///   REJECT_WITH_REASON: { reason: string }
   actionPayload Json
-  enabled       Boolean            @default(true)
+  enabled       Boolean           @default(true)
   /// Audit counters — surface "fired 14 times this week" on the rule card.
-  runCount      Int                @default(0)
+  runCount      Int               @default(0)
   lastRunAt     DateTime?
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
 
-  logs          PipelineAutomationLog[]
+  logs PipelineAutomationLog[]
 
   @@index([companyId, enabled])
   @@index([jobId])
 }
 
 model PipelineAutomationLog {
-  id           String             @id @default(cuid())
-  automationId String
-  automation   PipelineAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  id            String             @id @default(cuid())
+  automationId  String
+  automation    PipelineAutomation @relation(fields: [automationId], references: [id], onDelete: Cascade)
   /// Application this log row evaluated. Cascade-on-delete because
   /// log rows reference a single application and lose meaning if the
   /// application disappears (GDPR erasure, candidate-side withdraw
   /// then purge). Was a bare String before — caused dangling refs
   /// when applications were hard-deleted.
   applicationId String
-  application  Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  application   Application        @relation(fields: [applicationId], references: [id], onDelete: Cascade)
   /// Whether the rule actually fired (true) or just evaluated and
   /// no-op'd (false). Lets us answer "how many candidates did this
   /// rule actually touch" vs "how many did it consider".
-  fired        Boolean
+  fired         Boolean
   /// JSON snapshot of the inputs used + the decision taken — for the
   /// rule audit trail. ~1 KB / row in practice.
-  snapshot     Json
-  createdAt    DateTime           @default(now())
+  snapshot      Json
+  createdAt     DateTime           @default(now())
 
   @@index([automationId, createdAt])
   @@index([applicationId])
@@ -4887,34 +4923,34 @@ model PipelineAutomationLog {
 // yesterday" on the dashboard.
 
 model HiringAssistantConfig {
-  id                  String              @id @default(cuid())
-  jobId               String              @unique
-  job                 JobPosting          @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  id                 String     @id @default(cuid())
+  jobId              String     @unique
+  job                JobPosting @relation(fields: [jobId], references: [id], onDelete: Cascade)
   /// Recruiter who enabled the assistant. Nullable + SetNull so
   /// the config persists if that recruiter leaves the company. The
   /// daily worker tick still runs it on behalf of the company —
   /// the run draft messages use the company's display name rather
   /// than the original owner's identity when this is null.
-  enabledById         String?
-  enabledBy           User?               @relation("HiringAssistantOwner", fields: [enabledById], references: [id], onDelete: SetNull)
-  enabled             Boolean             @default(true)
+  enabledById        String?
+  enabledBy          User?      @relation("HiringAssistantOwner", fields: [enabledById], references: [id], onDelete: SetNull)
+  enabled            Boolean    @default(true)
   /// How many of the top-ranked candidates to draft outreach for on
   /// each tick. Default 5 — small enough to feel curated, large enough
   /// to keep the funnel warm.
-  draftBatchSize      Int                 @default(5)
+  draftBatchSize     Int        @default(5)
   /// Days to wait before the assistant chases a non-responder. Null =
   /// no chase. Default 4 days mirrors LinkedIn Recruiter's default.
-  followUpAfterDays   Int?                @default(4)
+  followUpAfterDays  Int?       @default(4)
   /// Tone of the drafted outreach. Drives the system prompt.
   /// FORMAL / WARM / CASUAL.
-  tone                String              @default("WARM")
+  tone               String     @default("WARM")
   /// Hard cap on outreach per tick — even if the model wants to
   /// message more candidates, we never exceed this. Cost guardrail.
-  maxOutreachPerTick  Int                 @default(10)
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
+  maxOutreachPerTick Int        @default(10)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
 
-  runs                HiringAssistantRun[]
+  runs HiringAssistantRun[]
 
   @@index([enabled])
 }
@@ -4927,29 +4963,29 @@ enum HiringAssistantRunStatus {
 }
 
 model HiringAssistantRun {
-  id            String                   @id @default(cuid())
-  configId      String
-  config        HiringAssistantConfig    @relation(fields: [configId], references: [id], onDelete: Cascade)
-  status        HiringAssistantRunStatus @default(PENDING)
+  id           String                   @id @default(cuid())
+  configId     String
+  config       HiringAssistantConfig    @relation(fields: [configId], references: [id], onDelete: Cascade)
+  status       HiringAssistantRunStatus @default(PENDING)
   /// Counts surfaced in the recruiter summary card.
-  rankedCount   Int                      @default(0)
-  draftedCount  Int                      @default(0)
-  chasedCount   Int                      @default(0)
+  rankedCount  Int                      @default(0)
+  draftedCount Int                      @default(0)
+  chasedCount  Int                      @default(0)
   /// Total OpenAI tokens used by this run — feeds the company-level
   /// cost dashboard. trackAICall populates AICostLog separately; this
   /// is the rolled-up summary shown to the recruiter.
-  tokensUsed    Int                      @default(0)
+  tokensUsed   Int                      @default(0)
   /// Natural-language summary the assistant generated for the
   /// recruiter ("I drafted 5 outreach messages and chased 3
   /// non-responders. Top candidate this round: Asha Singh (94% match,
   /// verified BMS, 4 yrs Ola)."). 1-2 short paragraphs.
-  summary       String?                  @db.Text
+  summary      String?                  @db.Text
   /// Detailed breakdown JSON: per-candidate decisions, drafted message
   /// preview, errors. ~5-10 KB.
-  detail        Json?
-  startedAt     DateTime                 @default(now())
-  finishedAt    DateTime?
-  errorMessage  String?                  @db.Text
+  detail       Json?
+  startedAt    DateTime                 @default(now())
+  finishedAt   DateTime?
+  errorMessage String?                  @db.Text
 
   @@index([configId, startedAt])
 }
@@ -4965,12 +5001,12 @@ model HiringAssistantRun {
 // (India-first). Twilio is a drop-in alternative.
 
 enum CallingSessionStatus {
-  QUEUED          // Created, waiting for the worker to pick up
-  DIALING         // Provider has started the call
-  IN_PROGRESS     // Connected; questions in progress
-  COMPLETED       // Both parties hung up, transcript stored
-  FAILED          // Provider error, no-answer, voicemail
-  CANCELLED       // Recruiter cancelled before dial
+  QUEUED // Created, waiting for the worker to pick up
+  DIALING // Provider has started the call
+  IN_PROGRESS // Connected; questions in progress
+  COMPLETED // Both parties hung up, transcript stored
+  FAILED // Provider error, no-answer, voicemail
+  CANCELLED // Recruiter cancelled before dial
 }
 
 enum CallingLanguage {
@@ -4987,51 +5023,51 @@ enum CallingLanguage {
 }
 
 model CallingSession {
-  id            String              @id @default(cuid())
+  id              String               @id @default(cuid())
   /// Application being screened. Nullable so a recruiter could screen
   /// a sourced candidate before any application exists.
-  applicationId String?
-  application   Application?        @relation(fields: [applicationId], references: [id], onDelete: SetNull)
-  candidateId   String
-  candidate     CandidateProfile    @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  jobId         String?
-  job           JobPosting?         @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  applicationId   String?
+  application     Application?         @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  candidateId     String
+  candidate       CandidateProfile     @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  jobId           String?
+  job             JobPosting?          @relation(fields: [jobId], references: [id], onDelete: SetNull)
   /// Recruiter who triggered the call. Nullable + SetNull so the
   /// audit trail (transcript, fit score, summary) survives the
   /// triggering recruiter's account deletion.
-  triggeredById String?
-  triggeredBy   User?               @relation("CallingTriggerer", fields: [triggeredById], references: [id], onDelete: SetNull)
-  language      CallingLanguage     @default(HI_IN)
+  triggeredById   String?
+  triggeredBy     User?                @relation("CallingTriggerer", fields: [triggeredById], references: [id], onDelete: SetNull)
+  language        CallingLanguage      @default(HI_IN)
   /// Question script the assistant follows. Each item: `{ id, text }`.
   /// Recruiter customises per job. We auto-suggest a script from the
   /// job description on first run.
-  script        Json
-  status        CallingSessionStatus @default(QUEUED)
+  script          Json
+  status          CallingSessionStatus @default(QUEUED)
   /// Provider-specific call session ID (returned by Exotel /
   /// Twilio's call-initiate API). Used to correlate webhook events
   /// back to our row.
   providerCallSid String?
-  providerName    String?   // "exotel" | "twilio" — for analytics + provider migration
+  providerName    String? // "exotel" | "twilio" — for analytics + provider migration
   /// Whisper/Deepgram ASR transcript — raw text. Stored alongside the
   /// structured messages because the structured shape only captures
   /// the per-question Q&A, not the candidate's pre-introduction or
   /// post-thank-you remarks which can still be useful for the recruiter.
-  rawTranscript String?     @db.Text
+  rawTranscript   String?              @db.Text
   /// Overall fit score 0-100 produced by a GPT-4o pass over the
   /// transcript with the job description as context.
-  fitScore      Int?
+  fitScore        Int?
   /// 1-2 sentence summary the recruiter sees in their ATS.
-  summary       String?     @db.Text
+  summary         String?              @db.Text
   /// Cost in USD micros, like AICostLog — call cost + ASR cost + LLM
   /// scoring cost rolled up.
-  costUsdMicros Int         @default(0)
-  startedAt     DateTime?
-  completedAt   DateTime?
-  errorMessage  String?     @db.Text
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  costUsdMicros   Int                  @default(0)
+  startedAt       DateTime?
+  completedAt     DateTime?
+  errorMessage    String?              @db.Text
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
 
-  messages      CallingMessage[]
+  messages CallingMessage[]
 
   @@index([candidateId, createdAt])
   @@index([jobId, createdAt])
@@ -5077,10 +5113,10 @@ model CallingMessage {
 //      company profile + a public /awards page.
 
 enum CompanyReviewStatus {
-  PENDING       // Submitted, awaiting moderation
-  PUBLISHED     // Live on the company profile
-  REJECTED      // Moderation rejected (spam / personal attack)
-  WITHDRAWN     // Reviewer asked to remove
+  PENDING // Submitted, awaiting moderation
+  PUBLISHED // Live on the company profile
+  REJECTED // Moderation rejected (spam / personal attack)
+  WITHDRAWN // Reviewer asked to remove
 }
 
 enum ReviewerRelationship {
@@ -5088,48 +5124,48 @@ enum ReviewerRelationship {
   FORMER_EMPLOYEE
   INTERN
   CONTRACTOR
-  INTERVIEWED      // Made it to interview, didn't join
+  INTERVIEWED // Made it to interview, didn't join
 }
 
 model CompanyReview {
-  id                  String                @id @default(cuid())
-  companyId           String
-  company             Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id                 String               @id @default(cuid())
+  companyId          String
+  company            Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   /// Nullable — anonymous reviews are allowed but moderated more
   /// strictly. Signed-in reviewers get a "verified employee" green
   /// dot when their EmployerProfile.companyId matches.
-  reviewerUserId      String?
-  reviewerUser        User?                 @relation("CompanyReviewAuthor", fields: [reviewerUserId], references: [id], onDelete: SetNull)
-  relationship        ReviewerRelationship
+  reviewerUserId     String?
+  reviewerUser       User?                @relation("CompanyReviewAuthor", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+  relationship       ReviewerRelationship
   /// 1-5 each — drives the per-axis breakdown on the company profile.
   /// All required so the aggregate ranking is consistent.
-  cultureRating       Int
-  compensationRating  Int
-  managementRating    Int
-  growthRating        Int
-  workLifeRating      Int
+  cultureRating      Int
+  compensationRating Int
+  managementRating   Int
+  growthRating       Int
+  workLifeRating     Int
   /// 1-5 overall — recommended-to-friend signal. Drives the Best
   /// Employer award weight more than the axis scores.
-  overallRating       Int
+  overallRating      Int
   /// 200-char headline + free-form body, both moderated.
-  headline            String                @db.VarChar(220)
-  pros                String                @db.Text
-  cons                String                @db.Text
+  headline           String               @db.VarChar(220)
+  pros               String               @db.Text
+  cons               String               @db.Text
   /// Optional job title at the company. Public on the review card.
-  reviewerJobTitle    String?
+  reviewerJobTitle   String?
   /// Optional location of the office reviewed. Helps slice by city.
-  reviewerLocation    String?
-  status              CompanyReviewStatus   @default(PENDING)
+  reviewerLocation   String?
+  status             CompanyReviewStatus  @default(PENDING)
   /// Admin reviewer + decision audit trail.
-  moderatedById       String?
-  moderatedBy         User?                 @relation("CompanyReviewModerator", fields: [moderatedById], references: [id])
-  moderatedAt         DateTime?
-  moderationNotes     String?               @db.Text
+  moderatedById      String?
+  moderatedBy        User?                @relation("CompanyReviewModerator", fields: [moderatedById], references: [id])
+  moderatedAt        DateTime?
+  moderationNotes    String?              @db.Text
   /// Helpfulness counters — drive the top-review surfacing.
-  helpfulCount        Int                   @default(0)
-  reportCount         Int                   @default(0)
-  createdAt           DateTime              @default(now())
-  updatedAt           DateTime              @updatedAt
+  helpfulCount       Int                  @default(0)
+  reportCount        Int                  @default(0)
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
 
   @@unique([companyId, reviewerUserId])
   @@index([companyId, status])
@@ -5137,31 +5173,31 @@ model CompanyReview {
 }
 
 enum EmployerAwardCategory {
-  BEST_OVERALL              // top-of-the-list award
+  BEST_OVERALL // top-of-the-list award
   BEST_FOR_BATTERY_ROLES
   BEST_FOR_CHARGING_ROLES
   BEST_FOR_MOTOR_ROLES
   BEST_FOR_SOFTWARE_ROLES
   BEST_FOR_FRESHERS
   BEST_REMOTE_CULTURE
-  FASTEST_RESPONDER         // best applicant response time
-  MOST_LOVED_BY_DIYGURU     // highest DIYguru-cohort retention
+  FASTEST_RESPONDER // best applicant response time
+  MOST_LOVED_BY_DIYGURU // highest DIYguru-cohort retention
 }
 
 model EmployerAward {
-  id           String                @id @default(cuid())
-  companyId    String
-  company      Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id             String                @id @default(cuid())
+  companyId      String
+  company        Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
   /// Year the award is for ("2026" badge stays up across 2026).
-  year         Int
-  category     EmployerAwardCategory
+  year           Int
+  category       EmployerAwardCategory
   /// 1 = winner, 2 = runner-up. Top 10 in each category get badges.
-  rank         Int
+  rank           Int
   /// Composite signal that produced the rank (rolled-up for the
   /// award-page tooltip: "Based on 124 reviews, 4.6 avg, 87% recommend,
   /// avg response time 6h").
   scoreBreakdown Json
-  awardedAt    DateTime              @default(now())
+  awardedAt      DateTime              @default(now())
 
   @@unique([companyId, year, category])
   @@index([year, category, rank])
@@ -5182,19 +5218,19 @@ model EmployerAward {
 // admin-curated lookup that the filter dropdown reads from. Distinct
 // table so the recruiter facet doesn't drift on typos.
 model Credential {
-  id          String                 @id @default(cuid())
+  id           String  @id @default(cuid())
   /// Stable slug — "arai", "fame-ii", "bis-is15129", "asdc-level-3".
-  slug        String                 @unique
+  slug         String  @unique
   /// Display name on chips / filter rows.
-  name        String
+  name         String
   /// Long-form authority — "Automotive Research Association of India".
-  authority   String?
+  authority    String?
   /// Optional EV domain this credential belongs to. Lets the filter UI
   /// group "ARAI under Vehicle Engineering".
   evDomainSlug String?
   /// Order in the filter dropdown.
-  sortOrder   Int                    @default(0)
-  isActive    Boolean                @default(true)
+  sortOrder    Int     @default(0)
+  isActive     Boolean @default(true)
 
   jobs       JobCredential[]
   candidates CandidateCredential[]
@@ -5203,29 +5239,29 @@ model Credential {
 }
 
 model JobCredential {
-  jobId          String
-  credentialId   String
-  job            JobPosting @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  credential     Credential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  jobId        String
+  credentialId String
+  job          JobPosting @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  credential   Credential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
   /// When true, the candidate MUST hold this credential for the job
   /// to surface in their match results. When false, it's a "nice to
   /// have" — boosts the score but doesn't gate inclusion.
-  required       Boolean    @default(false)
+  required     Boolean    @default(false)
 
   @@id([jobId, credentialId])
   @@index([credentialId])
 }
 
 model CandidateCredential {
-  candidateId    String
-  credentialId   String
-  candidate      CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
-  credential     Credential       @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  candidateId   String
+  credentialId  String
+  candidate     CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  credential    Credential       @relation(fields: [credentialId], references: [id], onDelete: Cascade)
   /// When the candidate earned it. Used to highlight recent (<2y)
   /// credentials on the profile.
-  earnedAt       DateTime?
+  earnedAt      DateTime?
   /// Optional URL to the credential PDF / verification page.
-  credentialUrl  String?
+  credentialUrl String?
 
   @@id([candidateId, credentialId])
   @@index([credentialId])
@@ -5238,26 +5274,26 @@ model CandidateCredential {
 // here for ~30 days so revisits + share links don't re-burn AI tokens.
 
 model CareerExplorationLog {
-  id              String   @id @default(cuid())
+  id            String   @id @default(cuid())
   /// Nullable — anonymous explorations are allowed (visible only via
   /// the share link UUID).
-  userId          String?
-  user            User?    @relation("CareerExplorerUser", fields: [userId], references: [id], onDelete: SetNull)
+  userId        String?
+  user          User?    @relation("CareerExplorerUser", fields: [userId], references: [id], onDelete: SetNull)
   /// Free-text "current role" the user entered.
-  fromRole        String
+  fromRole      String
   /// Optional EV domain slug context.
-  evDomainSlug    String?
+  evDomainSlug  String?
   /// Comma-joined skill snapshot at exploration time. Lets us
   /// re-rank later if their skills change without re-prompting OpenAI.
-  fromSkillsCsv   String   @db.Text
+  fromSkillsCsv String   @db.Text
   /// AI result: an array of `{ toRole, score, skillGap[],
   /// reason, prepLinks }`. Stored JSON for schema agility.
-  result          Json
+  result        Json
   /// 30-day cache key — same fromRole + evDomain + skill set returns
   /// the cached row instead of re-prompting.
-  cacheKey        String
-  tokensUsed      Int      @default(0)
-  createdAt       DateTime @default(now())
+  cacheKey      String
+  tokensUsed    Int      @default(0)
+  createdAt     DateTime @default(now())
 
   @@index([cacheKey, createdAt])
   @@index([userId, createdAt])
@@ -5280,9 +5316,9 @@ model CareerExplorationLog {
 // the recruiter axis we'd over-count by 5-10x just from pagination.
 
 model ProfileSearchAppearance {
-  id          String           @id @default(cuid())
-  candidateId String
-  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  id              String           @id @default(cuid())
+  candidateId     String
+  candidate       CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   /// The recruiter who ran the search (their User id; we resolve back
   /// to EmployerProfile lazily in the analytics view). Null when a
   /// public visitor browses the same candidate list — kept distinct
@@ -5290,14 +5326,14 @@ model ProfileSearchAppearance {
   recruiterUserId String?
   /// Monday-aligned UTC date so weekly buckets are stable across
   /// timezone boundaries. Stored as a date-truncated DateTime.
-  weekStart   DateTime
+  weekStart       DateTime
   /// Times this candidate appeared in the recruiter's search results
   /// over the week. Incremented on each new query (capped at 50 per
   /// week per recruiter to keep one obsessive recruiter from
   /// inflating the stat).
-  count       Int              @default(1)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  count           Int              @default(1)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@unique([candidateId, recruiterUserId, weekStart])
   @@index([candidateId, weekStart])
@@ -5316,64 +5352,64 @@ model ProfileSearchAppearance {
 // the counter in sync inside a transaction.
 
 model Group {
-  id            String   @id @default(cuid())
+  id           String   @id @default(cuid())
   /// Stable slug — also used as the hashtag. "battery-engineers",
   /// "charging-infrastructure", "bms-design". Hashtag matching is
   /// case-insensitive so #BatteryEngineers and #battery-engineers
   /// hit the same group feed.
-  slug          String   @unique
-  name          String
+  slug         String   @unique
+  name         String
   /// One-line tagline shown on the group card.
-  tagline       String?  @db.VarChar(220)
+  tagline      String?  @db.VarChar(220)
   /// Long-form description rendered on the group detail page. Stored
   /// as plain text; rich text gets sanitised at render time via the
   /// existing htmlOrFallback helper.
-  description   String?  @db.Text
+  description  String?  @db.Text
   /// Banner image (cover photo) — 1500×500 ideal. Falls back to the
   /// brand mesh gradient when null.
-  bannerUrl     String?
+  bannerUrl    String?
   /// EV domain this group is anchored to. Drives the browse-by-
   /// domain layout on /groups.
-  evDomainSlug  String
+  evDomainSlug String
   /// Denormalised counter — incremented on join, decremented on
   /// leave. Surfaces on the browse card without a count() per render.
-  memberCount   Int      @default(0)
-  postCount     Int      @default(0)
+  memberCount  Int      @default(0)
+  postCount    Int      @default(0)
   /// Public flag — admin-only groups stay hidden from browse.
-  isPublic      Boolean  @default(true)
+  isPublic     Boolean  @default(true)
   /// Optional rules string shown above the post composer ("Posts must
   /// cite an EV topic; no recruiting; no self-promotion"). Rendered
   /// as plain text.
-  rules         String?  @db.Text
+  rules        String?  @db.Text
   /// Sort order within an EV domain section.
-  sortOrder     Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
-  memberships   GroupMembership[]
+  memberships GroupMembership[]
 
   @@index([evDomainSlug, isPublic])
 }
 
 model GroupMembership {
-  id        String   @id @default(cuid())
-  groupId   String
-  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User     @relation("GroupMember", fields: [userId], references: [id], onDelete: Cascade)
-  joinedAt  DateTime @default(now())
+  id       String          @id @default(cuid())
+  groupId  String
+  group    Group           @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User            @relation("GroupMember", fields: [userId], references: [id], onDelete: Cascade)
+  joinedAt DateTime        @default(now())
   /// Per-member notification preference — defaults to weekly digest
   /// to avoid spamming members who joined for browsability.
-  notify    GroupNotifyMode @default(WEEKLY)
+  notify   GroupNotifyMode @default(WEEKLY)
 
   @@unique([groupId, userId])
   @@index([userId])
 }
 
 enum GroupNotifyMode {
-  REALTIME     // every new post pings the member
-  WEEKLY       // Sunday digest
-  OFF          // joined-but-quiet
+  REALTIME // every new post pings the member
+  WEEKLY // Sunday digest
+  OFF // joined-but-quiet
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -5397,9 +5433,9 @@ enum GroupNotifyMode {
 // when it fires.
 
 model OutreachCadence {
-  id          String   @id @default(cuid())
+  id          String      @id @default(cuid())
   companyId   String
-  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
   /// Null = company-wide default cadence. Set = scoped to one job.
   /// Lets a recruiter customise the cadence for a senior role
   /// without rewriting the company default.
@@ -5409,13 +5445,13 @@ model OutreachCadence {
   /// company doesn't take their cadences with them (cadences belong
   /// to the company; enrollments continue firing).
   createdById String?
-  createdBy   User?    @relation("OutreachCadenceCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdBy   User?       @relation("OutreachCadenceCreator", fields: [createdById], references: [id], onDelete: SetNull)
   /// Friendly name for the rules list ("3-touch senior cadence",
   /// "Engineering screen pass").
   label       String
-  enabled     Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  enabled     Boolean     @default(true)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
 
   steps       OutreachStep[]
   enrollments OutreachEnrollment[]
@@ -5425,67 +5461,67 @@ model OutreachCadence {
 }
 
 model OutreachStep {
-  id          String           @id @default(cuid())
-  cadenceId   String
-  cadence     OutreachCadence  @relation(fields: [cadenceId], references: [id], onDelete: Cascade)
+  id        String          @id @default(cuid())
+  cadenceId String
+  cadence   OutreachCadence @relation(fields: [cadenceId], references: [id], onDelete: Cascade)
   /// 0-indexed position in the sequence. Step 0 = first touch.
-  order       Int
+  order     Int
   /// Days from enrollment (not from previous step). So a "Day 0,
   /// Day 4, Day 10" cadence has delayDays = 0, 4, 10. Simplifies
   /// the engine's "is this step due" check to a single DateTime
   /// comparison against enrolledAt.
-  delayDays   Int              @default(0)
+  delayDays Int             @default(0)
   /// Subject + body template strings. Placeholders supported:
   ///   {{candidateFirstName}}, {{candidateName}}, {{jobTitle}},
   ///   {{companyName}}, {{recruiterName}}, {{location}}.
   /// The engine does literal token replacement — no Mustache deps.
-  subject     String?
-  body        String           @db.Text
+  subject   String?
+  body      String          @db.Text
   /// Channel mask — usually [IN_APP, EMAIL], optionally [WHATSAPP]
   /// for high-volume blue-collar cadences. Stored as a string[] of
   /// the NotificationChannel enum values.
-  channels    String[]         @default(["IN_APP", "EMAIL"])
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
+  channels  String[]        @default(["IN_APP", "EMAIL"])
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 
   @@unique([cadenceId, order])
 }
 
 enum OutreachEnrollmentStatus {
-  ACTIVE        // Still progressing through the cadence
-  RESPONDED     // Candidate replied — cadence paused
-  COMPLETED     // Last step fired with no response
-  CANCELLED     // Recruiter manually pulled the candidate
-  FAILED        // Provider rejected too many sends; auto-paused
+  ACTIVE // Still progressing through the cadence
+  RESPONDED // Candidate replied — cadence paused
+  COMPLETED // Last step fired with no response
+  CANCELLED // Recruiter manually pulled the candidate
+  FAILED // Provider rejected too many sends; auto-paused
 }
 
 model OutreachEnrollment {
-  id           String                  @id @default(cuid())
-  cadenceId    String
-  cadence      OutreachCadence         @relation(fields: [cadenceId], references: [id], onDelete: Cascade)
+  id            String                   @id @default(cuid())
+  cadenceId     String
+  cadence       OutreachCadence          @relation(fields: [cadenceId], references: [id], onDelete: Cascade)
   applicationId String?
-  application  Application?            @relation(fields: [applicationId], references: [id], onDelete: SetNull)
-  candidateId  String
-  candidate    CandidateProfile        @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  application   Application?             @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+  candidateId   String
+  candidate     CandidateProfile         @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   /// Recruiter who enrolled the candidate. Nullable + SetNull so an
   /// in-flight cadence keeps firing even if the enrolling recruiter
   /// leaves. The engine sends from the company's identity, not the
   /// individual's, so this is purely an audit reference.
-  enrolledById String?
-  enrolledBy   User?                   @relation("OutreachEnrolledBy", fields: [enrolledById], references: [id], onDelete: SetNull)
-  enrolledAt   DateTime                @default(now())
+  enrolledById  String?
+  enrolledBy    User?                    @relation("OutreachEnrolledBy", fields: [enrolledById], references: [id], onDelete: SetNull)
+  enrolledAt    DateTime                 @default(now())
   /// Step index the engine is currently waiting to fire. Starts at 0
   /// (= "ready for first touch"). Increments after each send. The
   /// cadence is "done" when this exceeds the step count.
-  nextStepIndex Int                    @default(0)
+  nextStepIndex Int                      @default(0)
   /// Timestamp of the last step fired — engine uses this PLUS the
   /// step's delayDays-from-enrolledAt to compute due time.
-  lastSentAt   DateTime?
-  status       OutreachEnrollmentStatus @default(ACTIVE)
+  lastSentAt    DateTime?
+  status        OutreachEnrollmentStatus @default(ACTIVE)
   /// Stamped when the candidate responds (any message from them on
   /// the thread). Engine flips status → RESPONDED.
-  respondedAt  DateTime?
-  cancelReason String?
+  respondedAt   DateTime?
+  cancelReason  String?
 
   @@unique([cadenceId, candidateId])
   @@index([status, nextStepIndex])

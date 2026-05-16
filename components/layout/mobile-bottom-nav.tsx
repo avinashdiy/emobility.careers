@@ -77,7 +77,19 @@ export function MobileBottomNav() {
   if (HIDE_PREFIXES.some((p) => pathname.startsWith(p))) return null;
 
   return (
-    <nav
+    // Wrap in a fragment so we can ship a sibling spacer alongside
+    // the fixed bar. Pre-fix we put bottom-padding on `<body>`
+    // unconditionally, which left phantom 3.5rem of dead space at
+    // the bottom of every page where the bar is hidden (admin,
+    // employer, /onboarding, /skills/.../take, etc.). Bundling the
+    // spacer with the bar means they appear and disappear together.
+    <>
+      <div
+        aria-hidden
+        className="h-14 sm:hidden"
+        style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+      />
+      <nav
       aria-label="Primary"
       // env(safe-area-inset-bottom) keeps the bar above the iOS home
       // indicator without us hardcoding the 34px. Tailwind's
@@ -118,7 +130,8 @@ export function MobileBottomNav() {
           );
         })}
       </ul>
-    </nav>
+      </nav>
+    </>
   );
 }
 

@@ -33,6 +33,15 @@ export default async function ATSPage({
   const applications = await db.application.findMany({
     where: { jobId: id },
     orderBy: { appliedAt: "desc" },
+    // Hard cap on the per-page payload. Pre-cap this query loaded
+    // every Application row for the job + a 6-field candidate join
+    // per row + a nested `_count` subquery — viable at ~50 applicants,
+    // OOMs at 5k+ on a viral job. 500 fits 7 stages of ~70 cards
+    // each comfortably; recruiters who genuinely have more than that
+    // should narrow via stage filter (paginating across pages would
+    // break the drag-and-drop UX). Order by appliedAt-desc means the
+    // 500 newest are the ones loaded.
+    take: 500,
     include: {
       candidate: {
         select: {

@@ -103,6 +103,18 @@ export async function evaluateAutomations(ctx: EvaluationContext): Promise<numbe
   if (rules.length === 0) return 0;
 
   let fired = 0;
+  // Buffer log rows so we can flush in a single createMany at the
+  // end. Pre-batch, each rule fired its own `pipelineAutomationLog.create`
+  // INSIDE the request handler — a company with 20 enabled rules and a
+  // viral job (500 applies/hour) generated 10k sequential inserts/hour
+  // on the hot path, slowing every apply + stage-change in production.
+  const logEntries: Prisma.PipelineAutomationLogCreateManyInput[] = [];
+  // Track which rules actually fired so we increment their counters
+  // separately at the end. Counter updates can't be batched (each
+  // increment is per-row), but only matched rules need them — and
+  // typical match rates are << 20%, so this stays cheap.
+  const firedRuleIds: string[] = [];
+
   const candidateSkillIds = new Set(application.candidate.skills.map((s) => s.skill.id));
   const candidateSkillNames = new Set(
     application.candidate.skills.map((s) => s.skill.name.toLowerCase()),
@@ -176,13 +188,11 @@ export async function evaluateAutomations(ctx: EvaluationContext): Promise<numbe
       };
 
       if (!matches) {
-        await db.pipelineAutomationLog.create({
-          data: {
-            automationId: rule.id,
-            applicationId: application.id,
-            fired: false,
-            snapshot: snapshot as unknown as Prisma.InputJsonValue,
-          },
+        logEntries.push({
+          automationId: rule.id,
+          applicationId: application.id,
+          fired: false,
+          snapshot: snapshot as unknown as Prisma.InputJsonValue,
         });
         continue;
       }
@@ -190,18 +200,13 @@ export async function evaluateAutomations(ctx: EvaluationContext): Promise<numbe
       // Run the action.
       await runAction(rule.id, rule.action, rule.actionPayload, application);
       fired += 1;
+      firedRuleIds.push(rule.id);
 
-      await db.pipelineAutomation.update({
-        where: { id: rule.id },
-        data: { runCount: { increment: 1 }, lastRunAt: new Date() },
-      });
-      await db.pipelineAutomationLog.create({
-        data: {
-          automationId: rule.id,
-          applicationId: application.id,
-          fired: true,
-          snapshot: snapshot as unknown as Prisma.InputJsonValue,
-        },
+      logEntries.push({
+        automationId: rule.id,
+        applicationId: application.id,
+        fired: true,
+        snapshot: snapshot as unknown as Prisma.InputJsonValue,
       });
     } catch (err) {
       // Single-rule isolation — log the row's error onto its own
@@ -211,21 +216,51 @@ export async function evaluateAutomations(ctx: EvaluationContext): Promise<numbe
         { err, ruleId: rule.id, applicationId: application.id },
         "[automations] rule evaluation failed",
       );
-      try {
-        await db.pipelineAutomationLog.create({
-          data: {
-            automationId: rule.id,
-            applicationId: application.id,
-            fired: false,
-            snapshot: {
-              error: err instanceof Error ? err.message : String(err),
-              ruleId: rule.id,
-            } as unknown as Prisma.InputJsonValue,
-          },
-        });
-      } catch {/* log of a log — give up */}
+      logEntries.push({
+        automationId: rule.id,
+        applicationId: application.id,
+        fired: false,
+        snapshot: {
+          error: err instanceof Error ? err.message : String(err),
+          ruleId: rule.id,
+        } as unknown as Prisma.InputJsonValue,
+      });
     }
   }
+
+  // Single round-trip for every log row in this evaluation pass.
+  // skipDuplicates is defensive — there's no unique constraint on
+  // (automationId, applicationId), but if a retry or upstream
+  // double-call ever surfaces, we'd rather no-op than corrupt the
+  // audit trail.
+  if (logEntries.length > 0) {
+    try {
+      await db.pipelineAutomationLog.createMany({
+        data: logEntries,
+        skipDuplicates: true,
+      });
+    } catch (err) {
+      logger.error(
+        { err, count: logEntries.length },
+        "[automations] log flush failed",
+      );
+    }
+  }
+
+  // Counter updates — only matched rules. Can't batch because each
+  // is an atomic increment; serial here is fine since fired-rule
+  // count is typically <5.
+  for (const ruleId of firedRuleIds) {
+    try {
+      await db.pipelineAutomation.update({
+        where: { id: ruleId },
+        data: { runCount: { increment: 1 }, lastRunAt: new Date() },
+      });
+    } catch (err) {
+      logger.warn({ err, ruleId }, "[automations] counter update failed");
+    }
+  }
+
   return fired;
 }
 

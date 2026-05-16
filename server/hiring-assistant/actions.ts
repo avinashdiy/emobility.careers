@@ -8,6 +8,7 @@ import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { logger } from "@/lib/logger";
 import { isRouterControlError } from "@/lib/server-action-errors";
+import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { runHiringAssistantForJob } from "@/server/hiring-assistant/run";
 
 /**
@@ -111,7 +112,23 @@ export async function runHiringAssistantNow(formData: FormData): Promise<void> {
     const parsed = runNowSchema.safeParse(Object.fromEntries(formData));
     if (!parsed.success) redirect("/employer");
     const { jobId } = parsed.data;
-    await requireJobOwner(jobId);
+    const { session: authSession } = await requireJobOwner(jobId);
+
+    // Rate-limit per recruiter — "Run now" kicks off an agentic loop
+    // that issues 50× DB reads, up to 20 OpenAI calls, and N
+    // candidate notifications. A bored or stuck-retry client mashing
+    // the button can burn tokens + spam candidates before the daily
+    // cron tick ever fires.
+    try {
+      await rateLimitOrThrow(`hiring-asst-run:${authSession.user.id}`, "ai");
+    } catch (err) {
+      if (isRouterControlError(err)) throw err;
+      redirect(
+        `/employer/jobs/${jobId}/assistant?error=` +
+          encodeURIComponent("You're running the assistant very fast — try again in a minute."),
+      );
+    }
+
     const config = await db.hiringAssistantConfig.findUnique({ where: { jobId } });
     if (!config) {
       redirect(

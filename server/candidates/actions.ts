@@ -384,6 +384,11 @@ const preferencesSchema = z.object({
   expectedCtcMax: z.coerce.number().min(0).optional(),
   cvVisibility: z.nativeEnum(CVVisibility),
   openToWork: z.coerce.boolean().optional(),
+  /// #5 Skill-trade pairing — comma-separated skill names the
+  /// candidate is actively trying to learn. Free-form (not joined
+  /// to the Skill table) because what someone wants to learn is
+  /// often vaguer than their resume claims.
+  learningSkills: z.string().max(500).optional(),
 });
 
 export async function savePreferences(
@@ -406,7 +411,28 @@ export async function savePreferences(
         prevValues: snapshotFormData(formData),
       };
     }
-    const { preferredCities, country, city, location: rawLocation, ...rest } = parsed.data;
+    const {
+      preferredCities,
+      country,
+      city,
+      location: rawLocation,
+      learningSkills: learningSkillsRaw,
+      ...rest
+    } = parsed.data;
+    // #5 — normalise learning skills to a clean string array. Trim,
+    // dedupe (case-insensitive), cap at 8 entries (matching mentor-
+    // page tag patterns elsewhere).
+    const learningSkills = learningSkillsRaw
+      ? Array.from(
+          new Set(
+            learningSkillsRaw
+              .split(",")
+              .map((s) => s.trim())
+              .filter(Boolean)
+              .map((s) => s.slice(0, 60)),
+          ),
+        ).slice(0, 8)
+      : [];
     // Derive a `location` display string from city + country if the
     // candidate provided both, but don't clobber a non-empty manual
     // value they typed in. This keeps the existing free-text location
@@ -428,6 +454,7 @@ export async function savePreferences(
         preferredCities: preferredCities
           ? preferredCities.split(",").map((s) => s.trim()).filter(Boolean)
           : [],
+        learningSkills,
         onboardingCompletedAt: new Date(),
       },
     });
@@ -1282,7 +1309,20 @@ export async function getResumeDownloadUrl(input: {
   } else {
     key = resumeKey.replace(new RegExp(`^${buckets.resumes}/`), "");
   }
-  return presignDownload("resumes", key, 60 * 5);
+  // Force `Content-Disposition: inline` on the signed URL so the
+  // application-detail iframe actually renders the resume in-tab
+  // instead of getting blocked by an `attachment` disposition. For
+  // PDFs we also pin Content-Type to `application/pdf` — older
+  // uploads landed in MinIO as `application/octet-stream`, which
+  // Chrome won't preview inline. For Word resumes (.docx/.doc) we
+  // leave the content-type alone; the browser will trigger a
+  // download cleanly because it can't preview Word documents inline
+  // anyway.
+  const isPdf = key.toLowerCase().endsWith(".pdf");
+  return presignDownload("resumes", key, 60 * 5, {
+    inline: isPdf,
+    contentType: isPdf ? "application/pdf" : undefined,
+  });
 }
 
 // ─── Custom URL / username ─────────────────────────────────

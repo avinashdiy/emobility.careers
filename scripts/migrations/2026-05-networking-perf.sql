@@ -1,0 +1,79 @@
+-- ──────────────────────────────────────────────────────────────────────
+-- Performance indexes for the networking features (#1, #3, #5, #6).
+--
+-- Two indexes that Prisma's schema language can't express, and which
+-- can't ride along on `prisma db push` because they hit existing
+-- populated tables — db push uses non-CONCURRENT CREATE INDEX which
+-- takes an ACCESS EXCLUSIVE lock for the duration of the build.
+-- Both indexes below use CREATE INDEX CONCURRENTLY so the table
+-- stays online while the index builds.
+--
+-- Why each one matters:
+--
+--   1. Education functional index on LOWER(institution)
+--      -----------------------------------------------
+--      The warm-intros engine (server/networking/warm-intros.ts) does
+--      a case-insensitive IN filter on Education.institution when the
+--      candidate's Education rows are free-text (no institutionId set):
+--
+--         where: { institution: { in: [...], mode: "insensitive" } }
+--
+--      Prisma compiles this to `LOWER(institution) = ANY(LOWER(...))`.
+--      Without a functional index, every job-detail page-view by a
+--      signed-in candidate triggers a sequential scan of the entire
+--      Education table (~1 row per candidate × 50k+ users).
+--
+--      The fix is preferred to the alternative (lowercasing at save
+--      time) because we don't want to break already-saved Education
+--      rows or change the user's typed casing for display.
+--
+--   2. CandidateProfile GIN index on learningSkills
+--      ---------------------------------------------
+--      The skill-swap engine (server/networking/skill-swap.ts) does:
+--
+--         where: { learningSkills: { hasSome: [...] } }
+--
+--      Prisma compiles this to the Postgres array overlap operator (&&).
+--      Without a GIN index, this is a sequential scan of CandidateProfile
+--      (~50k rows) on every load of /me/skill-swap.
+--
+--      GIN is the right index type for array overlap; b-tree can't
+--      help with this query shape. Prisma's schema language has no
+--      syntax for GIN array indexes, so this lives here.
+--
+-- Why CONCURRENTLY (recap):
+--   • Plain CREATE INDEX takes ACCESS EXCLUSIVE for the build duration.
+--     On 50k rows that's ~30s of unavailability for every query that
+--     touches the table — the candidate-search surface, the warm-intros
+--     check, the /me page, etc. would all block.
+--   • CONCURRENTLY takes a much weaker lock (SHARE UPDATE EXCLUSIVE)
+--     that lets reads and writes continue. The build is two-pass and
+--     slower in wall-clock terms, but the surface stays online.
+--
+-- Why this cannot go through `prisma db push`:
+--   • `db push` wraps its DDL in a single transaction; CONCURRENTLY
+--     index builds are forbidden inside a transaction
+--     (`ERROR: CREATE INDEX CONCURRENTLY cannot run inside a
+--     transaction block`).
+--
+-- How to run on production (after the standard PM2 deploy completes):
+--
+--     ssh deploy@<hetzner-host>
+--     cd /var/www/emobility-careers
+--     psql "$DATABASE_URL" -f scripts/migrations/2026-05-networking-perf.sql
+--
+-- The IF NOT EXISTS clauses make this script idempotent — re-running
+-- after a successful first apply is a no-op. Safe to bundle into a
+-- deploy runbook checklist.
+--
+-- If a CONCURRENT build fails partway (disk pressure, replication
+-- lag), Postgres leaves an INVALID index. Diagnose with
+-- `\d "Education"` / `\d "CandidateProfile"`; drop the invalid index
+-- with `DROP INDEX CONCURRENTLY <name>;` before retrying.
+-- ──────────────────────────────────────────────────────────────────────
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS education_institution_lower_idx
+  ON "Education" (LOWER("institution"));
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS candidateprofile_learningskills_gin
+  ON "CandidateProfile" USING GIN ("learningSkills");
