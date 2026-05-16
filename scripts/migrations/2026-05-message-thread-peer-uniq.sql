@@ -1,0 +1,75 @@
+-- ──────────────────────────────────────────────────────────────────────
+-- Partial unique index: MessageThread peer threads (no application).
+--
+-- Why this lives outside prisma/schema.prisma:
+--   • Prisma's schema language has no syntax for partial indexes
+--     (`WHERE applicationId IS NULL`). The constraint we actually
+--     want is "exactly one cold-outreach thread per (employer,
+--     candidate) pair", which only applies to peer threads — application-
+--     scoped threads (where applicationId is set) are already 1-per
+--     (jobId, candidateId) via the existing Application unique key.
+--   • A full unique on (employerUserId, candidateUserId) would block
+--     two different jobs at the same company from ever co-existing as
+--     separate application threads with the same candidate, which is
+--     legitimate.
+--
+-- Why this exists at all:
+--   • bulkWhatsAppInvite (#20) does findFirst+create on MessageThread
+--     to either reuse or create a peer-outreach thread for an
+--     (employer, candidate) pair. Two parallel invocations of the same
+--     bulk send can both pass the findFirst check (no row yet) and
+--     both insert — producing duplicate peer threads.
+--   • The duplicate is benign for delivery (one of the two carries the
+--     WhatsApp send) but leaves the recruiter's inbox with two threads
+--     pointing at the same candidate, which is confusing and breaks
+--     read/unread counts.
+--   • With this partial unique index in place, the second concurrent
+--     INSERT raises a unique-violation, which the caller already
+--     handles by re-reading the existing row and proceeding.
+--
+-- Why CREATE INDEX CONCURRENTLY (and NOT plain CREATE INDEX):
+--   • MessageThread on production is large (~10k+ rows and growing).
+--     A plain CREATE INDEX takes an ACCESS EXCLUSIVE lock for the
+--     duration of the build — every send-message / open-thread query
+--     blocks until the index is finished. On a live messaging
+--     surface that's a hard outage of the inbox.
+--   • CONCURRENTLY takes a much weaker lock (SHARE UPDATE EXCLUSIVE)
+--     that lets reads and writes continue. The build itself is
+--     two-pass and slower in wall-clock terms, but the surface stays
+--     online throughout.
+--
+-- Why this CANNOT go through `prisma db push`:
+--   • `db push` wraps its DDL in a single transaction. CONCURRENTLY
+--     index builds are NOT allowed inside a transaction (Postgres
+--     refuses with `ERROR: CREATE INDEX CONCURRENTLY cannot run inside
+--     a transaction block`).
+--   • Even if we wrote a plain `@@index([employerUserId, candidateUserId])`
+--     in schema.prisma, Prisma would not let us add the `WHERE …`
+--     clause — it doesn't support partial indexes at all.
+--   • So this file is a manual, one-shot, post-deploy step. Run it
+--     once per environment after the bulk-WhatsApp feature ships, then
+--     never again.
+--
+-- How to run it on production (Hetzner box, after the standard PM2
+-- deploy completes):
+--
+--     ssh deploy@<hetzner-host>
+--     cd /var/www/emobility-careers
+--     psql "$DATABASE_URL" -f scripts/migrations/2026-05-message-thread-peer-uniq.sql
+--
+-- Notes:
+--   • `psql -f` runs top-level statements OUTSIDE a transaction by
+--     default (unlike `-1`), which is what we need for CONCURRENTLY.
+--     Do NOT wrap this in BEGIN/COMMIT.
+--   • The IF NOT EXISTS clause makes the script idempotent — re-running
+--     after a successful first apply is a no-op. Safe to bundle into a
+--     deploy runbook checklist.
+--   • If the build fails partway (e.g. the box runs out of disk during
+--     the second pass), Postgres leaves an INVALID index behind. Check
+--     with `\d "MessageThread"` and drop it with
+--     `DROP INDEX CONCURRENTLY message_thread_peer_uniq;` before retrying.
+-- ──────────────────────────────────────────────────────────────────────
+
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS message_thread_peer_uniq
+  ON "MessageThread" ("employerUserId", "candidateUserId")
+  WHERE "applicationId" IS NULL;

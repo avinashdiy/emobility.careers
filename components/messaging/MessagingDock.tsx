@@ -52,7 +52,10 @@ export function MessagingDock({ items, unreadCount }: { items: DockItem[]; unrea
   }, [open]);
 
   return (
-    <div className="fixed bottom-0 right-4 z-30 w-80 max-w-[calc(100vw-2rem)] sm:right-6">
+    // V2 polish — on mobile the dock is lifted above the bottom nav
+    // (3.5rem bar + safe-area inset) so the two don't overlap. On
+    // desktop the bottom nav is hidden so the dock stays flush.
+    <div className="fixed bottom-[calc(env(safe-area-inset-bottom)+3.5rem)] right-4 z-30 w-80 max-w-[calc(100vw-2rem)] sm:bottom-0 sm:right-6">
       {/* Header bar — always visible, collapses/expands on click */}
       <button
         type="button"

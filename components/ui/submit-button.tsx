@@ -14,6 +14,12 @@ interface SubmitButtonProps extends Omit<ButtonProps, "type"> {
  *   <form action={save}>
  *     <SubmitButton>Save changes</SubmitButton>
  *   </form>
+ *
+ * A11y (V2): the button gets `aria-busy` + `aria-live="polite"` while
+ * pending so screen-reader users hear the label flip from "Save changes"
+ * to "Saving…" instead of silently re-reading the original. Pairs with
+ * the broader live-region sweep on AI surfaces — see CareerExplorerForm,
+ * SkillAssessmentRunner, and the AI Summary panel.
  */
 export function SubmitButton({
   children,
@@ -23,7 +29,13 @@ export function SubmitButton({
 }: SubmitButtonProps) {
   const { pending } = useFormStatus();
   return (
-    <Button type="submit" disabled={disabled || pending} {...props}>
+    <Button
+      type="submit"
+      disabled={disabled || pending}
+      aria-busy={pending || undefined}
+      aria-live="polite"
+      {...props}
+    >
       {pending ? (pendingLabel ?? "Working…") : children}
     </Button>
   );

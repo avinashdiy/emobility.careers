@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { HeaderSearch } from "@/components/layout/HeaderSearch";
 import { DiscoverMenu } from "@/components/layout/DiscoverMenu";
 import { HeaderUserMenu } from "@/components/layout/HeaderUserMenu";
@@ -109,7 +110,7 @@ export async function SiteHeader() {
   ];
 
   return (
-    <header className="sticky top-0 z-40 w-full border-b border-emce-border bg-white text-emce-text">
+    <header className="sticky top-0 z-40 w-full border-b border-emce-border bg-white text-emce-text dark:border-border dark:bg-card dark:text-foreground">
       {/* Skip-to-content link — invisible until keyboard-focused.
           Critical for keyboard + screen-reader users so they don't
           have to tab through the full nav on every page. The
@@ -183,7 +184,8 @@ export async function SiteHeader() {
             </nav>
           )}
 
-          <div className="ml-1 flex items-center gap-2 border-l border-emce-border pl-2">
+          <div className="ml-1 flex items-center gap-2 border-l border-emce-border pl-2 dark:border-border">
+            <ThemeToggle />
             <LanguageSwitcher current={locale} variant="light" />
             {user && viewer ? (
               <HeaderUserMenu user={viewer} />

@@ -31,7 +31,7 @@ const Card = React.forwardRef<HTMLDivElement, CardProps>(
         // Pages that genuinely need more breathing room (auth forms,
         // modal-like containers) override with `p-5` / `p-6` / `p-8`.
         variant === "default" &&
-          "rounded-lg border border-emce-border bg-white p-4 shadow-emce",
+          "rounded-lg border border-emce-border bg-white p-4 shadow-emce dark:border-border dark:bg-card dark:text-card-foreground dark:shadow-none",
         variant === "interactive" && "emce-card-interactive",
         variant === "glow" && "emce-card-glow p-4",
         animate && "animate-fade-up",
@@ -54,7 +54,7 @@ const CardTitle = React.forwardRef<HTMLHeadingElement, React.HTMLAttributes<HTML
   ({ className, ...props }, ref) => (
     <h3
       ref={ref}
-      className={cn("text-section font-bold text-emce-text", className)}
+      className={cn("text-section font-bold text-emce-text dark:text-foreground", className)}
       {...props}
     />
   ),
@@ -65,7 +65,7 @@ const CardDescription = React.forwardRef<
   HTMLParagraphElement,
   React.HTMLAttributes<HTMLParagraphElement>
 >(({ className, ...props }, ref) => (
-  <p ref={ref} className={cn("text-hint text-emce-text-sec", className)} {...props} />
+  <p ref={ref} className={cn("text-hint text-emce-text-sec dark:text-muted-foreground", className)} {...props} />
 ));
 CardDescription.displayName = "CardDescription";
 

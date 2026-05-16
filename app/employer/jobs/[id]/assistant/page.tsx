@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { AIProgress } from "@/components/ui/ai-progress";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import {
   saveHiringAssistantConfig,
@@ -89,11 +90,18 @@ export default async function HiringAssistantPage({
               </span>
             </div>
             {config?.enabled && (
-              <form action={runHiringAssistantNow}>
+              <form action={runHiringAssistantNow} className="flex flex-col items-end gap-2">
                 <input type="hidden" name="jobId" value={id} />
                 <SubmitButton variant="glow" size="sm" pendingLabel="Running…">
                   ⚡ Run now
                 </SubmitButton>
+                {/* 3000ms beat — the agentic loop is the slowest AI
+                    surface (ranking + drafting + chasing) so the
+                    progress feels real rather than racing the spinner. */}
+                <AIProgress
+                  steps={["Ranking applications", "Drafting outreach", "Sending"]}
+                  stepMs={3000}
+                />
               </form>
             )}
           </div>

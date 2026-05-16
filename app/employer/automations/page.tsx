@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
+import { NoAutomationsIllustration } from "@/components/ui/illustrations";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import { AutomationForm } from "@/components/employer/AutomationForm";
 import { toggleAutomation, deleteAutomation } from "@/server/automations/actions";
@@ -71,7 +72,7 @@ export default async function AutomationsPage() {
           {rules.length === 0 ? (
             <EmptyState
               variant="mesh"
-              icon="⚡"
+              illustration={<NoAutomationsIllustration />}
               title="No rules yet"
               body="Create your first rule above — common starters: auto-shortlist 80%+ matches who hold ARAI, or auto-reject below-3-years experience on senior roles."
               className="mt-3"

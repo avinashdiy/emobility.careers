@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
+import { NoMessagesIllustration } from "@/components/ui/illustrations";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import { CadenceBuilder } from "@/components/employer/CadenceBuilder";
 import { toggleCadence } from "@/server/outreach/actions";
@@ -77,7 +78,7 @@ export default async function CadencesPage() {
           {cadences.length === 0 ? (
             <EmptyState
               variant="mesh"
-              icon="📨"
+              illustration={<NoMessagesIllustration />}
               title="No cadences yet"
               body="Common starters: 3-step (Day 0, Day 4, Day 10) cadence for senior engineers, or 2-step for high-volume technician roles."
               className="mt-3"

@@ -2,6 +2,14 @@ import { cn } from "@/lib/utils";
 
 interface EmptyStateProps {
   icon?: React.ReactNode;
+  /**
+   * V2 polish: optional inline SVG illustration that replaces the
+   * `icon` slot. Larger (110x80-ish) and on-brand — see
+   * `components/ui/illustrations.tsx`. When BOTH `illustration` and
+   * `icon` are passed, illustration wins (it's the more deliberate
+   * choice).
+   */
+  illustration?: React.ReactNode;
   title: string;
   body?: string;
   action?: React.ReactNode;
@@ -31,6 +39,7 @@ interface EmptyStateProps {
  */
 export function EmptyState({
   icon,
+  illustration,
   title,
   body,
   action,
@@ -41,8 +50,8 @@ export function EmptyState({
     <div
       className={cn(
         "relative overflow-hidden rounded-lg border p-10 text-center animate-fade-up",
-        variant === "soft" && "border-dashed border-emce-border bg-white",
-        variant === "mesh" && "emce-mesh-soft border-emce-mid/30",
+        variant === "soft" && "border-dashed border-emce-border bg-white dark:border-border dark:bg-card",
+        variant === "mesh" && "emce-mesh-soft border-emce-mid/30 dark:bg-card dark:border-emce-mid/20",
         className,
       )}
     >
@@ -55,14 +64,17 @@ export function EmptyState({
         />
       )}
       <div className="relative">
-        {icon && (
-          <div className="mx-auto inline-flex animate-float text-5xl">
-            {icon}
-          </div>
-        )}
-        <p className="mt-3 text-section font-bold text-emce-text">{title}</p>
+        {/* Illustration takes precedence over icon when both are passed —
+            it's the more deliberate creative choice and we don't want to
+            stack both. */}
+        {illustration ? (
+          <div className="mx-auto inline-flex animate-float">{illustration}</div>
+        ) : icon ? (
+          <div className="mx-auto inline-flex animate-float text-5xl">{icon}</div>
+        ) : null}
+        <p className="mt-3 text-section font-bold text-emce-text dark:text-foreground">{title}</p>
         {body && (
-          <p className="mx-auto mt-1 max-w-md text-sm text-emce-text-sec">{body}</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-emce-text-sec dark:text-muted-foreground">{body}</p>
         )}
         {action && <div className="mt-4 flex justify-center">{action}</div>}
       </div>

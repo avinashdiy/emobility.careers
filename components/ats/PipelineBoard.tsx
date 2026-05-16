@@ -223,7 +223,7 @@ function Column({ stage, apps, jobId, selected, onToggle }: {
       // side-by-side (uniform column heights look intentional). Below
       // lg the columns are stacked, so an empty stage of 400px is just
       // a wasteful gap — let it size to its content instead.
-      className={`flex flex-col rounded-lg border border-emce-border bg-white/60 p-2 transition lg:min-h-[400px] ${isOver ? "ring-2 ring-emce-mid" : ""}`}
+      className={`flex flex-col rounded-lg border border-emce-border bg-white/60 p-2 transition lg:min-h-[400px] dark:border-border dark:bg-secondary/30 ${isOver ? "ring-2 ring-emce-mid" : ""}`}
     >
       <div className={`mb-2 rounded-md px-2 py-1.5 ${STAGE_COLOR[stage]}`}>
         <div className="flex items-center justify-between">
@@ -234,7 +234,7 @@ function Column({ stage, apps, jobId, selected, onToggle }: {
       <div className="space-y-2">
         {apps.map((a) => <Card key={a.id} app={a} jobId={jobId} selected={selected.has(a.id)} onToggle={onToggle} />)}
         {apps.length === 0 && (
-          <div className="rounded-md border-2 border-dashed border-emce-border p-3 text-center text-hint text-emce-text-muted">
+          <div className="rounded-md border-2 border-dashed border-emce-border p-3 text-center text-hint text-emce-text-muted dark:border-border dark:text-muted-foreground">
             Drop here
           </div>
         )}
@@ -253,7 +253,7 @@ function Card({ app, jobId, selected, onToggle }: { app: PipelineApp; jobId: str
       style={{ transform: transform ? `translate(${transform.x}px, ${transform.y}px)` : undefined }}
       {...attributes}
       {...listeners}
-      className={`cursor-grab rounded-md border bg-white p-3 shadow-emce active:cursor-grabbing ${isDragging ? "opacity-50" : ""} ${selected ? "border-emce-mid ring-2 ring-emce-mid" : "border-emce-border"}`}
+      className={`cursor-grab rounded-md border bg-white p-3 shadow-emce active:cursor-grabbing dark:bg-card dark:shadow-none ${isDragging ? "opacity-50" : ""} ${selected ? "border-emce-mid ring-2 ring-emce-mid" : "border-emce-border dark:border-border"}`}
     >
       <div className="flex items-start gap-2">
         <input
@@ -283,27 +283,26 @@ function Card({ app, jobId, selected, onToggle }: { app: PipelineApp; jobId: str
             // trip back to the board.
             target="_blank"
             rel="noopener noreferrer"
-            className="block truncate font-bold text-emce-text hover:underline"
+            className="block truncate font-bold text-emce-text hover:underline dark:text-foreground"
             onClick={(e) => e.stopPropagation()}
           >
             {fullName}
           </Link>
           {app.candidate.headline && (
-            <p className="truncate text-hint text-emce-text-sec">{app.candidate.headline}</p>
+            <p className="truncate text-hint text-emce-text-sec dark:text-muted-foreground">{app.candidate.headline}</p>
           )}
 
-          {/* Wave B #19 — trust pill row. Each tiny icon = one
-              verification signal. Stays on one line; if all four are
-              earned the row reads "✓ ID  ✉ Email  📞 Phone  🏅 3" in
-              <10 chars of horizontal space. Title attribute names the
-              signal for tooltip clarity on hover. */}
-          <TrustPills candidate={app.candidate} />
-
-          <div className="mt-1 flex flex-wrap gap-1">
-            {app.candidate.isDIYguruVerified && <Badge variant="diyguru">⭐ DIYguru</Badge>}
+          {/* V2 polish — single chip row. Pre-V2 the card stacked two
+              separate rows (trust pills then meta badges) plus the AI
+              summary, which read as four stacked content blocks under
+              a single 220px-wide column. We now collapse trust + meta
+              into one wrap, with trust pills rendered subdued so the
+              high-signal badges (match %, DIYguru, source) dominate. */}
+          <div className="mt-1.5 flex flex-wrap items-center gap-1">
             {app.matchScore != null && (
               <Badge variant="success">{Math.round(app.matchScore * 100)}%</Badge>
             )}
+            {app.candidate.isDIYguruVerified && <Badge variant="diyguru">⭐ DIYguru</Badge>}
             {app.source === "AI_INVITED" && <Badge variant="warning">Invited</Badge>}
             {app.source === "REFERRAL" && <Badge variant="default">Referral</Badge>}
             {app.rating && <Badge variant="default">{"★".repeat(app.rating)}</Badge>}
@@ -317,15 +316,19 @@ function Card({ app, jobId, selected, onToggle }: { app: PipelineApp; jobId: str
                 {lastActiveLabel(app.candidate.lastActiveAt)}
               </Badge>
             )}
+            {/* Trust pills inline, subdued, separated by a thin
+                divider so they read as "metadata about the candidate"
+                vs the application-level signals above. */}
+            <TrustPills candidate={app.candidate} />
           </div>
 
-          {/* Wave B #17 — AI summary preview. Recruiter sees the
-              first ~120 chars on the card; the full summary lives on
-              the application detail page. Click-through is via the
-              normal name-link anchor above. */}
+          {/* Wave B #17 — AI summary preview. V2 polish wraps it in a
+              left-bordered quote inset so it reads as "what AI is
+              saying about this candidate" instead of just more body
+              text on the card. */}
           {app.aiSummaryPreview && (
-            <p className="mt-1.5 line-clamp-2 text-hint text-emce-text-muted">
-              <span className="font-bold text-emce-mid-muted">AI · </span>
+            <p className="mt-2 line-clamp-2 border-l-2 border-emce-mid/50 bg-emce-light-soft/40 pl-2 py-1 text-hint text-emce-text-sec italic dark:bg-secondary/40 dark:text-muted-foreground dark:border-emce-mid/40">
+              <span className="not-italic font-bold text-emce-mid-muted dark:text-emce-mid">✨ </span>
               {app.aiSummaryPreview}
             </p>
           )}
@@ -350,41 +353,47 @@ function TrustPills({
   const phoneV = candidate.phoneVerified;
   const skillCount = candidate.verifiedSkillCount ?? 0;
   if (!idV && !emailV && !phoneV && skillCount === 0) return null;
+  // V2 polish: render as inline fragment (no wrapper) so trust pills
+  // fold into the same wrap row as the application-level meta badges.
+  // A leading divider visually groups them as a secondary cluster
+  // without forcing a new row. The pills themselves are subdued
+  // single-icon chips so the higher-signal badges stay dominant.
   return (
-    <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px]">
+    <>
+      <span aria-hidden className="mx-0.5 h-3.5 w-px self-center bg-emce-border dark:bg-border" />
       {idV && (
         <span
           title="ID verified"
-          className="inline-flex h-5 items-center gap-0.5 rounded-full bg-emce-verified-bg px-1.5 font-bold text-emce-verified-text border border-emce-verified-border"
+          className="inline-flex h-5 items-center rounded-full bg-emce-verified-bg px-1.5 text-[10px] font-bold text-emce-verified-text border border-emce-verified-border"
         >
-          ✓ ID
+          ✓
         </span>
       )}
       {emailV && (
         <span
           title="Email verified"
-          className="inline-flex h-5 items-center gap-0.5 rounded-full bg-emce-light-soft px-1.5 font-bold text-emce-dark"
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emce-light-soft text-[10px] text-emce-dark dark:bg-secondary dark:text-emce-mid"
         >
-          ✉ Email
+          ✉
         </span>
       )}
       {phoneV && (
         <span
           title="Phone verified"
-          className="inline-flex h-5 items-center gap-0.5 rounded-full bg-emce-light-soft px-1.5 font-bold text-emce-dark"
+          className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-emce-light-soft text-[10px] text-emce-dark dark:bg-secondary dark:text-emce-mid"
         >
-          📞 Phone
+          📞
         </span>
       )}
       {skillCount > 0 && (
         <span
           title={`${skillCount} verified EV-skill badge${skillCount === 1 ? "" : "s"}`}
-          className="inline-flex h-5 items-center gap-0.5 rounded-full bg-emce-mid/20 px-1.5 font-bold text-emce-success-deep"
+          className="inline-flex h-5 items-center gap-0.5 rounded-full bg-emce-mid/20 px-1.5 text-[10px] font-bold text-emce-success-deep dark:bg-emce-mid/25 dark:text-emce-mid"
         >
           🏅 {skillCount}
         </span>
       )}
-    </div>
+    </>
   );
 }
 
@@ -408,7 +417,7 @@ function lastActiveLabel(iso: string): string {
 function lastActiveTone(iso: string): string {
   const ms = Date.now() - new Date(iso).getTime();
   const days = ms / (24 * 60 * 60 * 1000);
-  if (days < 1) return "border-emce-mid/50 text-emce-success-deep bg-emce-light-soft";
-  if (days < 7) return "border-emce-border text-emce-text-sec";
-  return "border-emce-border text-emce-text-muted opacity-80";
+  if (days < 1) return "border-emce-mid/50 text-emce-success-deep bg-emce-light-soft dark:bg-secondary dark:text-emce-mid dark:border-emce-mid/40";
+  if (days < 7) return "border-emce-border text-emce-text-sec dark:border-border dark:text-muted-foreground";
+  return "border-emce-border text-emce-text-muted opacity-80 dark:border-border dark:text-muted-foreground";
 }

@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
+import { NoMessagesIllustration } from "@/components/ui/illustrations";
 import { EmployerShell } from "@/components/layout/employer-shell";
 import { CALLING_LANGUAGE_NAMES } from "@/lib/calling/provider";
 
@@ -85,7 +86,7 @@ export default async function CallingSessionsPage() {
           {sessions.length === 0 ? (
             <EmptyState
               variant="mesh"
-              icon="📞"
+              illustration={<NoMessagesIllustration />}
               title="No calling sessions yet"
               body="Trigger your first call from an application card. The status timeline + transcript will land here."
               className="mt-3"

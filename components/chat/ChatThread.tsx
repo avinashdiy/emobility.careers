@@ -172,8 +172,15 @@ export function ChatThread({
           required
           maxLength={4000}
         />
+        {/* Live region for AI-draft status + errors. Both the "Drafting…"
+            transition and the "Couldn't draft" failure are otherwise
+            silent for screen-reader users — the button label flips but
+            SRs don't re-read disabled buttons reliably. */}
+        <div role="status" aria-live="polite" className="sr-only">
+          {drafting ? "Drafting AI message…" : draftError ? `Draft failed: ${draftError}` : ""}
+        </div>
         {draftError && (
-          <p className="mt-1 text-hint text-emce-red-deep">⚠ {draftError}</p>
+          <p className="mt-1 text-hint text-emce-red-deep" role="alert">⚠ {draftError}</p>
         )}
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           {/* Wave B #18 — AI draft button. Replaces the textarea
@@ -186,6 +193,7 @@ export function ChatThread({
             variant="outline"
             size="sm"
             disabled={drafting || sending}
+            aria-busy={drafting || undefined}
             onClick={async () => {
               if (draft.trim().length > 0) {
                 const ok = window.confirm("Replace your current draft with an AI-generated message?");

@@ -15,6 +15,7 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { Alert } from "@/components/ui/alert";
 import { FieldError } from "@/components/ui/field-error";
 import { Sparkle } from "@/components/ui/sparkle";
+import { AIProgress } from "@/components/ui/ai-progress";
 
 type ExploreState = FormState & { result?: CareerExploreResult };
 
@@ -113,15 +114,33 @@ export function CareerExplorerForm({
             </select>
           </div>
 
-          <div className="flex items-end">
+          <div className="flex flex-col items-stretch gap-2">
             <SubmitButton size="lg" variant="glow" className="w-full" pendingLabel="Mapping your next moves…">
               ✨ Show me my next moves
             </SubmitButton>
+            <AIProgress
+              steps={["Reading your role", "Mapping adjacencies", "Writing your path"]}
+              stepMs={1800}
+            />
           </div>
         </form>
       </Card>
 
-      {result && <ResultSection result={result} />}
+      {/* `aria-live="polite"` makes screen readers announce when results
+          land without interrupting the user's current focus. The region
+          wraps the rendered <ResultSection /> rather than the conditional
+          so the live-region container exists from first paint — SR
+          announcements only fire when content INSIDE an existing live
+          region changes; mounting a new live-region element doesn't
+          trigger one. */}
+      <div
+        role="region"
+        aria-live="polite"
+        aria-atomic="false"
+        aria-label="Career exploration results"
+      >
+        {result && <ResultSection result={result} />}
+      </div>
     </>
   );
 }

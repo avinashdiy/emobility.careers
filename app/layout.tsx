@@ -10,8 +10,10 @@ import { MaintenanceGate } from "@/components/layout/MaintenanceGate";
 import { ImpersonationBanner } from "@/components/layout/ImpersonationBanner";
 import { AnnouncementBanner } from "@/components/layout/AnnouncementBanner";
 import { MessagingWidget } from "@/components/messaging/MessagingWidget";
+import { MobileBottomNavMount } from "@/components/layout/mobile-bottom-nav-mount";
 import { GoogleTranslateLoader } from "@/components/translate/GoogleTranslate";
 import { getSettings } from "@/lib/settings";
+import { THEME_BOOT_SCRIPT } from "@/components/ui/theme-toggle";
 
 // Inter is the modern professional sans-serif standard (LinkedIn uses Source
 // Sans 3, which is functionally identical at body sizes). The CSS variable
@@ -141,7 +143,12 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={cn(inter.variable, "font-sans bg-emce-light-bg text-emce-text antialiased")}>
+      <body className={cn(inter.variable, "font-sans bg-emce-light-bg text-emce-text antialiased dark:bg-background dark:text-foreground pb-[calc(env(safe-area-inset-bottom)+3.5rem)] sm:pb-0")}>
+        {/* Theme boot — applies the stored dark/light choice to <html>
+            BEFORE React hydrates, so dark-mode users don't see a flash
+            of light theme on every navigation. The script body lives
+            alongside the ThemeToggle component so they evolve together. */}
+        <script dangerouslySetInnerHTML={{ __html: THEME_BOOT_SCRIPT }} />
         <script
           type="application/ld+json"
           dangerouslySetInnerHTML={{ __html: JSON.stringify(SITE_JSON_LD) }}
@@ -186,6 +193,15 @@ export default function RootLayout({
             on signed-out, admin, and in-thread routes). */}
         <Suspense fallback={null}>
           <MessagingWidget />
+        </Suspense>
+        {/* Mobile bottom nav — visible only under `sm`, hidden on
+            admin/employer/auth routes via internal path matching.
+            Mounted at the root so every candidate-side page picks it
+            up without per-layout wiring. The trailing
+            `pb-[calc(...)]` on the body below leaves space so the
+            bar doesn't cover the last bit of content. */}
+        <Suspense fallback={null}>
+          <MobileBottomNavMount />
         </Suspense>
         <Suspense fallback={null}>
           <ToastFromSearchParams />

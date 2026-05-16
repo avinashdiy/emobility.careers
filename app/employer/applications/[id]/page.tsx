@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { AIProgress } from "@/components/ui/ai-progress";
 import { Badge } from "@/components/ui/badge";
 // Wave B #17 — AI applicant summary
 import { ensureApplicationSummary, refreshApplicationSummary } from "@/server/ai-summary/actions";
@@ -324,24 +325,33 @@ export default async function ApplicationDetail({
               first open; recruiter can refresh after a stage change
               or once the candidate's profile shows new content. */}
           {aiSummary && (
-            <div className="mt-4 rounded-md border border-emce-mid/40 bg-emce-light-soft/40 p-3">
+            <div
+              className="mt-4 rounded-md border border-emce-mid/40 bg-emce-light-soft/40 p-3 dark:border-emce-mid/30 dark:bg-secondary/40"
+              role="region"
+              aria-live="polite"
+              aria-label="AI candidate summary"
+            >
               <div className="flex items-baseline justify-between gap-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emce-mid-muted">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emce-mid-muted dark:text-emce-mid">
                   ✨ AI summary
                   {aiSummaryAt && (
-                    <span className="ml-2 font-normal normal-case text-emce-text-muted">
+                    <span className="ml-2 font-normal normal-case text-emce-text-muted dark:text-muted-foreground">
                       {relativeTime(aiSummaryAt)}
                     </span>
                   )}
                 </p>
-                <form action={refreshApplicationSummary}>
+                <form action={refreshApplicationSummary} className="flex flex-col items-end gap-2">
                   <input type="hidden" name="applicationId" value={application.id} />
                   <SubmitButton variant="ghost" size="sm" pendingLabel="…">
                     Refresh
                   </SubmitButton>
+                  <AIProgress
+                    steps={["Reading profile", "Synthesising", "Writing"]}
+                    stepMs={1500}
+                  />
                 </form>
               </div>
-              <p className="mt-2 text-body text-emce-text">{aiSummary}</p>
+              <p className="mt-2 text-body text-emce-text dark:text-foreground">{aiSummary}</p>
             </div>
           )}
 
