@@ -1,4 +1,5 @@
 import { openai, aiModels } from "@/lib/ai/openai";
+import { trackAICall } from "@/lib/ai/track-cost";
 import { z } from "zod";
 
 const JDSuggestionSchema = z.object({
@@ -35,18 +36,22 @@ export async function draftJD(input: {
       seniorityLevel: "MID",
     });
   }
-  const completion = await openai.chat.completions.create({
-    model: aiModels.rerank,
-    temperature: 0.3,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: SYSTEM },
-      {
-        role: "user",
-        content: `Job title: ${input.title}\nCompany: ${input.companyName ?? "(EV company)"}\n\nNotes from hiring manager:\n${input.notes}\n\nReturn JSON: {description, responsibilities, requirements, skills[], evDomains[], seniorityLevel, benefits?}.`,
-      },
-    ],
-  });
+  const completion = await trackAICall(
+    { feature: "jd-assistant.draft", model: aiModels.rerank },
+    () =>
+      openai.chat.completions.create({
+        model: aiModels.rerank,
+        temperature: 0.3,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM },
+          {
+            role: "user",
+            content: `Job title: ${input.title}\nCompany: ${input.companyName ?? "(EV company)"}\n\nNotes from hiring manager:\n${input.notes}\n\nReturn JSON: {description, responsibilities, requirements, skills[], evDomains[], seniorityLevel, benefits?}.`,
+          },
+        ],
+      }),
+  );
   const raw = JSON.parse(completion.choices[0]?.message?.content ?? "{}");
   return JDSuggestionSchema.parse(raw);
 }

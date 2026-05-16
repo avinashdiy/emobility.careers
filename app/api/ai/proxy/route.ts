@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { openai, aiModels } from "@/lib/ai/openai";
+import { trackAICall } from "@/lib/ai/track-cost";
 import { rateLimit } from "@/lib/rate-limit";
 import { logger } from "@/lib/logger";
 import { env } from "@/lib/env";
@@ -144,16 +145,30 @@ export async function POST(req: Request) {
     );
   }
 
+  // Optional per-tool attribution: AI-tool landing pages can pass
+  // `X-AI-Tool: cover-letter` so /admin/ai-ops attributes the call
+  // to the right line item. Anything outside the allow-list collapses
+  // to the generic "ai-tools.proxy" bucket.
+  const toolHeader = req.headers.get("x-ai-tool")?.trim().toLowerCase() ?? "";
+  const featureLabel = ALLOWED_TOOL_LABELS.has(toolHeader)
+    ? `ai-tools.${toolHeader}`
+    : "ai-tools.proxy";
+  const usedModel = model ?? aiModels.parser;
+
   try {
-    const completion = await openai.chat.completions.create({
-      model: model ?? aiModels.parser,
-      messages,
-      temperature: temperature ?? 0.7,
-      max_tokens: max_tokens ?? 1500,
-    });
+    const completion = await trackAICall(
+      { feature: featureLabel, model: usedModel },
+      () =>
+        openai.chat.completions.create({
+          model: usedModel,
+          messages,
+          temperature: temperature ?? 0.7,
+          max_tokens: max_tokens ?? 1500,
+        }),
+    );
     return NextResponse.json(completion, { headers: corsHeaders });
   } catch (err) {
-    logger.warn({ err, ip }, "[ai-proxy] OpenAI call failed");
+    logger.warn({ err, ip, feature: featureLabel }, "[ai-proxy] OpenAI call failed");
     const message = err instanceof Error ? err.message : "AI call failed.";
     return NextResponse.json(
       { error: { message } },
@@ -161,3 +176,20 @@ export async function POST(req: Request) {
     );
   }
 }
+
+// Allow-list of tool labels we permit on the X-AI-Tool header. Keeps
+// the cost dashboard's by-feature column tidy — random user-supplied
+// strings can't pollute it. Add new entries here when a new AI-tool
+// landing page ships.
+const ALLOWED_TOOL_LABELS = new Set<string>([
+  "interview-prep",
+  "mock-interview",
+  "interview-simulator",
+  "skills-analyzer",
+  "internship-navigator",
+  "cover-letter",
+  "career-path",
+  "linkedin-optimizer",
+  "cv-evaluation",
+  "resume-creator",
+]);

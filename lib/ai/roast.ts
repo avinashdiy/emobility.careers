@@ -1,4 +1,5 @@
 import { openai, aiModels } from "@/lib/ai/openai";
+import { trackAICall } from "@/lib/ai/track-cost";
 import { logger } from "@/lib/logger";
 
 /**
@@ -188,15 +189,19 @@ export async function roastResume(text: string): Promise<RoastResult> {
     // Trim before sending — protects token budget and prevents the model
     // from getting distracted by long, irrelevant tail content.
     const trimmed = text.length > 12000 ? text.slice(0, 12000) : text;
-    const completion = await openai.chat.completions.create({
-      model: aiModels.parser,
-      response_format: { type: "json_object" },
-      temperature: 0.2,
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        { role: "user", content: trimmed },
-      ],
-    });
+    const completion = await trackAICall(
+      { feature: "roast.score", model: aiModels.parser },
+      () =>
+        openai.chat.completions.create({
+          model: aiModels.parser,
+          response_format: { type: "json_object" },
+          temperature: 0.2,
+          messages: [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: trimmed },
+          ],
+        }),
+    );
     const raw = completion.choices[0]?.message?.content;
     if (!raw) return heuristic;
     const parsed = JSON.parse(raw) as Partial<RoastBreakdown> & { feedback?: FeedbackItem[] };

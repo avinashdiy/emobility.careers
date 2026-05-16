@@ -1,4 +1,5 @@
 import { openai, aiModels } from "@/lib/ai/openai";
+import { trackAICall } from "@/lib/ai/track-cost";
 import { z } from "zod";
 import type { MatchedCandidate } from "@/server/matching/score";
 
@@ -45,22 +46,26 @@ export async function rerankMatches(
     (c) => `[id=${c.candidateId}] ${candidateBriefs.get(c.candidateId) ?? ""}`,
   ).join("\n\n");
 
-  const completion = await openai.chat.completions.create({
-    model: aiModels.rerank,
-    temperature: 0.2,
-    response_format: { type: "json_object" },
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are a senior EV-industry recruiter. Re-rank candidates against a job brief. Return strict JSON: {rankings: [{candidateId, score (0..1), reason (≤200 chars, why this candidate fits)}]}. Higher score = better fit. Reason must be specific (skills, experience match) and avoid generic phrases.",
-      },
-      {
-        role: "user",
-        content: `JOB BRIEF:\n${jobBrief}\n\nCANDIDATES:\n${candidateLines}`,
-      },
-    ],
-  });
+  const completion = await trackAICall(
+    { feature: "matching.rerank", model: aiModels.rerank },
+    () =>
+      openai.chat.completions.create({
+        model: aiModels.rerank,
+        temperature: 0.2,
+        response_format: { type: "json_object" },
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are a senior EV-industry recruiter. Re-rank candidates against a job brief. Return strict JSON: {rankings: [{candidateId, score (0..1), reason (≤200 chars, why this candidate fits)}]}. Higher score = better fit. Reason must be specific (skills, experience match) and avoid generic phrases.",
+          },
+          {
+            role: "user",
+            content: `JOB BRIEF:\n${jobBrief}\n\nCANDIDATES:\n${candidateLines}`,
+          },
+        ],
+      }),
+  );
 
   const raw = JSON.parse(completion.choices[0]?.message?.content ?? "{}");
   const parsed = RerankResponseSchema.safeParse(raw);

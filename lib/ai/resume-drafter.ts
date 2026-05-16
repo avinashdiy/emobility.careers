@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { openai, aiModels } from "@/lib/ai/openai";
+import { trackAICall } from "@/lib/ai/track-cost";
 import type { Prisma } from "@prisma/client";
 
 /**
@@ -150,15 +151,19 @@ Candidate profile:
 ${profileSummary}`;
 
   try {
-    const completion = await openai.chat.completions.create({
-      model: aiModels.parser,
-      response_format: { type: "json_object" },
-      temperature: 0.4,
-      messages: [
-        { role: "system", content: "You are a precise résumé editor. Return only the requested JSON." },
-        { role: "user", content: prompt },
-      ],
-    });
+    const completion = await trackAICall(
+      { feature: "resume-drafter.compose", model: aiModels.parser },
+      () =>
+        openai.chat.completions.create({
+          model: aiModels.parser,
+          response_format: { type: "json_object" },
+          temperature: 0.4,
+          messages: [
+            { role: "system", content: "You are a precise résumé editor. Return only the requested JSON." },
+            { role: "user", content: prompt },
+          ],
+        }),
+    );
     const raw = completion.choices[0]?.message?.content;
     if (!raw) return fallback;
     const parsed = ResumeDraftSchema.safeParse(JSON.parse(raw));
