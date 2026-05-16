@@ -12,7 +12,7 @@ export default function CallingLoading() {
         <Skeleton className="h-8 w-72" />
         <Skeleton className="h-4 w-3/4" />
       </div>
-      <Card className="divide-y divide-emce-border p-0 dark:divide-border">
+      <Card className="divide-y divide-emce-border p-0">
         {Array.from({ length: 6 }).map((_, i) => (
           <div key={i} className="flex items-center gap-3 p-4">
             <Skeleton variant="circle" className="h-10 w-10 flex-shrink-0" />

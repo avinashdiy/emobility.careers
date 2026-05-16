@@ -14,6 +14,7 @@ import {
   Compass,
   Award,
   ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 
 /**
@@ -24,6 +25,7 @@ import {
  */
 const ITEMS = [
   { href: "/jobs", label: "Jobs", desc: "EV roles across India", icon: Briefcase },
+  { href: "/ai-tools", label: "AI Tools", desc: "Resume, interview prep, cover letter, and more", icon: Sparkles },
   { href: "/career-explorer", label: "Career Explorer", desc: "AI-mapped next moves with skill gaps", icon: Compass },
   { href: "/skills", label: "Verified skill badges", desc: "MCQ tests recruiters can filter on", icon: ShieldCheck },
   { href: "/awards", label: "Best EV Employers", desc: "Annual rankings from real reviews", icon: Award },

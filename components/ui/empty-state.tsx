@@ -50,8 +50,8 @@ export function EmptyState({
     <div
       className={cn(
         "relative overflow-hidden rounded-lg border p-10 text-center animate-fade-up",
-        variant === "soft" && "border-dashed border-emce-border bg-white dark:border-border dark:bg-card",
-        variant === "mesh" && "emce-mesh-soft border-emce-mid/30 dark:bg-card dark:border-emce-mid/20",
+        variant === "soft" && "border-dashed border-emce-border bg-white",
+        variant === "mesh" && "emce-mesh-soft border-emce-mid/30",
         className,
       )}
     >
@@ -72,9 +72,9 @@ export function EmptyState({
         ) : icon ? (
           <div className="mx-auto inline-flex animate-float text-5xl">{icon}</div>
         ) : null}
-        <p className="mt-3 text-section font-bold text-emce-text dark:text-foreground">{title}</p>
+        <p className="mt-3 text-section font-bold text-emce-text">{title}</p>
         {body && (
-          <p className="mx-auto mt-1 max-w-md text-sm text-emce-text-sec dark:text-muted-foreground">{body}</p>
+          <p className="mx-auto mt-1 max-w-md text-sm text-emce-text-sec">{body}</p>
         )}
         {action && <div className="mt-4 flex justify-center">{action}</div>}
       </div>

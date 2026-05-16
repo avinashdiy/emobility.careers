@@ -13,7 +13,7 @@ import { Card } from "@/components/ui/card";
  */
 export default function CareerExplorerLoading() {
   return (
-    <div className="min-h-screen bg-emce-light-bg dark:bg-background">
+    <div className="min-h-screen bg-emce-light-bg">
       {/* Hero shell — matches the real `emce-mesh-hero` block. */}
       <section className="emce-mesh-hero relative px-4 py-14 text-white sm:py-20">
         <div className="container max-w-3xl space-y-4 text-center">

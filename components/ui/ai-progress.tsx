@@ -61,7 +61,7 @@ export function AIProgress({
       aria-live="polite"
       aria-atomic="true"
       className={cn(
-        "mt-3 flex items-center gap-2 rounded-md border border-emce-mid/40 bg-emce-light-soft/60 px-3 py-2 text-hint text-emce-text-sec dark:border-emce-mid/30 dark:bg-secondary/60 dark:text-muted-foreground animate-fade-up",
+        "mt-3 flex items-center gap-2 rounded-md border border-emce-mid/40 bg-emce-light-soft/60 px-3 py-2 text-hint text-emce-text-sec animate-fade-up",
         className,
       )}
     >
@@ -76,9 +76,9 @@ export function AIProgress({
           key={s}
           className={cn(
             "transition-all",
-            i < idx && "text-emce-text-muted dark:text-muted-foreground/60 line-through decoration-emce-mid/40",
-            i === idx && "font-bold text-emce-dark dark:text-emce-mid",
-            i > idx && "text-emce-text-muted dark:text-muted-foreground/60",
+            i < idx && "text-emce-text-muted line-through decoration-emce-mid/40",
+            i === idx && "font-bold text-emce-dark",
+            i > idx && "text-emce-text-muted",
           )}
         >
           {s}

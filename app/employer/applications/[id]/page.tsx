@@ -326,16 +326,16 @@ export default async function ApplicationDetail({
               or once the candidate's profile shows new content. */}
           {aiSummary && (
             <div
-              className="mt-4 rounded-md border border-emce-mid/40 bg-emce-light-soft/40 p-3 dark:border-emce-mid/30 dark:bg-secondary/40"
+              className="mt-4 rounded-md border border-emce-mid/40 bg-emce-light-soft/40 p-3"
               role="region"
               aria-live="polite"
               aria-label="AI candidate summary"
             >
               <div className="flex items-baseline justify-between gap-2">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-emce-mid-muted dark:text-emce-mid">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emce-mid-muted">
                   ✨ AI summary
                   {aiSummaryAt && (
-                    <span className="ml-2 font-normal normal-case text-emce-text-muted dark:text-muted-foreground">
+                    <span className="ml-2 font-normal normal-case text-emce-text-muted">
                       {relativeTime(aiSummaryAt)}
                     </span>
                   )}
@@ -351,7 +351,7 @@ export default async function ApplicationDetail({
                   />
                 </form>
               </div>
-              <p className="mt-2 text-body text-emce-text dark:text-foreground">{aiSummary}</p>
+              <p className="mt-2 text-body text-emce-text">{aiSummary}</p>
             </div>
           )}
 

@@ -17,18 +17,18 @@ export async function CompactFooter() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="mt-8 border-t border-emce-border bg-emce-light-bg py-4 dark:border-border dark:bg-background">
+    <footer className="mt-8 border-t border-emce-border bg-emce-light-bg py-4">
       <div className="container flex flex-col items-center gap-2">
-        <ul className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-emce-text-sec dark:text-muted-foreground">
+        <ul className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-emce-text-sec">
           {LINKS.map((l) => (
             <li key={l.href}>
-              <Link href={l.href} className="hover:text-emce-text hover:underline dark:hover:text-foreground">
+              <Link href={l.href} className="hover:text-emce-text hover:underline">
                 {l.label}
               </Link>
             </li>
           ))}
         </ul>
-        <div className="flex items-center gap-1.5 text-[11px] text-emce-text-muted dark:text-muted-foreground">
+        <div className="flex items-center gap-1.5 text-[11px] text-emce-text-muted">
           {/* Icon-only marker — the wordmark would be too heavy at this
               size and the row label already says the brand name. */}
           <IconMark size="xs" />

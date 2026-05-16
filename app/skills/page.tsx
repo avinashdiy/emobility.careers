@@ -158,16 +158,6 @@ export default async function SkillsPage() {
             </section>
           ))}
 
-          {metas.length === 0 && (
-            <Card className="p-10 text-center">
-              <p className="text-section text-emce-text">No assessments yet</p>
-              <p className="mt-1 text-hint text-emce-text-sec">
-                Run <code>npx tsx scripts/seed-wave-c.ts</code> to populate the
-                EV skill library.
-              </p>
-            </Card>
-          )}
-
           {!profileId && (
             <Card className="text-center">
               <p className="text-section text-emce-text">Sign in to track your badges</p>

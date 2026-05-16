@@ -11,7 +11,7 @@ import { Card } from "@/components/ui/card";
  */
 export default function SkillDetailLoading() {
   return (
-    <div className="min-h-screen bg-emce-light-bg dark:bg-background">
+    <div className="min-h-screen bg-emce-light-bg">
       <section className="emce-mesh-hero relative px-4 py-10 text-white">
         <div className="container max-w-3xl space-y-3">
           <Skeleton className="h-5 w-32 rounded-full bg-white/15" />
@@ -42,7 +42,7 @@ export default function SkillDetailLoading() {
           <Skeleton className="h-4 w-32" />
           <Skeleton className="h-3 w-full" />
           <Skeleton className="h-3 w-2/3" />
-          <div className="border-t border-emce-border pt-3 dark:border-border">
+          <div className="border-t border-emce-border pt-3">
             <Skeleton className="h-4 w-28" />
             <div className="mt-2 space-y-2">
               <Skeleton className="h-3 w-3/4" />

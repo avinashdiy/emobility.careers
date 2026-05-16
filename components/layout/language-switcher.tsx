@@ -74,27 +74,26 @@ export function LanguageSwitcher({
   }
 
   return (
+    // Icon-only trigger — the native <select> sits invisibly on top of
+    // the globe icon so a tap/click opens the system picker. The
+    // closed-state visible chrome is just the globe (no "EN" text, no
+    // chevron) so the header stays uncluttered. Options inside the
+    // picker still show the full language names ("EN · English", etc.)
+    // so users know what they're choosing.
     <label
-      className={`inline-flex items-center gap-1 rounded-md px-2 text-xs font-bold ${
-        variant === "dark" ? "text-white/80 hover:text-white" : "text-emce-text-sec hover:text-emce-dark"
+      className={`relative inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors ${
+        variant === "dark" ? "text-white/80 hover:bg-white/10 hover:text-white" : "text-emce-text-sec hover:bg-emce-light-soft hover:text-emce-dark"
       } ${pending ? "opacity-60" : ""}`}
       aria-label="Language"
       title="Language"
     >
-      <Globe className="h-4 w-4" />
-      {/* Visible closed-state label — clamped to ~2.5rem so the
-          phone header doesn't widen past the iPhone 14 viewport
-          (390px). The full "EN · English" label still appears
-          inside the dropdown options when tapped. We achieve the
-          truncation by setting an explicit width on the <select>
-          itself; the native picker behaviour is unaffected. */}
+      <Globe className="h-4 w-4" aria-hidden />
       <select
         value={current}
         disabled={pending}
         onChange={handleChange}
-        className={`w-9 bg-transparent text-xs font-bold uppercase tracking-wide outline-none sm:w-auto ${
-          variant === "dark" ? "text-white/80" : "text-emce-text-sec"
-        }`}
+        className="absolute inset-0 cursor-pointer appearance-none bg-transparent text-transparent outline-none"
+        aria-label="Choose language"
       >
         {locales.map((l) => (
           <option key={l} value={l} className="text-emce-text">

@@ -15,7 +15,7 @@ export default function AutomationsLoading() {
       <Card className="space-y-3 p-5">
         <Skeleton className="h-5 w-44" />
         {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="flex items-center justify-between gap-3 rounded-md border border-emce-border p-3 dark:border-border">
+          <div key={i} className="flex items-center justify-between gap-3 rounded-md border border-emce-border p-3">
             <div className="min-w-0 flex-1 space-y-2">
               <div className="flex items-center gap-2">
                 <Skeleton className="h-5 w-44" />

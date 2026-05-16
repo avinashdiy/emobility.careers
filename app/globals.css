@@ -28,28 +28,6 @@
     --radius: 0.5rem;                 /* 8px — LinkedIn-tight; was 14px */
   }
 
-  .dark {
-    --background: 162 17% 10%;
-    --foreground: 130 35% 92%;
-    --card: 162 17% 14%;
-    --card-foreground: 130 35% 92%;
-    --popover: 162 17% 14%;
-    --popover-foreground: 130 35% 92%;
-    --primary: 132 49% 69%;
-    --primary-foreground: 162 17% 14%;
-    --secondary: 168 13% 22%;
-    --secondary-foreground: 130 35% 92%;
-    --muted: 168 13% 22%;
-    --muted-foreground: 168 8% 60%;
-    --accent: 168 13% 30%;
-    --accent-foreground: 130 35% 92%;
-    --destructive: 0 60% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --border: 168 13% 25%;
-    --input: 168 13% 25%;
-    --ring: 132 49% 69%;
-  }
-
   * {
     @apply border-border;
   }

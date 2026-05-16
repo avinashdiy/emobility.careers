@@ -71,15 +71,15 @@ export function SkillAssessmentRunner({
           as they advance — without this, the runner is essentially
           invisible to SR users between clicks. */}
       <div className="mb-4 flex items-center justify-between" role="status" aria-live="polite">
-        <p className="text-hint font-bold uppercase tracking-wider text-emce-text-muted dark:text-muted-foreground">
+        <p className="text-hint font-bold uppercase tracking-wider text-emce-text-muted">
           Question {idx + 1} of {questions.length}
         </p>
-        <p className="text-hint text-emce-text-sec tabular-nums dark:text-muted-foreground">
+        <p className="text-hint text-emce-text-sec tabular-nums">
           {answeredCount}/{questions.length} answered ({completion}%)
         </p>
       </div>
       <div
-        className="h-1.5 w-full overflow-hidden rounded-full bg-emce-light-soft dark:bg-secondary"
+        className="h-1.5 w-full overflow-hidden rounded-full bg-emce-light-soft"
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
@@ -95,7 +95,7 @@ export function SkillAssessmentRunner({
       {/* Question card */}
       {q && (
         <div key={q.id} className="mt-6 animate-fade-up">
-          <p id={`q-text-${q.id}`} className="text-section text-emce-text dark:text-foreground">
+          <p id={`q-text-${q.id}`} className="text-section text-emce-text">
             {q.text}
           </p>
           {/* radiogroup + aria-labelledby ties the option list to the
@@ -113,8 +113,8 @@ export function SkillAssessmentRunner({
                   <label
                     className={`flex cursor-pointer items-start gap-3 rounded-md border p-3 text-sm transition ${
                       isPicked
-                        ? "border-emce-mid bg-emce-light-soft dark:bg-secondary"
-                        : "border-emce-border hover:border-emce-mid-muted hover:bg-emce-light-soft/50 dark:border-border dark:hover:bg-secondary/50"
+                        ? "border-emce-mid bg-emce-light-soft"
+                        : "border-emce-border hover:border-emce-mid-muted hover:bg-emce-light-soft/50"
                     }`}
                   >
                     <input
@@ -124,7 +124,7 @@ export function SkillAssessmentRunner({
                       onChange={() => pick(i)}
                       className="mt-0.5 h-4 w-4 accent-emce-mid"
                     />
-                    <span className="flex-1 text-emce-text dark:text-foreground">{opt}</span>
+                    <span className="flex-1 text-emce-text">{opt}</span>
                   </label>
                 </li>
               );

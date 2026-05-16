@@ -18,19 +18,19 @@ const badgeVariants = cva(
   {
     variants: {
       variant: {
-        default: "bg-emce-light-soft text-emce-dark dark:bg-secondary dark:text-emce-mid",
+        default: "bg-emce-light-soft text-emce-dark",
         // Migrated from inline hex (#1e5a32) to the named token
         // `emce-success-deep` so design tweaks happen in one place.
-        success: "bg-emce-light-soft text-emce-success-deep dark:bg-secondary dark:text-emce-mid",
-        warning: "bg-emce-orange-light text-emce-orange-deep dark:bg-emce-orange/15 dark:text-emce-orange",
-        danger: "bg-emce-red-light text-emce-red-deep dark:bg-emce-red/15 dark:text-emce-red",
-        outline: "border border-emce-border text-emce-text-sec dark:border-border dark:text-muted-foreground",
+        success: "bg-emce-light-soft text-emce-success-deep",
+        warning: "bg-emce-orange-light text-emce-orange-deep",
+        danger: "bg-emce-red-light text-emce-red-deep",
+        outline: "border border-emce-border text-emce-text-sec",
         verified:
           "bg-gradient-to-r from-emce-verified-bg to-emce-light-soft text-emce-verified-text border border-emce-verified-border",
         diyguru:
           "bg-gradient-to-r from-emce-orange-light to-emce-orange/40 text-emce-orange-deep border border-emce-orange/50",
         live:
-          "bg-white text-emce-success-deep border border-emce-mid/40 gap-1.5 dark:bg-card dark:text-emce-mid dark:border-emce-mid/30",
+          "bg-white text-emce-success-deep border border-emce-mid/40 gap-1.5",
         glow:
           "bg-gradient-to-r from-emce-light via-emce-mid/60 to-emce-light text-emce-darkest border border-emce-mid/50 shadow-[0_2px_8px_rgba(143,210,153,0.3)]",
       },

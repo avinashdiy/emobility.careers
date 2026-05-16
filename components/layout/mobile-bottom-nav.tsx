@@ -85,7 +85,6 @@ export function MobileBottomNav() {
       // with min-h means short Androids still get a tappable strip.
       className={cn(
         "fixed inset-x-0 bottom-0 z-30 border-t border-emce-border bg-white/95 backdrop-blur sm:hidden",
-        "dark:border-border dark:bg-card/95",
         "pb-[env(safe-area-inset-bottom)]",
       )}
     >
@@ -100,8 +99,8 @@ export function MobileBottomNav() {
                 className={cn(
                   "flex h-14 flex-col items-center justify-center gap-0.5 text-[11px] font-bold transition-colors",
                   active
-                    ? "text-emce-dark dark:text-emce-mid"
-                    : "text-emce-text-muted hover:text-emce-text dark:text-muted-foreground dark:hover:text-foreground",
+                    ? "text-emce-dark"
+                    : "text-emce-text-muted hover:text-emce-text",
                 )}
               >
                 <span

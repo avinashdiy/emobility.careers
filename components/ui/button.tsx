@@ -21,20 +21,20 @@ const buttonVariants = cva(
         // Inverted under dark theme: the green button reads as the
         // foreground call-to-action, with darkest text on it.
         default:
-          "bg-emce-dark text-emce-light hover:bg-emce-dark-deep dark:bg-emce-mid dark:text-emce-darkest dark:hover:bg-emce-light",
+          "bg-emce-dark text-emce-light hover:bg-emce-dark-deep",
         // Accent: lime background, dark text — for hero CTAs. Already
         // high-contrast in both themes; only nudge hover so the green
         // doesn't blow out against the dark surface.
         accent:
-          "bg-emce-light text-emce-darkest hover:bg-emce-mid hover:text-emce-darkest dark:bg-emce-mid dark:hover:bg-emce-light",
+          "bg-emce-light text-emce-darkest hover:bg-emce-mid hover:text-emce-darkest",
         // Outline secondary: dark teal border — matches .emce-btn--secondary.
         // In dark mode the green border/text reads better than the dark-teal.
         outline:
-          "border-2 border-emce-dark bg-transparent text-emce-dark hover:bg-emce-light-soft dark:border-emce-mid dark:text-emce-mid dark:hover:bg-secondary",
+          "border-2 border-emce-dark bg-transparent text-emce-dark hover:bg-emce-light-soft",
         // Ghost: subtle pill on light bg — matches .emce-btn--ghost
         ghost:
-          "bg-emce-light-soft text-emce-dark hover:bg-emce-mid hover:text-emce-darkest dark:bg-secondary dark:text-foreground dark:hover:bg-emce-mid dark:hover:text-emce-darkest",
-        link: "text-emce-dark underline-offset-4 hover:underline dark:text-emce-mid",
+          "bg-emce-light-soft text-emce-dark hover:bg-emce-mid hover:text-emce-darkest",
+        link: "text-emce-dark underline-offset-4 hover:underline",
         destructive:
           "bg-emce-red text-white hover:bg-emce-red/90",
         // Glow: lime gradient with soft halo. The halo sits below via

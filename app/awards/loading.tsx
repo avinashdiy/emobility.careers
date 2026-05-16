@@ -10,7 +10,7 @@ import { Card } from "@/components/ui/card";
  */
 export default function AwardsLoading() {
   return (
-    <div className="min-h-screen bg-emce-light-bg dark:bg-background">
+    <div className="min-h-screen bg-emce-light-bg">
       <section className="emce-mesh-hero relative px-4 py-12 text-white">
         <div className="container max-w-3xl space-y-3 text-center">
           <Skeleton className="mx-auto h-5 w-32 rounded-full bg-white/15" />
