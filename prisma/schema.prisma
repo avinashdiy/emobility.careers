@@ -228,6 +228,9 @@ model User {
   companyClaimsFiled          CompanyClaim[]            @relation("CompanyClaimant")
   companyClaimsReviewed       CompanyClaim[]            @relation("CompanyClaimReviewer")
   articlesAuthored            Article[]                 @relation("ArticleAuthor")
+  // SEO-targeted job-description templates this admin authored. See
+  // `JobDescriptionTemplate` further down for the publishing flow.
+  jdTemplatesAuthored         JobDescriptionTemplate[]  @relation("JDTemplateAuthor")
   hashtagSubscriptions        HashtagSubscription[]     @relation("HashtagSubscriber")
   profileViewsReceived        ProfileView[]             @relation("ProfileViewed")
   profileViewsMade            ProfileView[]             @relation("ProfileViewer")
@@ -328,6 +331,7 @@ model EVDomain {
   jobDomains        JobEVDomain[]
   salaryBenchmarks  SalaryBenchmark[]
   salarySubmissions SalarySubmission[]
+  jdTemplates       JobDescriptionTemplate[]
 }
 
 model Skill {
@@ -1938,6 +1942,45 @@ model Institution {
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
+  // ─── EV-industry ranking ──────────────────────────────────
+  //
+  // Editorial / admin-curated scores across seven pillars that power
+  // /institutions/rankings. Each is 0-100 (NULL = "not yet scored",
+  // institution is excluded from the ranked list but still
+  // discoverable via /institutions search). Scores are not derived
+  // from on-platform behaviour — they reflect the institution's
+  // standing as an EV-industry talent producer based on published
+  // research, faculty, placement, lab infrastructure, content
+  // alignment with AICTE/NSDC standards, alumni in EV roles, and EV
+  // startups incubated. See scripts/seed-institution-rankings.ts for
+  // the canonical scoring rubric and per-institution rationale.
+  evScoreResearch       Int? // R&D output: papers, patents, lab capacity
+  evScoreFaculty        Int? // faculty depth + industry experience
+  evScorePlacement      Int? // EV-industry placement rate + recruiters
+  evScoreInfrastructure Int? // labs, EVs, charging infra on campus
+  evScoreContent        Int? // curriculum depth + AICTE/NSDC alignment
+  evScoreAlumni         Int? // alumni in EV roles + leadership presence
+  evScoreStartups       Int? // EV startups incubated + founder pipeline
+
+  // Composite overall — average of the 7 pillars, persisted so the
+  // /rankings page can sort + paginate without recomputing per
+  // request. Recomputed by the seed script whenever pillar scores
+  // change.
+  evScoreOverall        Int?
+
+  // Explicit ranks. Lower = better, 1-indexed, NULL for unranked.
+  // Set by the seed script in two passes: provisional rank from
+  // evScoreOverall, then hard overrides for editorial pins (eg.
+  // eMobility Academy by DIYguru = #1 IN, #2 global). Persisting the
+  // resolved rank avoids surfacing different orderings under churn.
+  evRankIndia           Int?
+  evRankGlobal          Int?
+
+  // Short editorial blurb explaining why this institution earns its
+  // rank — surfaced inline on the rankings page so the ordering reads
+  // as deliberate, not opaque. Plain text, ≤500 chars.
+  evRankingNote         String? @db.Text
+
   educationLinks   Education[]
   competitionTeams CompetitionRegistration[] @relation("CompetitionTeamInstitution")
   /// Self-served college placement-cell sign-ups (one per
@@ -1951,6 +1994,9 @@ model Institution {
 
   @@index([verificationStatus, name])
   @@index([type, city])
+  @@index([evRankIndia])
+  @@index([evRankGlobal])
+  @@index([evScoreOverall])
 }
 
 // ─── College placement cell — self-served college sign-up ─────────
@@ -6172,4 +6218,192 @@ model FeatureFlagTarget {
 
   @@unique([flagId, userId])
   @@index([userId])
+}
+
+// ─── Job-description templates (SEO + lead-gen surface) ────────
+//
+// 200+ EV-industry job-description templates surfaced at /jd and
+// /jd/<slug>. The intent is twofold:
+//   1. SEO — when HRs / candidates search "EV battery engineer job
+//      description" or "EV charging technician JD India salary",
+//      emobility.careers ranks for the long-tail query.
+//   2. Lead-gen — public visitors see the top fold of every JD
+//      (title, summary, overview, salary band, demand signal,
+//      first ~3 responsibilities). The full body — complete
+//      responsibilities/requirements, interview questions,
+//      certifications, career path — is gated behind a sign-up
+//      wall so we convert search traffic into platform accounts.
+//
+// Distinct from `JobPosting` (an actual employer-posted role with
+// applications) and `Article` (free-form editorial copy). This is
+// a templated role library: one row per canonical role title,
+// admin-curated, evergreen.
+
+enum JDCollarType {
+  BLUE  // Operators, helpers, technicians at the production / install end
+  GREY  // Skilled trades — service technicians, fitters, electricians
+  WHITE // Engineers, managers, software, business roles
+  CXO   // C-suite + Heads-of executive positions
+}
+
+enum JDSeniority {
+  ENTRY     // 0-1 yr — apprentice / fresher
+  JUNIOR    // 1-3 yr
+  MID       // 3-6 yr
+  SENIOR    // 6-10 yr
+  LEAD      // 10-15 yr — managers / staff individual contributors
+  PRINCIPAL // 15+ yr — directors / VPs / principal engineers
+  EXECUTIVE // CXO / Head-of, separate from the IC ladder
+}
+
+enum JDFunctionalArea {
+  ENGINEERING
+  RESEARCH_AND_DEVELOPMENT
+  SOFTWARE
+  DATA_AND_AI
+  PRODUCT
+  DESIGN
+  MANUFACTURING
+  QUALITY
+  SUPPLY_CHAIN
+  OPERATIONS
+  SERVICE_AND_AFTERSALES
+  SALES
+  MARKETING
+  BUSINESS_DEVELOPMENT
+  HR_AND_RECRUITING
+  FINANCE
+  LEGAL_AND_COMPLIANCE
+  STRATEGY
+  EXECUTIVE
+}
+
+enum JDStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+model JobDescriptionTemplate {
+  id   String @id @default(cuid())
+  /// URL-safe identifier. Surfaced at /jd/<slug>. Stable — renaming
+  /// is a 30x redirect, not a slug edit.
+  slug String @unique
+  /// Canonical role title (e.g. "Battery Cell Engineer").
+  title String
+  /// Common synonyms the role is known by ("Lithium-ion Cell
+  /// Engineer", "Cell Design Engineer"). Indexed into searchTsv so
+  /// /jd?q= matches them; also shown as "Also known as: …" on the
+  /// detail page.
+  alternativeTitles String[] @default([])
+  /// Single-line summary — used as the OG description, /jd card
+  /// preview, and search-snippet meta. ≤160 chars.
+  summary String
+
+  // ─── Classification ───────────────────────────────────────
+  collarType     JDCollarType
+  seniority      JDSeniority
+  functionalArea JDFunctionalArea
+  /// Optional FK into EVDomain (Battery / Charging / Motor / etc.) —
+  /// drives the per-domain hub pages at /jd?domain=<slug>.
+  evDomainId     String?
+  evDomain       EVDomain?    @relation(fields: [evDomainId], references: [id], onDelete: SetNull)
+  /// Companies the role typically lives at — surfaced as suggestion
+  /// chips on the public page and used to seed `/jd?company=` queries.
+  typicalCompanies  String[] @default([])
+  /// Industry verticals where the role appears (e.g. "EV OEM",
+  /// "Tier-1 supplier", "Charging operator").
+  typicalIndustries String[] @default([])
+
+  // ─── Body ─────────────────────────────────────────────────
+  /// Long-form overview paragraph. Markdown allowed; rendered with
+  /// the same pipeline as Article bodies. Visible to public.
+  overview String @db.Text
+  /// 6-12 bullet responsibilities. First 3 are visible to public;
+  /// the rest are gated behind sign-up.
+  responsibilities       String[] @default([])
+  /// Mandatory qualifications. First 3 visible to public; rest gated.
+  requirements           String[] @default([])
+  /// Nice-to-haves — fully gated.
+  preferredQualifications String[] @default([])
+  /// Skills/keywords — fully visible (drives the SEO keyword
+  /// density). Aim for 8-15 entries.
+  keySkills              String[] @default([])
+  /// Tools / software / hardware the role uses (e.g. "MATLAB",
+  /// "Altium", "AVL CRUISE"). Fully visible.
+  tools                  String[] @default([])
+  /// Industry certifications relevant to the role (e.g. "ASDC Level
+  /// 4", "SAE J2954"). Gated.
+  certifications         String[] @default([])
+
+  // ─── Salary insights (India-default) ──────────────────────
+  experienceMinYears Int          @default(0)
+  experienceMaxYears Int          @default(2)
+  salaryMinLakhs     Float?
+  salaryMedianLakhs  Float?
+  salaryMaxLakhs     Float?
+  salaryCurrency     String       @default("INR")
+  salaryPeriod       SalaryPeriod @default(YEARLY)
+  /// Optional LIKE pattern matched against `SalarySubmission.jobTitle`
+  /// when computing the live "what people on platform earn" badge.
+  /// Example: "%Battery%Engineer%". Falls back to the static
+  /// salaryMin/Median/Max above when no matches.
+  salaryRoleQuery    String?
+
+  // ─── Career path + reporting structure ───────────────────
+  /// Ordered career-path string array — e.g.
+  /// ["Junior Battery Engineer", "Battery Engineer",
+  ///  "Senior Battery Engineer", "Lead — Battery Systems"].
+  /// Renders as a numbered ladder on the detail page (gated).
+  careerPath String[] @default([])
+  /// Typical manager title (e.g. "Battery Systems Manager"). Single
+  /// string. Visible to public.
+  reportsTo  String?
+  /// Titles that typically report to this role (set when this role
+  /// itself is a manager). Gated.
+  reports    String[] @default([])
+
+  // ─── Interview prep (gated, used for AI-driven lead-gen) ──
+  sampleInterviewQuestions String[] @default([])
+
+  // ─── Hiring signals (always public — SEO surface) ─────────
+  /// Free-text demand label — "Critical", "High", "Emerging",
+  /// "Steady". Renders as a coloured pill. Admin picks from the
+  /// dropdown; not enforced as an enum so we can add new labels
+  /// without a schema migration.
+  demandSignal   String?
+  remoteFriendly Boolean @default(false)
+  /// Free-text growth blurb ("+45% YoY hiring in India FY24-25").
+  growthOutlook  String?
+
+  // ─── Lifecycle ────────────────────────────────────────────
+  status      JDStatus  @default(DRAFT)
+  publishedAt DateTime?
+  /// FK on the admin user who created the row. Nullable so
+  /// scripted seeds don't fail when the author user is missing.
+  authorId    String?
+  author      User?     @relation("JDTemplateAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  // ─── SEO overrides ────────────────────────────────────────
+  /// When set, overrides the auto-generated <title>. Useful for
+  /// matching exact long-tail queries.
+  metaTitle       String?
+  metaDescription String?
+
+  // ─── Reader signals ───────────────────────────────────────
+  /// Fire-and-forget increment on the public detail page. Used for
+  /// "Most-viewed JDs" widgets and ranking the /jd index.
+  viewCount Int @default(0)
+
+  // FTS — same generated-tsvector pattern as Skill / Institution.
+  searchTsv Unsupported("tsvector")?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([collarType, seniority])
+  @@index([functionalArea])
+  @@index([evDomainId])
+  @@index([viewCount])
 }

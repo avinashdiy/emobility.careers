@@ -7,16 +7,19 @@ import { Building2, GraduationCap, Plus, Check, X } from "lucide-react";
 
 /**
  * LinkedIn-style "search or create" entity picker. Used by the experience
- * editor (companies) and the education editor (institutions). Three states
+ * editor (companies) and the education editor (institutions). Four states
  * the candidate can land on:
  *
- *   1. Linked to an existing entity   → name + tiny logo + "✓ Linked"
- *   2. Plain text only                → name as text, FK stays null
- *   3. Just-created entity            → same as (1) but UNVERIFIED status
+ *   1. Linked to an existing VERIFIED entity → name + logo + "✓ Verified"
+ *   2. Linked to a PENDING entity (someone else submitted, awaiting
+ *      review) → name + logo + "⏳ Pending review" pill
+ *   3. Plain text only → name as text, FK stays null
+ *   4. Just-submitted entity → PENDING status; admin reviews before the
+ *      /company/<slug> or /institutions/<slug> page becomes linkable
  *
- * The component itself is presentation-only — search/create are passed as
- * async functions so we can reuse the same picker for any entity type by
- * pointing it at different server actions.
+ * The component itself is presentation-only — search/create are passed
+ * as async functions so we can reuse the same picker for any entity type
+ * by pointing it at different server actions.
  */
 
 export interface EntityMatch {
@@ -24,6 +27,11 @@ export interface EntityMatch {
   name: string;
   logoUrl: string | null;
   subtitle?: string | null;
+  /// Optional status — when present, controls whether the picker
+  /// renders a "verified" tick or a "pending review" pill on the
+  /// match. Pickers that don't pass this default to "VERIFIED"
+  /// rendering (back-compat for callers that haven't been updated).
+  verificationStatus?: "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED";
 }
 
 export interface EntityPickerProps {
@@ -116,7 +124,12 @@ export function EntityPicker({
       const r = await onCreate(name);
       if (r.ok && r.id) {
         setLinkedId(r.id);
-        setLinkedEntity({ id: r.id, name, logoUrl: null });
+        // Just-submitted entities are always PENDING — see
+        // createCompanyLite / createInstitutionLite in
+        // server/entities/actions.ts. Display the linked chip with
+        // the "Pending admin review" badge so the candidate
+        // immediately understands the lifecycle.
+        setLinkedEntity({ id: r.id, name, logoUrl: null, verificationStatus: "PENDING" });
         setOpen(false);
       }
     });
@@ -133,15 +146,31 @@ export function EntityPicker({
 
       {linkedEntity ? (
         // Locked-state chip — shows the linked entity, click X to unlink.
+        // The verification badge differs:
+        //   • VERIFIED  → green ✓ (linked, opens public page)
+        //   • PENDING/UNVERIFIED → amber ⏳ pill ("Pending admin review")
+        //     so the candidate knows their profile will show the name
+        //     but the underlying page isn't live yet.
         <div className="flex items-center gap-2 rounded-md border border-emce-mid bg-emce-light-soft/40 p-2.5">
           <Avatar src={linkedEntity.logoUrl} name={linkedEntity.name} size="sm" />
           <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <span className="truncate text-sm font-bold text-emce-text">{linkedEntity.name}</span>
-              <Check className="h-3.5 w-3.5 text-emce-mid-muted" aria-label="Linked" />
+              {(!linkedEntity.verificationStatus || linkedEntity.verificationStatus === "VERIFIED") ? (
+                <Check className="h-3.5 w-3.5 text-emce-mid-muted" aria-label="Verified" />
+              ) : (
+                <span className="inline-flex items-center rounded-full bg-emce-yellow-soft/60 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-emce-yellow-deep">
+                  ⏳ Pending admin review
+                </span>
+              )}
             </div>
             {linkedEntity.subtitle && (
               <p className="text-hint text-emce-text-sec">{linkedEntity.subtitle}</p>
+            )}
+            {linkedEntity.verificationStatus && linkedEntity.verificationStatus !== "VERIFIED" && (
+              <p className="mt-1 text-[10px] text-emce-text-muted">
+                Your profile shows the name. The {kind}'s public page becomes clickable once admin verifies it.
+              </p>
             )}
           </div>
           <button
@@ -183,20 +212,37 @@ export function EntityPicker({
           {searching && (
             <div className="px-3 py-2 text-xs text-emce-text-sec">Searching…</div>
           )}
-          {matches.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              onClick={() => pick(m)}
-              className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-emce-light-soft"
-            >
-              <Avatar src={m.logoUrl} name={m.name} size="sm" />
-              <div className="min-w-0 flex-1">
-                <div className="truncate text-sm font-bold text-emce-text">{m.name}</div>
-                {m.subtitle && <div className="truncate text-hint text-emce-text-sec">{m.subtitle}</div>}
-              </div>
-            </button>
-          ))}
+          {matches.map((m) => {
+            const isPending = m.verificationStatus && m.verificationStatus !== "VERIFIED";
+            return (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => pick(m)}
+                className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-emce-light-soft"
+              >
+                <Avatar src={m.logoUrl} name={m.name} size="sm" />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="truncate text-sm font-bold text-emce-text">{m.name}</span>
+                    {isPending && (
+                      // Discloses that the row was submitted by another
+                      // user and is awaiting admin verification. Still
+                      // selectable — picking it avoids creating a
+                      // duplicate submission for the same {kind}.
+                      <span className="inline-flex items-center rounded-full bg-emce-yellow-soft/60 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emce-yellow-deep">
+                        Pending review
+                      </span>
+                    )}
+                    {!isPending && (
+                      <Check className="h-3 w-3 text-emce-mid-muted" aria-label="Verified" />
+                    )}
+                  </div>
+                  {m.subtitle && <div className="truncate text-hint text-emce-text-sec">{m.subtitle}</div>}
+                </div>
+              </button>
+            );
+          })}
           {showCreate && (
             <button
               type="button"
@@ -209,10 +255,10 @@ export function EntityPicker({
               </span>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-bold text-emce-text">
-                  {creating ? "Adding…" : `Add "${text.trim()}" as a new ${kind}`}
+                  {creating ? "Submitting…" : `Submit "${text.trim()}" for admin review`}
                 </div>
                 <div className="text-hint text-emce-text-sec">
-                  We'll mark it unverified and an admin will review.
+                  Saved to your profile right away. The {kind}'s page goes live once an admin verifies it.
                 </div>
               </div>
               <Icon className="h-4 w-4 text-emce-text-sec" />

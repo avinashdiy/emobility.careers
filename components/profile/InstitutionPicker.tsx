@@ -42,12 +42,16 @@ export function InstitutionPicker({
             name: c.name,
             logoUrl: c.logoUrl,
             subtitle: [c.type.replace("_", " "), c.city].filter(Boolean).join(" · "),
+            // Surfaces to EntityPicker so PENDING + UNVERIFIED rows
+            // render with the "Pending review" pill — same flow as
+            // CompanyPicker.
+            verificationStatus: c.verificationStatus,
           }));
         }}
         onCreate={async (name) => createInstitutionLite({ name, type })}
         placeholder="Search or type a school / college name…"
         label="Institution"
-        helpText="If your school or college isn't in the list, you can add it inline. Or just leave it as plain text."
+        helpText="Pick from the list when possible. If your institution isn't there, submit it for admin review — the name shows on your profile right away."
       />
 
       {/* Hidden type selector — only shown when the candidate is about to

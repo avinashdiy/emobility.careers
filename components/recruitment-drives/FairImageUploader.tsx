@@ -72,6 +72,7 @@ function UploadSlot({
   previewClass: string;
 }) {
   const formRef = useRef<HTMLFormElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(currentUrl);
   const [error, setError] = useState<string | null>(null);
@@ -120,19 +121,35 @@ function UploadSlot({
         className="mt-2"
       >
         <input type="hidden" name="driveId" value={driveId} />
-        <label className="inline-block cursor-pointer">
-          <Button asChild={false} type="button" variant="outline" size="sm" disabled={busy}>
-            <span>{busy ? "Uploading…" : currentUrl ? "Replace" : "Upload"}</span>
-          </Button>
-          <input
-            type="file"
-            name="image"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            className="sr-only"
-            disabled={busy}
-            onChange={() => formRef.current?.requestSubmit()}
-          />
-        </label>
+        {/* Previous version wrapped the <Button> inside a <label>
+            with a sibling hidden file input. That pattern is broken:
+            the <Button> renders as a real <button> element, and
+            clicks on a <button> inside a <label> do NOT propagate
+            to a sibling file input (browsers intentionally suppress
+            the proxy to avoid double-firing). The file picker never
+            opened.
+
+            The fix is to skip the <label>-proxy trick and call
+            `fileRef.current?.click()` directly from the button's
+            onClick. Same behaviour, works in every browser. */}
+        <input
+          ref={fileRef}
+          type="file"
+          name="image"
+          accept="image/jpeg,image/png,image/webp,image/gif"
+          className="sr-only"
+          disabled={busy}
+          onChange={() => formRef.current?.requestSubmit()}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          onClick={() => fileRef.current?.click()}
+        >
+          {busy ? "Uploading…" : currentUrl ? "Replace" : "Upload"}
+        </Button>
       </form>
       <p className="mt-1 text-hint text-emce-text-muted">{helper}</p>
       {error && (

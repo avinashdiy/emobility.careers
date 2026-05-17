@@ -134,6 +134,104 @@ export function organizationJsonLd(org: {
   };
 }
 
+/**
+ * EducationalOrganization (or one of its sub-types) for institution
+ * pages — universities, colleges, polytechnics, ITIs, research labs,
+ * and dedicated training providers. Maps the local `InstitutionType`
+ * enum to the most-specific schema.org @type Google recognises:
+ *
+ *   UNIVERSITY → CollegeOrUniversity
+ *   COLLEGE / POLYTECHNIC → CollegeOrUniversity
+ *   ITI / TRAINING_CENTER → EducationalOrganization
+ *   SCHOOL → School
+ *   RESEARCH_INSTITUTE → ResearchOrganization (Google extension)
+ *   OTHER → EducationalOrganization
+ */
+export function educationalOrganizationJsonLd(inst: {
+  name: string;
+  slug: string;
+  type:
+    | "UNIVERSITY"
+    | "COLLEGE"
+    | "SCHOOL"
+    | "ITI"
+    | "POLYTECHNIC"
+    | "RESEARCH_INSTITUTE"
+    | "TRAINING_CENTER"
+    | "OTHER";
+  shortName: string | null;
+  website: string | null;
+  logoUrl: string | null;
+  about: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  foundedYear: number | null;
+  affiliation: string | null;
+  alumniCount: number | null;
+}) {
+  const url = `${BASE()}/institutions/${inst.slug}`;
+  const schemaType =
+    inst.type === "UNIVERSITY" || inst.type === "COLLEGE" || inst.type === "POLYTECHNIC"
+      ? "CollegeOrUniversity"
+      : inst.type === "SCHOOL"
+        ? "School"
+        : inst.type === "RESEARCH_INSTITUTE"
+          ? "ResearchOrganization"
+          : "EducationalOrganization";
+
+  return {
+    "@context": "https://schema.org",
+    "@type": schemaType,
+    "@id": url,
+    name: inst.name,
+    ...(inst.shortName && { alternateName: inst.shortName }),
+    url,
+    sameAs: inst.website ? [inst.website] : undefined,
+    ...(inst.logoUrl && { logo: inst.logoUrl }),
+    ...(inst.about && { description: inst.about }),
+    ...((inst.city || inst.state) && {
+      address: {
+        "@type": "PostalAddress",
+        ...(inst.city && { addressLocality: inst.city }),
+        ...(inst.state && { addressRegion: inst.state }),
+        addressCountry: inst.country ?? "IN",
+      },
+    }),
+    ...(inst.foundedYear && { foundingDate: String(inst.foundedYear) }),
+    ...(inst.affiliation && { parentOrganization: { "@type": "Organization", name: inst.affiliation } }),
+    ...(inst.alumniCount && inst.alumniCount > 0 && {
+      alumni: { "@type": "QuantitativeValue", value: inst.alumniCount },
+    }),
+  };
+}
+
+/**
+ * FAQPage schema — wraps the on-page FAQ section so Google can
+ * render it as an expandable Q&A rich result. Eligibility per
+ * Google's FAQ guidelines:
+ *   • Each Q/A must be visible on the page (same text)
+ *   • Don't use for advertising / promotional content
+ *   • Don't use for medical or legal advice
+ *
+ * We use this on /colleges/register and (future) /fairs/[slug] FAQ
+ * sections.
+ */
+export function faqPageJsonLd(items: { question: string; answer: string }[]) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: items.map((it) => ({
+      "@type": "Question",
+      name: it.question,
+      acceptedAnswer: {
+        "@type": "Answer",
+        text: it.answer,
+      },
+    })),
+  };
+}
+
 /** ProfessionalService schema for mentor profiles. */
 export function mentorServiceJsonLd(m: {
   slug: string;

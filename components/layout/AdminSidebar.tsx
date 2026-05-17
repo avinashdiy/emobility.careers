@@ -13,6 +13,7 @@ import {
 
 type Counts = {
   companies: number;
+  institutions: number;
   jobs: number;
   reports: number;
   postReports: number;
@@ -56,6 +57,11 @@ function buildGroups(counts: Counts): Group[] {
         // which is across all roles.
         { href: "/admin/candidates", label: "Candidates", icon: Users },
         { href: "/admin/employers", label: "Employers", icon: Briefcase, badge: counts.companies },
+        // Candidate-submitted Institution rows awaiting admin
+        // verification. Mirrors the Employers KYC queue but for the
+        // Institution entity (the page at /institutions/<slug>).
+        // Distinct from /admin/colleges below, which gates TPO access.
+        { href: "/admin/institutions", label: "Institutions", icon: GraduationCap, badge: counts.institutions },
         { href: "/admin/diyguru", label: "DIYguru roster", icon: School, badge: counts.diyguru },
         // Self-serve college placement-cell applications. Badge =
         // PENDING count; approving flips User.isPlacementOfficer so
@@ -111,6 +117,10 @@ function buildGroups(counts: Counts): Group[] {
         { href: "/admin/pages", label: "Pages (CMS)", icon: FileText },
         // Editorial articles — markdown/text, surfaced at /articles/<slug>.
         { href: "/admin/articles", label: "Articles (editorial)", icon: Newspaper },
+        // JD library — 200+ EV-industry job-description templates
+        // surfaced at /jd. The headline SEO + lead-gen surface
+        // (full body gated behind sign-up).
+        { href: "/admin/jd-templates", label: "JD templates", icon: FileText },
         // AI-tool generation guide — what to tell Claude when authoring
         // a new tool landing page so it integrates with /api/ai/proxy.
         { href: "/admin/pages/ai-tools-guide", label: "AI tools guide", icon: Wand2 },

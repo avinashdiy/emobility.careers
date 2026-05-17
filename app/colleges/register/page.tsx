@@ -13,11 +13,71 @@ import { SiteFooter } from "@/components/layout/site-footer";
 import { ToastFromSearchParams } from "@/components/ui/toast-from-params";
 import { InstitutionPicker } from "@/components/teams/InstitutionPicker";
 import { registerCollegePlacementCell } from "@/server/colleges/actions";
+import { faqPageJsonLd, jsonLdScriptTag } from "@/lib/seo/schemas";
+
+// Inline FAQ — rendered visibly on the page AND wrapped in
+// FAQPage JSON-LD so Google can show it as an expandable rich
+// result. The two MUST stay textually identical per Google's
+// guidelines (search bot cross-references the visible text).
+const FAQS: { question: string; answer: string }[] = [
+  {
+    question: "Who can register a college placement cell?",
+    answer:
+      "Any TPO / placement coordinator at a recognised college, polytechnic, ITI, university, or training centre in India. Apply with your professional email and our team reviews within 2 business days.",
+  },
+  {
+    question: "Is emobility.careers free for colleges?",
+    answer:
+      "Yes — registering your placement cell, bulk-importing your cohort, and sharing matched openings is free for colleges. We monetise via recruiter subscriptions, not college fees.",
+  },
+  {
+    question: "How do I bulk-import my students?",
+    answer:
+      "After approval you get access to /tpo/import where you upload a CSV with student emails, names, phone numbers, course names, and graduation dates. Students who already have accounts on emobility.careers get auto-tagged to your placement funnel.",
+  },
+  {
+    question: "How do candidates apply through the platform?",
+    answer:
+      "Once your students are imported, they can sign in with their roster email, complete their profile, and apply to any open EV-industry job. Your TPO dashboard shows their pipeline stage (Applied → Shortlisted → Interview → Offer → Hired) in real time.",
+  },
+  {
+    question: "What is the Bharat eMobility Recruitathon?",
+    answer:
+      "A flagship EV-industry hiring fair across Delhi (Jan 2026) and Pune (Feb 2026), with 150+ hiring partners and on-site interview slots. Approved colleges can pre-register their cohort and bring them to the venue with platform-issued check-in passes.",
+  },
+  {
+    question: "Can I track which companies are hiring from my college?",
+    answer:
+      "Yes — the TPO dashboard surfaces a per-cohort funnel showing application counts, interview bookings, and hire counts per recruiter. Use it to report placement statistics back to leadership and accreditation bodies.",
+  },
+  {
+    question: "What if my college is not in the institution dropdown?",
+    answer:
+      "Just type your college's full name in the picker — we'll add it as a new institution entry. An admin will review and verify it within 2 business days as part of your placement cell application.",
+  },
+];
 
 export const metadata: Metadata = {
-  title: "Register your college placement cell",
+  title: "Register your college placement cell · emobility.careers",
   description:
-    "Get your college on emobility.careers — bulk-import students, share JD-matched opportunities, and bring your cohort to our recruitment fairs.",
+    "Get your college on emobility.careers — bulk-import students, share JD-matched EV-industry openings, and bring your cohort to the Bharat eMobility Recruitathon fairs in Delhi & Pune.",
+  alternates: {
+    canonical: "https://emobility.careers/colleges/register",
+  },
+  openGraph: {
+    type: "website",
+    url: "https://emobility.careers/colleges/register",
+    title: "Register your college placement cell · emobility.careers",
+    description:
+      "Bulk-import students, share matched openings, and bring your cohort to our recruitment fairs.",
+    siteName: "emobility.careers",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Register your college placement cell",
+    description:
+      "Bulk-import students + matched EV openings + recruitment fair access for India's TPOs.",
+  },
 };
 export const dynamic = "force-dynamic";
 
@@ -301,6 +361,36 @@ export default async function CollegeRegisterPage() {
             </Card>
           )}
 
+          {/* Visible FAQ — text MUST match the JSON-LD below per
+              Google's FAQ rich-result rules. Edit FAQS at the top
+              of this file and both stay in sync. */}
+          <section aria-labelledby="college-faq-heading" className="space-y-3">
+            <h2
+              id="college-faq-heading"
+              className="text-section text-emce-text"
+            >
+              Frequently asked questions
+            </h2>
+            <div className="space-y-3">
+              {FAQS.map((f, i) => (
+                <details
+                  key={i}
+                  className="group rounded-lg border border-emce-border bg-white p-4 open:bg-emce-light-soft"
+                >
+                  <summary className="cursor-pointer list-none text-sm font-bold text-emce-text">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="text-emce-mid-muted group-open:rotate-90 transition-transform">
+                        ▸
+                      </span>
+                      {f.question}
+                    </span>
+                  </summary>
+                  <p className="mt-3 text-body text-emce-text-sec">{f.answer}</p>
+                </details>
+              ))}
+            </div>
+          </section>
+
           <p className="text-hint text-emce-text-sec">
             Already a recruiter looking to host a fair? Visit our{" "}
             <Link href="/employer" className="font-bold text-emce-dark hover:underline">
@@ -310,6 +400,16 @@ export default async function CollegeRegisterPage() {
           </p>
         </div>
       </main>
+
+      {/* FAQPage JSON-LD — emits the same questions/answers as the
+          visible <details> list above. Google folds these into an
+          expandable rich result on SERP. */}
+      <script
+        type="application/ld+json"
+        // eslint-disable-next-line react/no-danger
+        dangerouslySetInnerHTML={{ __html: jsonLdScriptTag(faqPageJsonLd(FAQS)) }}
+      />
+
       <SiteFooter />
     </>
   );

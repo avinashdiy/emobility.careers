@@ -1,9 +1,16 @@
 import { env } from "@/lib/env";
+import { renderSitemapIndex, xmlHeaders } from "@/lib/seo/sitemap-xml";
 
 /**
- * Sitemap index — points Google / Bing at the jobs-only sitemap, the
- * default Next-generated sitemap (pages, companies, profiles), and any
- * future shards. Submit this URL to Search Console as the sitemap entry.
+ * Sitemap index — Google / Bing read this first and fan out to each
+ * shard. Submitted to Search Console as the single sitemap entry.
+ *
+ * Sharding rules:
+ *   • Each shard is its own route handler so it can have a tailored
+ *     Cache-Control (jobs change frequently, institutions barely move).
+ *   • Single shard caps at 50k URLs per the sitemap protocol. If
+ *     candidates ever exceed 50k we should paginate (`-1`, `-2`,
+ *     etc.) — see TODO in sitemap-candidates.xml.
  */
 
 export const runtime = "nodejs";
@@ -11,25 +18,19 @@ export const revalidate = 3600;
 
 export async function GET() {
   const base = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
-  const lastmod = new Date().toISOString();
+  const now = new Date();
 
-  const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <sitemap>
-    <loc>${base}/sitemap.xml</loc>
-    <lastmod>${lastmod}</lastmod>
-  </sitemap>
-  <sitemap>
-    <loc>${base}/sitemap-jobs.xml</loc>
-    <lastmod>${lastmod}</lastmod>
-  </sitemap>
-</sitemapindex>`;
+  const xml = renderSitemapIndex([
+    { loc: `${base}/sitemap-static.xml`, lastmod: now },
+    { loc: `${base}/sitemap-jobs.xml`, lastmod: now },
+    { loc: `${base}/sitemap-companies.xml`, lastmod: now },
+    { loc: `${base}/sitemap-institutions.xml`, lastmod: now },
+    { loc: `${base}/sitemap-jd.xml`, lastmod: now },
+    { loc: `${base}/sitemap-articles.xml`, lastmod: now },
+    { loc: `${base}/sitemap-candidates.xml`, lastmod: now },
+    { loc: `${base}/sitemap-posts.xml`, lastmod: now },
+    { loc: `${base}/sitemap-tags.xml`, lastmod: now },
+  ]);
 
-  return new Response(xml, {
-    status: 200,
-    headers: {
-      "Content-Type": "application/xml; charset=utf-8",
-      "Cache-Control": "public, s-maxage=3600",
-    },
-  });
+  return new Response(xml, { status: 200, headers: xmlHeaders(3600) });
 }

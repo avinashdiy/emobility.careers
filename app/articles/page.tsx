@@ -224,7 +224,7 @@ export default async function ArticlesIndexPage({
               </p>
               <div className="emce-stagger mt-2 grid gap-3 md:grid-cols-3">
                 {featured.map((a) => (
-                  <Link key={a.id} href={`/articles/${a.slug}`} className="block">
+                  <Link key={a.id} href={`/${a.slug}`} className="block">
                     <Card className="h-full overflow-hidden p-0 transition hover:border-emce-mid hover:shadow-emce-hover">
                       {a.coverImageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
@@ -283,7 +283,7 @@ export default async function ArticlesIndexPage({
               <ul className="emce-stagger grid gap-3 md:grid-cols-2">
                 {articles.map((a) => (
                   <li key={a.id}>
-                    <Link href={`/articles/${a.slug}`} className="block">
+                    <Link href={`/${a.slug}`} className="block">
                       <Card className="h-full overflow-hidden p-0 transition hover:border-emce-mid hover:shadow-emce-hover">
                         {a.coverImageUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element

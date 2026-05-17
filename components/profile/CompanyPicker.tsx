@@ -35,12 +35,16 @@ export function CompanyPicker({
           name: c.name,
           logoUrl: c.logoUrl,
           subtitle: c.hqLocation,
+          // Surfaces to EntityPicker so PENDING rows render with the
+          // "Pending review" pill — disclosure that the company isn't
+          // admin-verified yet, but still selectable.
+          verificationStatus: c.verificationStatus,
         }));
       }}
       onCreate={async (name) => createCompanyLite({ name })}
       placeholder="Search or type a company name…"
       label="Company"
-      helpText="We'll link to the company page if a match exists. Otherwise the entry stays as plain text."
+      helpText="Pick from the list when possible. If your company isn't there, submit it for admin review — the name shows on your profile right away."
     />
   );
 }

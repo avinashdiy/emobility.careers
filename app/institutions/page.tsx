@@ -1,5 +1,7 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { db } from "@/lib/db";
+import { env } from "@/lib/env";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -11,9 +13,27 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import type { InstitutionType, Prisma } from "@prisma/client";
 
-export const metadata = {
-  title: "Schools & colleges",
-  description: "Discover universities, colleges, and training institutes that produce EV-industry talent.",
+// SEO-tuned metadata — title keyword-rich for the long-tail
+// "EV colleges India" / "ITI EV training" SERP cluster.
+export const metadata: Metadata = {
+  title: "EV-industry colleges, polytechnics & ITIs in India",
+  description:
+    "Browse universities, colleges, polytechnics, ITIs, research institutes, and training centres that produce India's EV-industry workforce. Discover EV-focused programs, alumni networks, and campus placement opportunities on emobility.careers.",
+  alternates: { canonical: `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/institutions` },
+  openGraph: {
+    type: "website",
+    url: `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/institutions`,
+    title: "EV-industry colleges, polytechnics & ITIs in India",
+    description:
+      "Browse universities, colleges, polytechnics, ITIs, research institutes, and training centres producing India's EV workforce.",
+    siteName: "emobility.careers",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "EV-industry colleges, polytechnics & ITIs in India",
+    description:
+      "Browse universities, colleges, polytechnics, ITIs, research institutes, and training centres producing India's EV workforce.",
+  },
 };
 
 const TYPE_OPTIONS: { value: InstitutionType | ""; label: string }[] = [
@@ -66,6 +86,27 @@ export default async function InstitutionsPage({
               Add yours from the education section of your profile.
             </p>
           </div>
+        </div>
+
+        {/* Prominent secondary nav to the editorial rankings page —
+            mirrors the /companies → /companies/a-z affordance. Surfaced
+            up here so first-time visitors see the curated leaderboard
+            before scrolling into the faceted listing. */}
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emce-border bg-emce-light-soft p-4">
+          <p className="text-body text-emce-text">
+            Want the curated leaderboard?{" "}
+            <span className="text-emce-text-sec">
+              See the top EV universities, colleges and training centres
+              ranked across research, faculty, placement, infrastructure,
+              content quality, alumni and startups.
+            </span>
+          </p>
+          <Link
+            href="/institutions/rankings"
+            className="inline-flex h-10 items-center justify-center rounded-md bg-emce-dark px-5 text-sm font-bold text-white hover:bg-emce-darkest"
+          >
+            🏆 EV institution rankings →
+          </Link>
         </div>
 
         <Card className="mt-6">

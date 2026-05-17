@@ -13,7 +13,21 @@ export default function robots(): MetadataRoute.Robots {
     "/jobs/",
     "/job/",
     "/companies",
+    // A–Z alphabetical directory — separate from /companies which
+    // is the faceted-search view. Both should be crawled because
+    // each per-letter URL has its own canonical + meta.
+    "/companies/a-z",
     "/company/",
+    // Institution directory + per-institution pages. Public surfaces
+    // for college / polytechnic / ITI / research-lab discovery.
+    "/institutions",
+    "/institutions/",
+    // College placement-cell self-serve sign-up landing — public so
+    // TPOs searching "list our college on emobility" find it.
+    "/colleges/register",
+    // Job-fair public landings (Bharat eMobility Recruitathon etc.).
+    "/fairs",
+    "/fairs/",
     "/posts/",
     "/tag/",
     "/feed",
@@ -140,10 +154,14 @@ export default function robots(): MetadataRoute.Robots {
         disallow: PRIVATE_DISALLOW,
       },
     ],
+    // Just the index — search engines fan out from there to all
+    // shards (sitemap-static / -jobs / -companies / -institutions /
+    // -candidates / -posts / -tags). Listing individual shards here
+    // too is harmless but redundant; we keep one canonical entry +
+    // the legacy `/sitemap.xml` alias for crawlers that probe it.
     sitemap: [
       `${base}/sitemap_index.xml`,
       `${base}/sitemap.xml`,
-      `${base}/sitemap-jobs.xml`,
     ],
     host: base,
   };

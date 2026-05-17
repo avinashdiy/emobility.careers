@@ -69,11 +69,27 @@ export async function generateMetadata(): Promise<Metadata> {
     // Pre-migration boot — defaults stand.
   }
 
+  // English-India is the primary audience; x-default mirrors it so
+  // queries from locales we don't yet serve still resolve to the
+  // canonical URL (Google's documented behaviour). When we expand to
+  // a non-EN locale (Hindi UI, GCC English, etc.), each new locale
+  // adds a `languages` entry pointing at the localised URL — the
+  // x-default stays English.
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+  const baseLanguages: Record<string, string> = {
+    "en-IN": appUrl,
+    "x-default": appUrl,
+  };
+
   return {
     title: { default: `${siteName} — ${tagline}`, template: `%s | ${siteName}` },
     description,
     keywords: keywords ? keywords.split(",").map((k) => k.trim()).filter(Boolean) : undefined,
-    metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"),
+    metadataBase: new URL(appUrl),
+    alternates: {
+      canonical: appUrl,
+      languages: baseLanguages,
+    },
     robots: allowIndex
       ? {
           index: true,
@@ -141,7 +157,7 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
+    <html lang="en-IN">
       <body className={cn(inter.variable, "font-sans bg-emce-light-bg text-emce-text antialiased")}>
         <script
           type="application/ld+json"

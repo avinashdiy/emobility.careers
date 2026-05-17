@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { NativeSelect } from "@/components/ui/select";
 import { FieldError } from "@/components/ui/field-error";
 import { RichTextEditor } from "@/components/ui/RichTextEditor";
+import { CompanyPicker, type CompanyOption } from "@/components/admin/CompanyPicker";
 import {
   adminCreateJob,
   adminUpdateJob,
@@ -15,11 +16,9 @@ import {
 
 const INITIAL: AdminJobFormState = { ok: false };
 
-interface CompanyOption {
-  id: string;
-  name: string;
-  slug: string;
-}
+// Re-export so callers of this form can import CompanyOption from
+// the same module — preserves the existing public surface.
+export type { CompanyOption };
 
 interface DomainOption {
   id: string;
@@ -125,22 +124,18 @@ export function AdminJobForm({ companies, evDomains, existingJob }: Props) {
             </>
           ) : (
             <>
-              <NativeSelect
-                id="companyId"
-                name="companyId"
-                defaultValue={v.companyId ?? ""}
-                aria-invalid={!!e.companyId}
-              >
-                <option value="">— Pick one or fill new-company section below —</option>
-                {companies.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name}
-                  </option>
-                ))}
-              </NativeSelect>
-              <p className="mt-1 text-hint text-emce-text-sec">
-                {companies.length} companies in the directory.
-              </p>
+              {/* Typeahead picker — NativeSelect was unusable at
+                  ~1k+ companies (had to scroll through every option).
+                  CompanyPicker filters client-side over the same
+                  preloaded list, capping suggestions at 20. The
+                  hidden field this renders is still `name="companyId"`
+                  so the server action contract is unchanged. */}
+              <CompanyPicker
+                companies={companies}
+                defaultValue={v.companyId ?? undefined}
+                fieldName="companyId"
+                ariaInvalid={!!e.companyId}
+              />
               <FieldError error={e.companyId} />
             </>
           )}

@@ -29,6 +29,23 @@ export default async function CompaniesPage() {
         }
       />
 
+      {/* Prominent secondary nav to the A-Z directory. SEO-wise this
+          also passes link equity to the per-letter pages. */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emce-border bg-emce-light-soft p-4">
+        <p className="text-body text-emce-text">
+          Looking for a specific company?{" "}
+          <span className="text-emce-text-sec">
+            Browse alphabetically — A to Z.
+          </span>
+        </p>
+        <Link
+          href="/companies/a-z"
+          className="inline-flex h-10 items-center justify-center rounded-md bg-emce-dark px-5 text-sm font-bold text-white hover:bg-emce-darkest"
+        >
+          📒 A–Z directory →
+        </Link>
+      </div>
+
       {companies.length === 0 ? (
         <EmptyState
           variant="mesh"

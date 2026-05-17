@@ -32,6 +32,10 @@ import { getConnectionStatus, isFollowingUser } from "@/server/social/queries";
 import { trackProfileView } from "@/server/profile/views";
 import { PageIframe } from "@/components/cms/PageIframe";
 import { breadcrumbJsonLd, personJsonLd as buildPersonJsonLd } from "@/lib/seo/schemas";
+import {
+  ArticleDetailBody,
+  buildArticleJsonLd,
+} from "@/components/articles/ArticleDetailBody";
 import { getViewerContext, canSeeContact, canSeeResume } from "@/lib/profile-visibility";
 import { shouldSuppressExperienceYears } from "@/lib/k-anonymity";
 import { env } from "@/lib/env";
@@ -112,6 +116,53 @@ export async function generateMetadata({
       // notes for the same reasoning.
       robots:
         cmsPage.status === "ARCHIVED"
+          ? { index: false, follow: true }
+          : { index: true, follow: true },
+    };
+  }
+
+  // ─── Article dispatch (after Page, before Candidate) ─────────
+  // Articles live at root-level permalinks too (e.g. /top-10-evjobs).
+  // /articles/<slug> exists only as a 308 redirect to here. CMS Pages
+  // take precedence because they're hand-curated landing pages and a
+  // slug collision should resolve in their favour.
+  const articleMeta = await db.article.findUnique({
+    where: { slug: username },
+    select: {
+      title: true,
+      excerpt: true,
+      coverImageUrl: true,
+      status: true,
+      publishedAt: true,
+      author: { select: { name: true } },
+      category: { select: { name: true } },
+    },
+  });
+  if (articleMeta && articleMeta.status !== "DRAFT") {
+    const url = `${env.NEXT_PUBLIC_APP_URL}/${username}`;
+    const description =
+      articleMeta.excerpt ?? `Read about ${articleMeta.title} on emobility.careers.`;
+    return {
+      title: articleMeta.title,
+      description,
+      alternates: { canonical: url },
+      openGraph: {
+        type: "article",
+        url,
+        title: articleMeta.title,
+        description,
+        images: articleMeta.coverImageUrl ? [articleMeta.coverImageUrl] : undefined,
+        publishedTime: articleMeta.publishedAt?.toISOString(),
+        authors: articleMeta.author?.name ? [articleMeta.author.name] : undefined,
+        section: articleMeta.category?.name,
+      },
+      twitter: {
+        card: articleMeta.coverImageUrl ? "summary_large_image" : "summary",
+        title: articleMeta.title,
+        description,
+      },
+      robots:
+        articleMeta.status === "ARCHIVED"
           ? { index: false, follow: true }
           : { index: true, follow: true },
     };
@@ -248,12 +299,100 @@ export default async function PublicCandidateProfile({
     );
   }
 
+  // ─── Article dispatch ──────────────────────────────────────
+  // The /<slug> URL is the canonical home for every editorial
+  // Article. /articles/<slug> 308s to here. Visibility gate mirrors
+  // CMS Page above: DRAFT 404s for non-admins, ARCHIVED stays live.
+  const article = await db.article.findUnique({
+    where: { slug: username },
+    include: {
+      category: { select: { slug: true, name: true } },
+      author: {
+        select: {
+          name: true,
+          candidateProfile: {
+            select: { slug: true, profilePhotoUrl: true, headline: true },
+          },
+        },
+      },
+    },
+  });
+  if (article) {
+    const isAdmin = session?.user?.role === "ADMIN";
+    if (article.status === "DRAFT" && !isAdmin) notFound();
+    const previewMode = article.status === "DRAFT" && isAdmin;
+    const canonicalUrl = `${env.NEXT_PUBLIC_APP_URL}/${article.slug}`;
+
+    // Fire-and-forget view counter — skipped in preview so admin
+    // dry-runs don't inflate the number.
+    if (!previewMode) {
+      db.article
+        .update({
+          where: { id: article.id },
+          data: { viewCount: { increment: 1 } },
+        })
+        .catch(() => undefined);
+    }
+
+    const related = article.categoryId
+      ? await db.article.findMany({
+          where: {
+            status: "PUBLISHED",
+            categoryId: article.categoryId,
+            id: { not: article.id },
+          },
+          orderBy: { publishedAt: "desc" },
+          take: 3,
+          select: {
+            id: true,
+            slug: true,
+            title: true,
+            excerpt: true,
+            coverImageUrl: true,
+            readingTimeMins: true,
+          },
+        })
+      : [];
+
+    const articleLd = buildArticleJsonLd({ article, canonicalUrl });
+
+    return (
+      <>
+        <script
+          type="application/ld+json"
+          // eslint-disable-next-line react/no-danger
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(articleLd) }}
+        />
+        <ArticleDetailBody
+          article={article}
+          related={related}
+          previewMode={previewMode}
+          canonicalUrl={canonicalUrl}
+        />
+      </>
+    );
+  }
+
   const profile = await db.candidateProfile.findUnique({
     where: { slug: username },
     include: {
       user: { select: { id: true, role: true } },
-      experiences: { orderBy: { startDate: "desc" } },
-      education: { orderBy: { startYear: "desc" } },
+      // Pull companyRef + institutionRef with verification status +
+      // slug so the rendering layer can linkify only VERIFIED
+      // entries. PENDING / UNVERIFIED refs show as plain text — the
+      // public company / institution pages aren't live for those.
+      experiences: {
+        orderBy: { startDate: "desc" },
+        include: {
+          companyRef: { select: { slug: true, verificationStatus: true } },
+        },
+      },
+      education: {
+        orderBy: { startYear: "desc" },
+        include: {
+          institutionRef: { select: { slug: true, verificationStatus: true } },
+        },
+      },
       skills: { include: { skill: true } },
       certifications: { orderBy: { issueDate: "desc" } },
       projects: { orderBy: { createdAt: "desc" } },
@@ -1157,7 +1296,23 @@ export default async function PublicCandidateProfile({
                             </Badge>
                           )}
                         </div>
-                        <div className="text-sm text-emce-text-sec">{e.company}</div>
+                        <div className="text-sm text-emce-text-sec">
+                          {e.companyRef && e.companyRef.verificationStatus === "VERIFIED" ? (
+                            // Only VERIFIED company refs become clickable
+                            // links to the public /company/<slug> page.
+                            // PENDING / UNVERIFIED refs render as plain
+                            // text — the public page isn't admin-approved
+                            // for those. See server/entities/actions.ts.
+                            <Link
+                              href={`/company/${e.companyRef.slug}`}
+                              className="hover:text-emce-dark hover:underline"
+                            >
+                              {e.company}
+                            </Link>
+                          ) : (
+                            e.company
+                          )}
+                        </div>
                         <div className="text-hint text-emce-text-muted">
                           {formatMonthYear(e.startDate)} – {e.current ? "Present" : formatMonthYear(e.endDate)}
                           {e.location ? ` · ${e.location}` : ""}
@@ -1185,7 +1340,23 @@ export default async function PublicCandidateProfile({
                                 </Badge>
                               )}
                             </div>
-                            <div className="text-sm text-emce-text-sec">{e.company}</div>
+                            <div className="text-sm text-emce-text-sec">
+                          {e.companyRef && e.companyRef.verificationStatus === "VERIFIED" ? (
+                            // Only VERIFIED company refs become clickable
+                            // links to the public /company/<slug> page.
+                            // PENDING / UNVERIFIED refs render as plain
+                            // text — the public page isn't admin-approved
+                            // for those. See server/entities/actions.ts.
+                            <Link
+                              href={`/company/${e.companyRef.slug}`}
+                              className="hover:text-emce-dark hover:underline"
+                            >
+                              {e.company}
+                            </Link>
+                          ) : (
+                            e.company
+                          )}
+                        </div>
                             <div className="text-hint text-emce-text-muted">
                               {formatMonthYear(e.startDate)} – {e.current ? "Present" : formatMonthYear(e.endDate)}
                               {e.location ? ` · ${e.location}` : ""}
@@ -1217,7 +1388,22 @@ export default async function PublicCandidateProfile({
                   <ul className="mt-4 space-y-3">
                     {profile.education.slice(0, 3).map((e) => (
                       <li key={e.id}>
-                        <div className="font-bold text-emce-text">{e.institution}</div>
+                        <div className="font-bold text-emce-text">
+                          {e.institutionRef && e.institutionRef.verificationStatus === "VERIFIED" ? (
+                            // Only VERIFIED institution refs become
+                            // clickable links to /institutions/<slug>.
+                            // See companyRef rendering above for the
+                            // same lifecycle rationale.
+                            <Link
+                              href={`/institutions/${e.institutionRef.slug}`}
+                              className="hover:text-emce-dark hover:underline"
+                            >
+                              {e.institution}
+                            </Link>
+                          ) : (
+                            e.institution
+                          )}
+                        </div>
                         <div className="text-sm text-emce-text-sec">
                           {[e.degree, e.field].filter(Boolean).join(" · ")}
                         </div>
@@ -1237,7 +1423,22 @@ export default async function PublicCandidateProfile({
                       <ul className="mt-4 space-y-3">
                         {profile.education.slice(3).map((e) => (
                           <li key={e.id}>
-                            <div className="font-bold text-emce-text">{e.institution}</div>
+                            <div className="font-bold text-emce-text">
+                          {e.institutionRef && e.institutionRef.verificationStatus === "VERIFIED" ? (
+                            // Only VERIFIED institution refs become
+                            // clickable links to /institutions/<slug>.
+                            // See companyRef rendering above for the
+                            // same lifecycle rationale.
+                            <Link
+                              href={`/institutions/${e.institutionRef.slug}`}
+                              className="hover:text-emce-dark hover:underline"
+                            >
+                              {e.institution}
+                            </Link>
+                          ) : (
+                            e.institution
+                          )}
+                        </div>
                             <div className="text-sm text-emce-text-sec">
                               {[e.degree, e.field].filter(Boolean).join(" · ")}
                             </div>

@@ -24,6 +24,7 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
   // Pending-queue counts so the sidebar can show WP-style red bubbles.
   const [
     pendingCompanies,
+    pendingInstitutions,
     pendingJobs,
     openReports,
     openPostReports,
@@ -35,6 +36,11 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
   ] = session?.user?.role === "ADMIN"
     ? await Promise.all([
         db.company.count({ where: { verificationStatus: "PENDING" } }),
+        // Candidate-submitted institutions awaiting admin verification.
+        // PENDING is the actionable set — UNVERIFIED captures legacy /
+        // pre-seeded rows that haven't been triaged but aren't blocking
+        // a candidate flow.
+        db.institution.count({ where: { verificationStatus: "PENDING" } }),
         db.jobPosting.count({ where: { status: "PENDING_REVIEW" } }),
         db.jobReport.count({ where: { status: "OPEN" } }),
         // Post reports live in AuditLog (no dedicated schema yet — see
@@ -62,10 +68,11 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
         // /admin/colleges queue.
         db.collegePlacementCell.count({ where: { status: "PENDING" } }).catch(() => 0),
       ])
-    : [0, 0, 0, 0, 0, 0, 0, 0, 0];
+    : [0, 0, 0, 0, 0, 0, 0, 0, 0, 0];
 
   const totalPending =
     pendingCompanies +
+    pendingInstitutions +
     pendingJobs +
     openReports +
     openPostReports +
@@ -110,6 +117,7 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
         <AdminSidebar
           pendingCounts={{
             companies: pendingCompanies,
+            institutions: pendingInstitutions,
             jobs: pendingJobs,
             reports: openReports,
             postReports: openPostReports,

@@ -17,13 +17,24 @@ import { optionalUrl } from "@/lib/forms/zod-url";
  * Institutions (for Education entries). Same UX as LinkedIn's "search or
  * create" autocomplete in profile editing.
  *
- * Both follow the same flow:
+ * Flow (PENDING-review variant, as of 2026-06):
  *   1. The autocomplete client calls `searchX(q)` and renders matches.
+ *      VERIFIED rows appear first; PENDING rows appear below with a
+ *      "pending review" pill so candidates can pick already-submitted
+ *      entries instead of creating duplicates.
  *   2. If the user picks a match → server returns the existing id.
- *   3. If no match and the user types a fresh name → "Create new" CTA
- *      calls `createX({ name, ... })` which makes an UNVERIFIED row.
+ *   3. If no match and the user submits a fresh name → "Submit for
+ *      review" CTA calls `createX({ name, ... })` which makes a PENDING
+ *      row. The row's id flows back to the profile editor like any
+ *      other match — but admin must approve before the row becomes
+ *      VERIFIED (and the public `/company/<slug>` or `/institutions/<slug>`
+ *      page becomes linkable).
  *   4. Profile-editor submits the chosen id with the entry. Plain-text
  *      ("don't link") is also valid — the FK just stays null.
+ *
+ * Display rule: a PENDING-status row still shows on the candidate's
+ * profile by name, but the name is NOT a hyperlink until an admin
+ * promotes it to VERIFIED via the moderation queue.
  */
 
 // ─── Companies (public lookup for candidates) ──────────────
@@ -34,6 +45,11 @@ export interface CompanyMatch {
   name: string;
   logoUrl: string | null;
   hqLocation: string | null;
+  // Surfaced so the picker UI can render a "pending review" pill on
+  // UNVERIFIED / PENDING rows and a "verified" tick on VERIFIED rows.
+  // The picker treats PENDING as selectable so candidates don't
+  // create duplicate submissions for the same company.
+  verificationStatus: "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED";
 }
 
 export async function searchCompanies(q: string): Promise<CompanyMatch[]> {
@@ -43,14 +59,20 @@ export async function searchCompanies(q: string): Promise<CompanyMatch[]> {
   // matching without English stemming false-positives. We still
   // OR with a slug exact-match because pickers sometimes get
   // pasted an exact slug from a URL — no FTS magic needed there.
+  //
+  // REJECTED rows are excluded (admin-banned dups / spam). PENDING +
+  // UNVERIFIED rows ARE included so a candidate typing "ACME EV"
+  // finds the row another candidate submitted yesterday — preventing
+  // duplicate submissions piling up in the admin queue.
   const tsq = buildTsQuery(q);
   if (!tsq) return [];
   const slugCandidate = q.toLowerCase().replace(/\s+/g, "-");
   const fts = await db.$queryRaw<CompanyMatch[]>`
-    SELECT id, slug, name, "logoUrl", "hqLocation"
+    SELECT id, slug, name, "logoUrl", "hqLocation", "verificationStatus"::text
     FROM "Company"
-    WHERE "searchTsv" @@ to_tsquery('simple', ${tsq})
-       OR slug = ${slugCandidate}
+    WHERE ("searchTsv" @@ to_tsquery('simple', ${tsq})
+        OR slug = ${slugCandidate})
+      AND "verificationStatus" <> 'REJECTED'
     ORDER BY
       ts_rank("searchTsv", to_tsquery('simple', ${tsq}))
         + CASE WHEN "verificationStatus" = 'VERIFIED' THEN 0.1 ELSE 0 END
@@ -69,10 +91,10 @@ export async function searchCompanies(q: string): Promise<CompanyMatch[]> {
   // (lower(name)) if present, otherwise a sequential scan that's
   // sub-50ms at our scale.
   return db.$queryRaw<CompanyMatch[]>`
-    SELECT id, slug, name, "logoUrl", "hqLocation"
+    SELECT id, slug, name, "logoUrl", "hqLocation", "verificationStatus"::text
     FROM "Company"
-    WHERE "name" ILIKE ${"%" + q.trim() + "%"}
-       OR slug ILIKE ${"%" + slugCandidate + "%"}
+    WHERE ("name" ILIKE ${"%" + q.trim() + "%"} OR slug ILIKE ${"%" + slugCandidate + "%"})
+      AND "verificationStatus" <> 'REJECTED'
     ORDER BY
       CASE WHEN lower("name") = lower(${q.trim()}) THEN 0 ELSE 1 END,
       CASE WHEN "verificationStatus" = 'VERIFIED' THEN 0 ELSE 1 END,
@@ -115,25 +137,32 @@ export async function createCompanyLite(input: {
         ownerUserId: session.user.id, // placeholder — admin can re-assign during verification
         hqLocation: parsed.data.hqLocation || null,
         website: parsed.data.website || null,
-        verificationStatus: "UNVERIFIED",
+        // PENDING (was UNVERIFIED) — change in 2026-06: user-submitted
+        // companies must go through admin review before the public
+        // /company/<slug> page is treated as real. PENDING rows still
+        // surface in the candidate's profile by name (just not as a
+        // link) and in search autocomplete with a "pending review"
+        // pill so future candidates can pick them rather than
+        // re-submit duplicates. Admin moderation queue:
+        // /admin/employers?status=PENDING.
+        verificationStatus: "PENDING",
       },
       select: { id: true, slug: true },
     }),
   );
   await audit({
     actorId: session.user.id,
-    action: "company.user-created",
+    action: "company.user-submitted",
     entity: "Company",
     entityId: created.id,
-    meta: { source: "candidate-experience-editor" },
+    meta: { source: "candidate-experience-editor", status: "PENDING" },
   });
-  // Bust the public directory + company detail page caches so the
-  // new row surfaces immediately. Without these, a candidate who
-  // creates "Acme EV" inline from their profile editor doesn't see
-  // the company on /companies until the next deploy or 60-min
-  // cache window — confusing UX.
-  revalidatePath("/companies");
-  revalidatePath(`/company/${created.slug}`);
+  // Bust the admin moderation queue so the new submission surfaces
+  // immediately. We deliberately do NOT revalidate the public
+  // /companies + /company/<slug> caches anymore — PENDING rows are
+  // not supposed to be discoverable on the public surface until
+  // admin promotes them to VERIFIED.
+  revalidatePath("/admin/employers");
   return { ok: true, id: created.id, slug: created.slug };
 }
 
@@ -146,6 +175,10 @@ export interface InstitutionMatch {
   type: InstitutionType;
   city: string | null;
   logoUrl: string | null;
+  // Same rationale as CompanyMatch — picker UI uses this to render
+  // a "pending review" pill on UNVERIFIED + PENDING rows so users
+  // can still select them (avoiding duplicate submissions).
+  verificationStatus: "UNVERIFIED" | "PENDING" | "VERIFIED" | "REJECTED";
 }
 
 export async function searchInstitutions(q: string): Promise<InstitutionMatch[]> {
@@ -155,11 +188,15 @@ export async function searchInstitutions(q: string): Promise<InstitutionMatch[]>
   // canonical implementation. This function is the version used by
   // the profile-editor entity-picker (it shapes the result
   // differently — `type` instead of `verificationStatus`).
+  //
+  // REJECTED rows are excluded. PENDING + UNVERIFIED rows are
+  // included so candidates pick existing submissions instead of
+  // duplicating them.
   const tsq = buildTsQuery(q);
   if (!tsq) return [];
   const slugCandidate = q.toLowerCase().replace(/\s+/g, "-");
   const fts = await db.$queryRaw<InstitutionMatch[]>`
-    SELECT id, slug, name, type::text, city, "logoUrl"
+    SELECT id, slug, name, type::text, city, "logoUrl", "verificationStatus"::text
     FROM "Institution"
     WHERE ("searchTsv" @@ to_tsquery('simple', ${tsq})
         OR slug = ${slugCandidate})
@@ -176,7 +213,7 @@ export async function searchInstitutions(q: string): Promise<InstitutionMatch[]>
   // lock-step so neither entity-picker degrades silently when FTS
   // isn't populated.
   return db.$queryRaw<InstitutionMatch[]>`
-    SELECT id, slug, name, type::text, city, "logoUrl"
+    SELECT id, slug, name, type::text, city, "logoUrl", "verificationStatus"::text
     FROM "Institution"
     WHERE ("name" ILIKE ${"%" + q.trim() + "%"} OR slug ILIKE ${"%" + slugCandidate + "%"})
       AND "verificationStatus" <> 'REJECTED'
@@ -231,22 +268,25 @@ export async function createInstitutionLite(input: {
         country: "IN",
         website: parsed.data.website || null,
         createdById: session.user.id,
-        verificationStatus: "UNVERIFIED",
+        // PENDING (was UNVERIFIED) — same change as createCompanyLite
+        // above. User-submitted institutions need admin review before
+        // the /institutions/<slug> page is treated as discoverable.
+        verificationStatus: "PENDING",
       },
       select: { id: true, slug: true },
     }),
   );
   await audit({
     actorId: session.user.id,
-    action: "institution.user-created",
+    action: "institution.user-submitted",
     entity: "Institution",
     entityId: created.id,
-    meta: { source: "candidate-education-editor", type: parsed.data.type },
+    meta: { source: "candidate-education-editor", type: parsed.data.type, status: "PENDING" },
   });
-  // Same revalidation rationale as createCompanyLite — keep the
-  // public directory in sync after a candidate adds a brand-new
-  // institution from their education editor.
-  revalidatePath("/institutions");
-  revalidatePath(`/institutions/${created.slug}`);
+  // Bust the admin moderation queue. We do NOT revalidate the public
+  // /institutions + /institutions/<slug> caches anymore — PENDING
+  // institutions are not discoverable on the public surface until
+  // admin promotes them.
+  revalidatePath("/admin/institutions");
   return { ok: true, id: created.id, slug: created.slug };
 }
