@@ -88,6 +88,12 @@ export default async function EmployerFairDetailPage({
           startsAt: true,
           endsAt: true,
           status: true,
+          // F1 — tracks available on this fair (for the AttachJobForm
+          // picker). Sorted by the admin's defined sortOrder.
+          tracks: {
+            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+            select: { id: true, name: true },
+          },
         },
       },
     },
@@ -200,6 +206,25 @@ export default async function EmployerFairDetailPage({
               year: "numeric",
             })}
           </p>
+          {/* Quick-link row — pre-event match list + booth interview
+              slots. Only shown when the company is CONFIRMED on the
+              fair (otherwise these routes 403). */}
+          {part.status === "CONFIRMED" && (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Link
+                href={`/employer/fairs/${part.drive.id}/matches`}
+                className="inline-flex h-9 items-center rounded-md border border-emce-border bg-white px-3 text-xs font-bold text-emce-dark hover:bg-emce-light-soft"
+              >
+                🎯 Pre-event matches
+              </Link>
+              <Link
+                href={`/employer/fairs/${part.drive.id}/slots`}
+                className="inline-flex h-9 items-center rounded-md border border-emce-border bg-white px-3 text-xs font-bold text-emce-dark hover:bg-emce-light-soft"
+              >
+                📅 Interview slots
+              </Link>
+            </div>
+          )}
         </div>
 
         {/* Pending invitation banner */}
@@ -294,6 +319,7 @@ export default async function EmployerFairDetailPage({
               <div className="mt-4 border-t border-emce-border pt-4">
                 <AttachJobForm
                   driveId={part.drive.id}
+                  tracks={part.drive.tracks}
                   candidates={available.map((j) => ({
                     id: j.id,
                     title: j.title,

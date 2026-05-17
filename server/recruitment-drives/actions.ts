@@ -15,6 +15,7 @@ import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { s3, buckets, publicUrl, objectKey } from "@/lib/storage";
 import { sanitizeRichTextHtml } from "@/lib/cms/job-sanitize";
 import type { FormState } from "@/lib/form-state";
+import { Prisma, RecruitmentDrivePartnerType, RecruitmentDriveSpeakerRole } from "@prisma/client";
 import { optionalUrl } from "@/lib/forms/zod-url";
 
 /**
@@ -600,6 +601,11 @@ export async function attachJobToDrive(formData: FormData): Promise<FormState> {
     const driveId = z.string().parse(formData.get("driveId"));
     const jobId = z.string().parse(formData.get("jobId"));
     const challengeAssessmentId = (formData.get("challengeAssessmentId") as string) || null;
+    // F1 — optional track binding. Empty string from the form's
+    // "(no track)" option becomes null; an actual track id is
+    // validated against the drive's track list below.
+    const trackIdRaw = (formData.get("trackId") as string) || "";
+    const trackIdInput = trackIdRaw.length > 0 ? trackIdRaw : null;
 
     // Authz: the job must belong to the calling company AND the
     // company must be CONFIRMED at the drive. Both checks in one
@@ -618,6 +624,22 @@ export async function attachJobToDrive(formData: FormData): Promise<FormState> {
     if (!part) return { ok: false, message: "You're not on this drive." };
     if (part.status !== "CONFIRMED") {
       return { ok: false, message: "Confirm your participation first." };
+    }
+
+    // If a track was picked, validate it belongs to THIS drive.
+    // Cross-fair track ids would otherwise leak into the join row;
+    // worse, a deleted-and-recreated fair could surface a stale
+    // track id from form-state that no longer exists.
+    let trackId: string | null = null;
+    if (trackIdInput) {
+      const track = await db.recruitmentDriveTrack.findUnique({
+        where: { id: trackIdInput },
+        select: { driveId: true },
+      });
+      if (!track || track.driveId !== driveId) {
+        return { ok: false, message: "Selected track doesn't belong to this fair." };
+      }
+      trackId = trackIdInput;
     }
 
     // If a challenge is attached, validate it's an assessment that
@@ -640,7 +662,7 @@ export async function attachJobToDrive(formData: FormData): Promise<FormState> {
     if (existing) {
       await db.recruitmentDriveJob.update({
         where: { id: existing.id },
-        data: { challengeAssessmentId },
+        data: { challengeAssessmentId, trackId },
       });
     } else {
       // Atomic: create the join + bump the counter together so a
@@ -653,6 +675,7 @@ export async function attachJobToDrive(formData: FormData): Promise<FormState> {
             companyId,
             participationId: part.id,
             challengeAssessmentId,
+            trackId,
           },
         }),
         db.recruitmentDrive.update({
@@ -914,5 +937,571 @@ export async function toggleDriveFeatured(formData: FormData): Promise<FormState
     if (isRouterControlError(err)) throw err;
     logger.error({ err }, "[recruitment-drive] toggle featured failed");
     return { ok: false, message: "Couldn't update." };
+  }
+}
+
+// ─── F1 Industry tracks ────────────────────────────────────────────
+
+const slugify = (s: string): string =>
+  s
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 60);
+
+const CreateTrackSchema = z.object({
+  driveId: z.string().min(1),
+  name: z.string().trim().min(2).max(60),
+  color: z.string().trim().max(40).optional(),
+  description: z.string().trim().max(200).optional(),
+});
+
+/**
+ * Admin creates a track on a fair. The brochure's "Five Industry
+ * Focus Tracks" is the worked example — admin runs this once per
+ * track at fair-config time. Slug derived from name; admin can
+ * re-run for the same name and it'll error with a friendly P2002
+ * message instead of duplicating.
+ */
+export async function createDriveTrack(formData: FormData): Promise<void> {
+  try {
+    const session = await requireAdmin();
+    const parsed = CreateTrackSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      redirect(
+        `/admin/fairs?error=` +
+          encodeURIComponent("Track name is required (2-60 chars)."),
+      );
+    }
+    const slug = slugify(parsed.data.name);
+    if (!slug) {
+      redirect(
+        `/admin/fairs/${parsed.data.driveId}?error=` +
+          encodeURIComponent("Couldn't derive a URL slug from that name — try a different one."),
+      );
+    }
+
+    // Pick a sortOrder that puts new tracks at the end of the list.
+    const last = await db.recruitmentDriveTrack.findFirst({
+      where: { driveId: parsed.data.driveId },
+      orderBy: { sortOrder: "desc" },
+      select: { sortOrder: true },
+    });
+    const nextOrder = (last?.sortOrder ?? -1) + 1;
+
+    try {
+      await db.recruitmentDriveTrack.create({
+        data: {
+          driveId: parsed.data.driveId,
+          slug,
+          name: parsed.data.name,
+          color: parsed.data.color || null,
+          description: parsed.data.description || null,
+          sortOrder: nextOrder,
+        },
+      });
+    } catch (err) {
+      const code = (err as { code?: string })?.code;
+      if (code === "P2002") {
+        redirect(
+          `/admin/fairs/${parsed.data.driveId}?error=` +
+            encodeURIComponent(`A track with the slug "${slug}" already exists on this fair.`),
+        );
+      }
+      throw err;
+    }
+
+    await audit({
+      actorId: session.user.id,
+      action: "recruitment_drive.track_created",
+      entity: "RecruitmentDrive",
+      entityId: parsed.data.driveId,
+      meta: { slug, name: parsed.data.name },
+    });
+    revalidatePath(`/admin/fairs/${parsed.data.driveId}`);
+    revalidatePath(`/fairs`);
+    redirect(`/admin/fairs/${parsed.data.driveId}?notice=` + encodeURIComponent(`Track "${parsed.data.name}" added.`));
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[recruitment-drive] createDriveTrack");
+    redirect("/admin/fairs?error=" + encodeURIComponent("Couldn't add track — try again."));
+  }
+}
+
+const DeleteTrackSchema = z.object({
+  driveId: z.string().min(1),
+  trackId: z.string().min(1),
+});
+
+/**
+ * Admin removes a track. The FK on RecruitmentDriveJob is
+ * `onDelete: SetNull` so deleting a track quietly unbinds it from
+ * every job that referenced it — no cascade-delete of jobs.
+ */
+export async function deleteDriveTrack(formData: FormData): Promise<void> {
+  try {
+    const session = await requireAdmin();
+    const parsed = DeleteTrackSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) redirect("/admin/fairs");
+
+    // Confirm the track actually belongs to the named drive — the
+    // form-action input could be tampered to point at someone else's
+    // fair, and we don't want a cross-fair delete to slip through
+    // even on an admin role.
+    const track = await db.recruitmentDriveTrack.findUnique({
+      where: { id: parsed.data.trackId },
+      select: { driveId: true, name: true },
+    });
+    if (!track || track.driveId !== parsed.data.driveId) {
+      redirect(
+        `/admin/fairs/${parsed.data.driveId}?error=` +
+          encodeURIComponent("Track not found on this fair."),
+      );
+    }
+
+    await db.recruitmentDriveTrack.delete({
+      where: { id: parsed.data.trackId },
+    });
+
+    await audit({
+      actorId: session.user.id,
+      action: "recruitment_drive.track_deleted",
+      entity: "RecruitmentDrive",
+      entityId: parsed.data.driveId,
+      meta: { trackId: parsed.data.trackId, name: track.name },
+    });
+    revalidatePath(`/admin/fairs/${parsed.data.driveId}`);
+    revalidatePath(`/fairs`);
+    redirect(
+      `/admin/fairs/${parsed.data.driveId}?notice=` +
+        encodeURIComponent(`Track "${track.name}" removed.`),
+    );
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[recruitment-drive] deleteDriveTrack");
+    redirect("/admin/fairs?error=" + encodeURIComponent("Couldn't remove track — try again."));
+  }
+}
+
+// ─── F4 Primary contact + FAQ ─────────────────────────────────────
+
+interface FaqEntry {
+  q: string;
+  a: string;
+}
+
+const faqEntrySchema = z.object({
+  q: z.string().trim().min(3).max(200),
+  a: z.string().trim().min(3).max(2000),
+});
+
+/**
+ * Parse the editor's hidden JSON payload into a normalised FAQ
+ * array. Caps at 12 entries (admin form enforces the same; this is
+ * defence-in-depth against a tampered hidden input).
+ */
+function parseFaqJson(raw: unknown): FaqEntry[] {
+  if (!raw || typeof raw !== "string") return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: FaqEntry[] = [];
+  for (const item of parsed.slice(0, 12)) {
+    const r = faqEntrySchema.safeParse(item);
+    if (r.success) out.push(r.data);
+  }
+  return out;
+}
+
+const UpdateContactFaqSchema = z.object({
+  driveId: z.string().min(1),
+  primaryContactName: z.string().trim().max(120).optional(),
+  primaryContactPhone: z.string().trim().max(40).optional(),
+  primaryContactEmail: z
+    .string()
+    .trim()
+    .max(160)
+    .optional()
+    .refine(
+      (v) => !v || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v),
+      "Enter a valid email or leave blank.",
+    ),
+  faqJson: z.string().optional(),
+});
+
+/**
+ * Admin saves the hiring-partner contact block + the FAQ accordion
+ * for one fair. All fields independently nullable — saving with all
+ * blanks clears the public-page section entirely.
+ */
+export async function updateDriveContactAndFaq(formData: FormData): Promise<void> {
+  try {
+    const session = await requireAdmin();
+    const parsed = UpdateContactFaqSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      redirect(
+        `/admin/fairs?error=` +
+          encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid contact form."),
+      );
+    }
+
+    const faq = parseFaqJson(parsed.data.faqJson);
+
+    await db.recruitmentDrive.update({
+      where: { id: parsed.data.driveId },
+      data: {
+        primaryContactName: parsed.data.primaryContactName || null,
+        primaryContactPhone: parsed.data.primaryContactPhone || null,
+        primaryContactEmail: parsed.data.primaryContactEmail || null,
+        faq: faq.length > 0
+          ? (faq as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
+      },
+    });
+
+    await audit({
+      actorId: session.user.id,
+      action: "recruitment_drive.contact_updated",
+      entity: "RecruitmentDrive",
+      entityId: parsed.data.driveId,
+      meta: { faqCount: faq.length, hasContact: Boolean(parsed.data.primaryContactName) },
+    });
+    revalidatePath(`/admin/fairs/${parsed.data.driveId}`);
+    revalidatePath(`/fairs`);
+    redirect(
+      `/admin/fairs/${parsed.data.driveId}?notice=` +
+        encodeURIComponent("Contact + FAQ saved."),
+    );
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[recruitment-drive] updateDriveContactAndFaq");
+    redirect("/admin/fairs?error=" + encodeURIComponent("Couldn't save — try again."));
+  }
+}
+
+// ─── Marketing-grade landing additions ────────────────────────────
+// Event-level partners (academic / certifier / industry endorsements
+// distinct from booth recruiters), speakers / leadership panel,
+// admin-set aspirational hero stats, and the two pitch JSON
+// arrays. All admin-only; each action lives behind requireAdmin().
+
+const CreatePartnerSchema = z.object({
+  driveId: z.string().min(1),
+  name: z.string().trim().min(2).max(120),
+  type: z.nativeEnum(RecruitmentDrivePartnerType).default(RecruitmentDrivePartnerType.OTHER),
+  logoUrl: optionalUrl,
+  url: optionalUrl,
+  caption: z.string().trim().max(140).optional(),
+});
+
+export async function createEventPartner(formData: FormData): Promise<void> {
+  try {
+    const session = await requireAdmin();
+    const parsed = CreatePartnerSchema.safeParse({
+      driveId: formData.get("driveId"),
+      name: formData.get("name"),
+      type: formData.get("type") || RecruitmentDrivePartnerType.OTHER,
+      logoUrl: formData.get("logoUrl") || "",
+      url: formData.get("url") || "",
+      caption: formData.get("caption") || "",
+    });
+    if (!parsed.success) {
+      redirect(
+        `/admin/fairs?error=` +
+          encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid partner."),
+      );
+    }
+    // sortOrder: append. Admins reorder later via a future drag-handle;
+    // for now insertion order is the rendering order.
+    const last = await db.recruitmentDriveEventPartner.findFirst({
+      where: { driveId: parsed.data.driveId },
+      orderBy: { sortOrder: "desc" },
+      select: { sortOrder: true },
+    });
+    await db.recruitmentDriveEventPartner.create({
+      data: {
+        driveId: parsed.data.driveId,
+        name: parsed.data.name,
+        type: parsed.data.type,
+        logoUrl: parsed.data.logoUrl || null,
+        url: parsed.data.url || null,
+        caption: parsed.data.caption || null,
+        sortOrder: (last?.sortOrder ?? -1) + 1,
+      },
+    });
+    await audit({
+      actorId: session.user.id,
+      action: "recruitment_drive.partner_added",
+      entity: "RecruitmentDrive",
+      entityId: parsed.data.driveId,
+      meta: { name: parsed.data.name, type: parsed.data.type },
+    });
+    revalidatePath(`/admin/fairs/${parsed.data.driveId}`);
+    revalidatePath(`/fairs`);
+    redirect(
+      `/admin/fairs/${parsed.data.driveId}?notice=` +
+        encodeURIComponent(`Partner "${parsed.data.name}" added.`),
+    );
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[recruitment-drive] createEventPartner");
+    redirect("/admin/fairs?error=" + encodeURIComponent("Couldn't add partner."));
+  }
+}
+
+const DeletePartnerSchema = z.object({
+  driveId: z.string().min(1),
+  partnerId: z.string().min(1),
+});
+
+export async function deleteEventPartner(formData: FormData): Promise<void> {
+  try {
+    const session = await requireAdmin();
+    const parsed = DeletePartnerSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) redirect("/admin/fairs");
+
+    // Scope-check — form data can be tampered to delete partners on
+    // someone else's fair even with admin role.
+    const partner = await db.recruitmentDriveEventPartner.findUnique({
+      where: { id: parsed.data.partnerId },
+      select: { driveId: true, name: true },
+    });
+    if (!partner || partner.driveId !== parsed.data.driveId) {
+      redirect(
+        `/admin/fairs/${parsed.data.driveId}?error=` +
+          encodeURIComponent("Partner not found on this fair."),
+      );
+    }
+    await db.recruitmentDriveEventPartner.delete({ where: { id: parsed.data.partnerId } });
+
+    await audit({
+      actorId: session.user.id,
+      action: "recruitment_drive.partner_removed",
+      entity: "RecruitmentDrive",
+      entityId: parsed.data.driveId,
+      meta: { name: partner.name },
+    });
+    revalidatePath(`/admin/fairs/${parsed.data.driveId}`);
+    revalidatePath(`/fairs`);
+    redirect(
+      `/admin/fairs/${parsed.data.driveId}?notice=` +
+        encodeURIComponent(`Partner "${partner.name}" removed.`),
+    );
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[recruitment-drive] deleteEventPartner");
+    redirect("/admin/fairs?error=" + encodeURIComponent("Couldn't remove partner."));
+  }
+}
+
+const CreateSpeakerSchema = z.object({
+  driveId: z.string().min(1),
+  name: z.string().trim().min(2).max(120),
+  title: z.string().trim().max(160).optional(),
+  affiliation: z.string().trim().max(160).optional(),
+  photoUrl: optionalUrl,
+  bio: z.string().trim().max(800).optional(),
+  role: z.nativeEnum(RecruitmentDriveSpeakerRole).default(RecruitmentDriveSpeakerRole.SPEAKER),
+});
+
+export async function createSpeaker(formData: FormData): Promise<void> {
+  try {
+    const session = await requireAdmin();
+    const parsed = CreateSpeakerSchema.safeParse({
+      driveId: formData.get("driveId"),
+      name: formData.get("name"),
+      title: formData.get("title") || "",
+      affiliation: formData.get("affiliation") || "",
+      photoUrl: formData.get("photoUrl") || "",
+      bio: formData.get("bio") || "",
+      role: formData.get("role") || RecruitmentDriveSpeakerRole.SPEAKER,
+    });
+    if (!parsed.success) {
+      redirect(
+        `/admin/fairs?error=` +
+          encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid speaker."),
+      );
+    }
+    const last = await db.recruitmentDriveSpeaker.findFirst({
+      where: { driveId: parsed.data.driveId },
+      orderBy: { sortOrder: "desc" },
+      select: { sortOrder: true },
+    });
+    await db.recruitmentDriveSpeaker.create({
+      data: {
+        driveId: parsed.data.driveId,
+        name: parsed.data.name,
+        title: parsed.data.title || null,
+        affiliation: parsed.data.affiliation || null,
+        photoUrl: parsed.data.photoUrl || null,
+        bio: parsed.data.bio || null,
+        role: parsed.data.role,
+        sortOrder: (last?.sortOrder ?? -1) + 1,
+      },
+    });
+    await audit({
+      actorId: session.user.id,
+      action: "recruitment_drive.speaker_added",
+      entity: "RecruitmentDrive",
+      entityId: parsed.data.driveId,
+      meta: { name: parsed.data.name, role: parsed.data.role },
+    });
+    revalidatePath(`/admin/fairs/${parsed.data.driveId}`);
+    revalidatePath(`/fairs`);
+    redirect(
+      `/admin/fairs/${parsed.data.driveId}?notice=` +
+        encodeURIComponent(`Speaker "${parsed.data.name}" added.`),
+    );
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[recruitment-drive] createSpeaker");
+    redirect("/admin/fairs?error=" + encodeURIComponent("Couldn't add speaker."));
+  }
+}
+
+const DeleteSpeakerSchema = z.object({
+  driveId: z.string().min(1),
+  speakerId: z.string().min(1),
+});
+
+export async function deleteSpeaker(formData: FormData): Promise<void> {
+  try {
+    const session = await requireAdmin();
+    const parsed = DeleteSpeakerSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) redirect("/admin/fairs");
+    const speaker = await db.recruitmentDriveSpeaker.findUnique({
+      where: { id: parsed.data.speakerId },
+      select: { driveId: true, name: true },
+    });
+    if (!speaker || speaker.driveId !== parsed.data.driveId) {
+      redirect(
+        `/admin/fairs/${parsed.data.driveId}?error=` +
+          encodeURIComponent("Speaker not found on this fair."),
+      );
+    }
+    await db.recruitmentDriveSpeaker.delete({ where: { id: parsed.data.speakerId } });
+    await audit({
+      actorId: session.user.id,
+      action: "recruitment_drive.speaker_removed",
+      entity: "RecruitmentDrive",
+      entityId: parsed.data.driveId,
+      meta: { name: speaker.name },
+    });
+    revalidatePath(`/admin/fairs/${parsed.data.driveId}`);
+    revalidatePath(`/fairs`);
+    redirect(
+      `/admin/fairs/${parsed.data.driveId}?notice=` +
+        encodeURIComponent(`Speaker "${speaker.name}" removed.`),
+    );
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[recruitment-drive] deleteSpeaker");
+    redirect("/admin/fairs?error=" + encodeURIComponent("Couldn't remove speaker."));
+  }
+}
+
+const UpdateHeroPitchSchema = z.object({
+  driveId: z.string().min(1),
+  // Coerce empty string → undefined → store null.
+  heroStatCandidatesTarget: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? Number.parseInt(v, 10) : undefined))
+    .refine((v) => v === undefined || (Number.isFinite(v) && v >= 0 && v <= 100_000), {
+      message: "Candidates target must be 0-100,000.",
+    }),
+  heroStatCompaniesTarget: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? Number.parseInt(v, 10) : undefined))
+    .refine((v) => v === undefined || (Number.isFinite(v) && v >= 0 && v <= 10_000), {
+      message: "Companies target must be 0-10,000.",
+    }),
+  heroStatPositionsTarget: z
+    .string()
+    .optional()
+    .transform((v) => (v && v.trim() ? Number.parseInt(v, 10) : undefined))
+    .refine((v) => v === undefined || (Number.isFinite(v) && v >= 0 && v <= 100_000), {
+      message: "Positions target must be 0-100,000.",
+    }),
+  hiringPartnersPitchJson: z.string().optional(),
+  candidatesPitchJson: z.string().optional(),
+});
+
+interface PitchBlock {
+  heading: string;
+  body: string;
+}
+
+const pitchBlockSchema = z.object({
+  heading: z.string().trim().min(2).max(80),
+  body: z.string().trim().min(8).max(600),
+});
+
+function parsePitchJson(raw: unknown): PitchBlock[] {
+  if (!raw || typeof raw !== "string") return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return [];
+  }
+  if (!Array.isArray(parsed)) return [];
+  const out: PitchBlock[] = [];
+  for (const item of parsed.slice(0, 6)) {
+    const r = pitchBlockSchema.safeParse(item);
+    if (r.success) out.push(r.data);
+  }
+  return out;
+}
+
+export async function updateDriveHeroAndPitch(formData: FormData): Promise<void> {
+  try {
+    const session = await requireAdmin();
+    const parsed = UpdateHeroPitchSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      redirect(
+        `/admin/fairs?error=` +
+          encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid hero/pitch form."),
+      );
+    }
+    const hiring = parsePitchJson(parsed.data.hiringPartnersPitchJson);
+    const candidates = parsePitchJson(parsed.data.candidatesPitchJson);
+    await db.recruitmentDrive.update({
+      where: { id: parsed.data.driveId },
+      data: {
+        heroStatCandidatesTarget: parsed.data.heroStatCandidatesTarget ?? null,
+        heroStatCompaniesTarget: parsed.data.heroStatCompaniesTarget ?? null,
+        heroStatPositionsTarget: parsed.data.heroStatPositionsTarget ?? null,
+        pitchForHiringPartners: hiring.length > 0
+          ? (hiring as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
+        pitchForCandidates: candidates.length > 0
+          ? (candidates as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull,
+      },
+    });
+    await audit({
+      actorId: session.user.id,
+      action: "recruitment_drive.hero_pitch_updated",
+      entity: "RecruitmentDrive",
+      entityId: parsed.data.driveId,
+      meta: { hiringBlocks: hiring.length, candidateBlocks: candidates.length },
+    });
+    revalidatePath(`/admin/fairs/${parsed.data.driveId}`);
+    revalidatePath(`/fairs`);
+    redirect(
+      `/admin/fairs/${parsed.data.driveId}?notice=` +
+        encodeURIComponent("Hero stats + pitch blocks saved."),
+    );
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[recruitment-drive] updateDriveHeroAndPitch");
+    redirect("/admin/fairs?error=" + encodeURIComponent("Couldn't save — try again."));
   }
 }

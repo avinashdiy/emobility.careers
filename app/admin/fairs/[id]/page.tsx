@@ -12,6 +12,11 @@ import { AdminShell } from "@/components/layout/admin-shell";
 import { InviteCompaniesPanel } from "@/components/recruitment-drives/InviteCompaniesPanel";
 import { FairImageUploader } from "@/components/recruitment-drives/FairImageUploader";
 import { FairAnalyticsWidget } from "@/components/recruitment-drives/FairAnalyticsWidget";
+import { TracksEditor } from "@/components/recruitment-drives/TracksEditor";
+import { ContactAndFaqEditor } from "@/components/recruitment-drives/ContactAndFaqEditor";
+import { PartnersEditor } from "@/components/recruitment-drives/PartnersEditor";
+import { SpeakersEditor } from "@/components/recruitment-drives/SpeakersEditor";
+import { HeroAndPitchEditor } from "@/components/recruitment-drives/HeroAndPitchEditor";
 import { getFairAnalytics } from "@/lib/recruitment-drive-analytics";
 import {
   setRecruitmentDriveStatus as _setRecruitmentDriveStatus,
@@ -58,6 +63,23 @@ export default async function AdminFairDetail({
         },
       },
       createdBy: { select: { name: true, email: true } },
+      // F1 + F4 — tracks list (for the TracksEditor) and the
+      // contact + faq columns (for the ContactAndFaqEditor). All
+      // pulled in the same round-trip so the page renders in one
+      // shot.
+      tracks: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+        include: { _count: { select: { jobs: true } } },
+      },
+      // Marketing additions — event partners + speakers panel.
+      // Both ordered by the admin's chosen sortOrder so re-renders
+      // are stable.
+      eventPartners: {
+        orderBy: [{ type: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
+      },
+      speakers: {
+        orderBy: [{ role: "asc" }, { sortOrder: "asc" }, { createdAt: "asc" }],
+      },
     },
   });
   if (!drive) notFound();
@@ -111,6 +133,34 @@ export default async function AdminFairDetail({
             · created by {drive.createdBy.name ?? drive.createdBy.email}{" "}
             {relativeTime(drive.createdAt)}
           </p>
+          {/* Day-of + pre-fair quick links */}
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/admin/fairs/${drive.id}/edit`}>
+                ✏️ Edit base fields
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/admin/fairs/${drive.id}/check-in`}>
+                🪪 Check-in scanner
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/admin/fairs/${drive.id}/roster`}>
+                📥 Import roster (CSV)
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/admin/fairs/${drive.id}/slots`}>
+                📅 Interview slots
+              </Link>
+            </Button>
+            <Button asChild variant="outline" size="sm">
+              <Link href={`/fairs/${drive.slug}`} target="_blank" rel="noopener noreferrer">
+                ↗ Public page
+              </Link>
+            </Button>
+          </div>
         </div>
 
         {/* Hero / banner uploader */}
@@ -254,6 +304,44 @@ export default async function AdminFairDetail({
             />
           </div>
         </Card>
+
+        {/* F1 — Industry tracks. Admin defines the track list here;
+            recruiters then pick from those tracks when attaching a
+            job to their booth. Public fair page renders matching
+            filter chips. */}
+        <TracksEditor driveId={drive.id} tracks={drive.tracks} />
+
+        {/* F4 — Primary contact + FAQ for the public fair page.
+            Both are admin-curated; both surface only when set. */}
+        <ContactAndFaqEditor
+          driveId={drive.id}
+          initialContactName={drive.primaryContactName}
+          initialContactPhone={drive.primaryContactPhone}
+          initialContactEmail={drive.primaryContactEmail}
+          initialFaq={Array.isArray(drive.faq) ? (drive.faq as { q: string; a: string }[]) : []}
+        />
+
+        {/* Marketing-grade additions — partners panel + speakers
+            panel + hero stat targets + pitch blocks. All admin-
+            curated; each renders on the public page only when set. */}
+        <PartnersEditor driveId={drive.id} partners={drive.eventPartners} />
+        <SpeakersEditor driveId={drive.id} speakers={drive.speakers} />
+        <HeroAndPitchEditor
+          driveId={drive.id}
+          initialHeroCandidates={drive.heroStatCandidatesTarget}
+          initialHeroCompanies={drive.heroStatCompaniesTarget}
+          initialHeroPositions={drive.heroStatPositionsTarget}
+          initialHiringPartnersPitch={
+            Array.isArray(drive.pitchForHiringPartners)
+              ? (drive.pitchForHiringPartners as { heading: string; body: string }[])
+              : []
+          }
+          initialCandidatesPitch={
+            Array.isArray(drive.pitchForCandidates)
+              ? (drive.pitchForCandidates as { heading: string; body: string }[])
+              : []
+          }
+        />
 
         {/* High-level totals — three big numbers above the
             full-fat analytics widget so the admin sees the

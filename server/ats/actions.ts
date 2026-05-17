@@ -84,7 +84,10 @@ async function requireEmployerForApplication(applicationId: string) {
   const employer = await db.employerProfile.findUnique({
     where: { userId: session.user.id },
   });
-  if (!employer) redirect("/employer/onboarding");
+  // Admins frequently don't have an EmployerProfile attached. Only
+  // bounce non-admin employers to onboarding; admins pass through
+  // and operate on any company's application.
+  if (!employer && session.user.role !== "ADMIN") redirect("/employer/onboarding");
   const application = await db.application.findUnique({
     where: { id: applicationId },
     include: {
@@ -100,7 +103,7 @@ async function requireEmployerForApplication(applicationId: string) {
     },
   });
   if (!application) redirect("/employer");
-  if (session.user.role !== "ADMIN" && application.job.companyId !== employer.companyId) {
+  if (session.user.role !== "ADMIN" && application.job.companyId !== employer!.companyId) {
     redirect("/403");
   }
   return { session, employer, application };

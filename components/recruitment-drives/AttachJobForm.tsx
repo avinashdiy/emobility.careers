@@ -17,6 +17,11 @@ interface JobCandidate {
   }[];
 }
 
+interface TrackOption {
+  id: string;
+  name: string;
+}
+
 /**
  * "Attach a job to your booth" form. Two-step:
  *   1. Pick which of the company's OPEN jobs to attach.
@@ -32,13 +37,19 @@ interface JobCandidate {
 export function AttachJobForm({
   driveId,
   candidates,
+  tracks = [],
 }: {
   driveId: string;
   candidates: JobCandidate[];
+  /// F1 — Tracks available for this fair. Empty array hides the
+  /// picker (admin hasn't configured tracks yet) so we don't show
+  /// an empty dropdown the recruiter can't use.
+  tracks?: TrackOption[];
 }) {
   const [pending, startTransition] = useTransition();
   const [jobId, setJobId] = useState("");
   const [assessmentId, setAssessmentId] = useState("");
+  const [trackId, setTrackId] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   const selectedJob = candidates.find((c) => c.id === jobId);
@@ -52,6 +63,7 @@ export function AttachJobForm({
       } else {
         setJobId("");
         setAssessmentId("");
+        setTrackId("");
       }
     });
   }
@@ -106,6 +118,31 @@ export function AttachJobForm({
           </p>
         </div>
       </div>
+
+      {/* F1 — Track picker. Only renders when the admin has
+          configured at least one track on this fair. Optional —
+          recruiters can leave it unset and the job appears under
+          "Other" in the public filter. */}
+      {tracks.length > 0 && (
+        <div>
+          <Label htmlFor="trackId">
+            Track <span className="text-emce-text-muted">(optional — helps candidates filter)</span>
+          </Label>
+          <NativeSelect
+            id="trackId"
+            name="trackId"
+            value={trackId}
+            onChange={(e) => setTrackId(e.target.value)}
+          >
+            <option value="">No track</option>
+            {tracks.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </NativeSelect>
+        </div>
+      )}
 
       {error && (
         <div role="alert" className="rounded-md bg-emce-red-light p-2 text-hint text-emce-red-deep">

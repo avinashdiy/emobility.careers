@@ -31,6 +31,7 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
     pendingMentors,
     pendingCompetitions,
     pendingDIYguru,
+    pendingColleges,
   ] = session?.user?.role === "ADMIN"
     ? await Promise.all([
         db.company.count({ where: { verificationStatus: "PENDING" } }),
@@ -56,8 +57,12 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
         db.mentorProfile.count({ where: { kycStatus: "PENDING" } }),
         db.competition.count({ where: { status: "PENDING_REVIEW" } }),
         db.dIYguruRoster.count({ where: { claimedByUserId: null } }).catch(() => 0),
+        // Self-serve college placement-cell applications awaiting
+        // admin review. See server/colleges/actions.ts and the
+        // /admin/colleges queue.
+        db.collegePlacementCell.count({ where: { status: "PENDING" } }).catch(() => 0),
       ])
-    : [0, 0, 0, 0, 0, 0, 0, 0];
+    : [0, 0, 0, 0, 0, 0, 0, 0, 0];
 
   const totalPending =
     pendingCompanies +
@@ -66,7 +71,8 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
     openPostReports +
     pendingIDVerifications +
     pendingMentors +
-    pendingCompetitions;
+    pendingCompetitions +
+    pendingColleges;
 
   return (
     <div className="min-h-screen bg-emce-light-bg">
@@ -111,6 +117,7 @@ export async function AdminShell({ children }: { children: React.ReactNode }) {
             mentors: pendingMentors,
             competitions: pendingCompetitions,
             diyguru: pendingDIYguru,
+            colleges: pendingColleges,
             total: totalPending,
           }}
         />

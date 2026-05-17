@@ -8,7 +8,7 @@ import {
   Trophy, MessageSquare, Tag, Megaphone, ScrollText, BarChart3, Settings,
   School, FileText, ChevronDown, Menu, X, Download, BadgeCheck, Activity, Sparkles,
   Mail, Terminal, Hash, FileWarning, FlaskConical, CreditCard, Webhook, ShieldX,
-  Newspaper, Wand2, FileDown,
+  Newspaper, Wand2, FileDown, CalendarDays,
 } from "lucide-react";
 
 type Counts = {
@@ -20,6 +20,7 @@ type Counts = {
   mentors: number;
   competitions: number;
   diyguru: number;
+  colleges: number;
   total: number;
 };
 
@@ -50,9 +51,20 @@ function buildGroups(counts: Counts): Group[] {
       title: "People",
       items: [
         { href: "/admin/users", label: "All users", icon: Users },
+        // Candidate-specific list (cohort / verified / open-to-work
+        // filters + per-candidate admin edit). Complements /admin/users
+        // which is across all roles.
+        { href: "/admin/candidates", label: "Candidates", icon: Users },
         { href: "/admin/employers", label: "Employers", icon: Briefcase, badge: counts.companies },
         { href: "/admin/diyguru", label: "DIYguru roster", icon: School, badge: counts.diyguru },
+        // Self-serve college placement-cell applications. Badge =
+        // PENDING count; approving flips User.isPlacementOfficer so
+        // /tpo opens up to the TPO.
+        { href: "/admin/colleges", label: "Colleges (TPOs)", icon: School, badge: counts.colleges },
         { href: "/admin/identity-verifications", label: "ID verifications", icon: BadgeCheck, badge: counts.idVerifications },
+        // Admin mirror of /tpo/cohorts — same data, reusable from
+        // the admin shell. Drill-down funnels still at /tpo/cohorts/<slug>.
+        { href: "/admin/cohorts", label: "Cohorts", icon: GraduationCap },
         // The full TPO console (cohorts, funnel, unplaced students) lives
         // at /tpo. ADMINs always have access; trusted DIYguru staff can
         // also reach it via the User.isPlacementOfficer flag granted on
@@ -65,6 +77,16 @@ function buildGroups(counts: Counts): Group[] {
       items: [
         { href: "/admin/jobs", label: "Jobs", icon: Briefcase, badge: counts.jobs },
         { href: "/admin/job-quality", label: "Job quality", icon: ShieldX },
+        // Cross-company ATS view — admin can audit / override stage
+        // moves on any application via the same server actions
+        // recruiters use.
+        { href: "/admin/applications", label: "Applications (ATS)", icon: Briefcase },
+        // Cross-company interview list — by status / mode / date.
+        { href: "/admin/interviews", label: "Interviews", icon: CalendarDays },
+        // Job fairs ("Recruitment drives" in the schema). Includes
+        // per-fair check-in scanner + roster CSV import nested
+        // under each fair's detail page.
+        { href: "/admin/fairs", label: "Job fairs", icon: CalendarDays },
         { href: "/admin/reports", label: "Job reports", icon: Flag, badge: counts.reports },
         { href: "/admin/post-reports", label: "Post reports", icon: Flag, badge: counts.postReports },
       ],
@@ -113,6 +135,11 @@ function buildGroups(counts: Counts): Group[] {
         // Featured This Week curation — five candidate spotlights surfaced
         // on the home + Pulse pages every week.
         { href: "/admin/featured", label: "Featured this week", icon: Megaphone },
+        // Notification templates (admin-editable title/body/channels
+        // overrides) + per-channel dispatch log. See
+        // lib/notifications/dispatch.ts for the lookup rules.
+        { href: "/admin/notifications/templates", label: "Notification templates", icon: Mail },
+        { href: "/admin/notifications/logs", label: "Notification logs", icon: ScrollText },
         // WhatsApp digest console — manage subscribers, send test
         // messages, and trigger an on-demand digest tick.
         { href: "/admin/whatsapp", label: "WhatsApp digest", icon: MessageSquare },
@@ -126,6 +153,10 @@ function buildGroups(counts: Counts): Group[] {
       title: "Growth",
       items: [
         { href: "/admin/experiments", label: "A/B experiments", icon: FlaskConical },
+        // Feature flags — distinct from settings (kill switches) and
+        // experiments (sticky A/B variants). For incremental rollouts
+        // (5% → 25% → 100%) + targeted beta enrolment.
+        { href: "/admin/feature-flags", label: "Feature flags", icon: Sparkles },
         { href: "/admin/billing", label: "Billing (plans)", icon: CreditCard },
       ],
     },

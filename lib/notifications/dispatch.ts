@@ -6,6 +6,73 @@ import {
   channels as rtChannels,
   events as rtEvents,
 } from "@/lib/realtime";
+import type { NotificationTemplateChannel } from "@prisma/client";
+
+// ─── Template resolution ──────────────────────────────────────────
+//
+// Admin-editable `NotificationTemplate` rows can override the title /
+// body / channels at dispatch time. Lookup keyed by `type` — one
+// template per key. Cached in-memory for 30s to bound DB pressure
+// (these rows change once a quarter; per-call lookup would be wasteful).
+//
+// If no row exists (or it's marked inactive), behaviour is unchanged
+// and the inline title/body wins. Templates are opt-in.
+
+type CachedTemplate = {
+  titleOverride: string | null;
+  bodyOverride: string | null;
+  channels: NotificationTemplateChannel[];
+} | null; // null = explicitly known-absent (so we don't re-query)
+
+const TEMPLATE_TTL_MS = 30_000;
+const templateCache = new Map<string, { value: CachedTemplate; expiresAt: number }>();
+
+async function resolveTemplate(type: string): Promise<CachedTemplate> {
+  const cached = templateCache.get(type);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  let value: CachedTemplate = null;
+  try {
+    const row = await db.notificationTemplate.findUnique({
+      where: { key: type },
+      select: { active: true, titleOverride: true, bodyOverride: true, channels: true },
+    });
+    if (row && row.active) {
+      value = {
+        titleOverride: row.titleOverride,
+        bodyOverride: row.bodyOverride,
+        channels: row.channels,
+      };
+    }
+  } catch (err) {
+    // Defensive — if the lookup fails (DB hiccup, schema mismatch),
+    // fall through to inline copy. Never block dispatch on this.
+    logger.warn({ err, type }, "[dispatchNotification] template lookup failed");
+  }
+  templateCache.set(type, { value, expiresAt: Date.now() + TEMPLATE_TTL_MS });
+  return value;
+}
+
+/**
+ * Replace `{{key}}` placeholders in a template string using values
+ * from `payload`, plus two special keys: `{{title}}` and `{{body}}`
+ * which echo the inline values (lets a template wrap them, e.g.
+ * "[emobility.careers] {{title}}").
+ *
+ * Unknown placeholders are left as-is so the admin sees them in
+ * the rendered output — easier to debug than silently emptying them.
+ */
+function interpolate(
+  template: string,
+  args: { title: string; body?: string; payload?: Record<string, unknown> },
+): string {
+  return template.replace(/\{\{(\w+)\}\}/g, (full, key) => {
+    if (key === "title") return args.title;
+    if (key === "body") return args.body ?? "";
+    const v = args.payload?.[key];
+    return v === undefined || v === null ? full : String(v);
+  });
+}
 
 /**
  * Synchronous in-app notification + async fan-out to email/SMS/WhatsApp.
@@ -36,15 +103,31 @@ export async function dispatchNotification(job: NotificationsJob): Promise<void>
   const {
     userId,
     type,
-    title,
-    body,
+    title: inlineTitle,
+    body: inlineBody,
     link,
     payload,
-    channels: ch = ["IN_APP"],
+    channels: inlineChannels = ["IN_APP"],
     actorId,
     groupKey,
     expiresAt: expiresAtOverride,
   } = job;
+
+  // Template override (opt-in per `type`). If a row exists AND it's
+  // active, its title/body/channels supersede the inline call. This
+  // keeps the dispatcher backward-compat: every existing call site
+  // works unchanged unless admin opts in by creating a template row.
+  const template = await resolveTemplate(type);
+  const title = template?.titleOverride
+    ? interpolate(template.titleOverride, { title: inlineTitle, body: inlineBody, payload })
+    : inlineTitle;
+  const body = template?.bodyOverride
+    ? interpolate(template.bodyOverride, { title: inlineTitle, body: inlineBody, payload })
+    : inlineBody;
+  const ch =
+    template?.channels && template.channels.length > 0
+      ? (template.channels as unknown as typeof inlineChannels)
+      : inlineChannels;
 
   if (ch.includes("IN_APP")) {
     try {
@@ -86,6 +169,10 @@ export async function dispatchNotification(job: NotificationsJob): Promise<void>
           "[dispatchNotification] realtime push failed (row still written)",
         );
       }
+      // Per-channel dispatch log. SENT immediately for IN_APP since
+      // we already wrote the row. Best-effort — log write failure
+      // shouldn't break the notification.
+      writeDispatchLog({ userId, type, channel: "IN_APP", title, body, status: "SENT" });
     } catch (err) {
       // The action that called us has already mutated state (a
       // reaction was recorded, a comment landed, an application was
@@ -96,6 +183,11 @@ export async function dispatchNotification(job: NotificationsJob): Promise<void>
         { err, userId, type, title },
         "[dispatchNotification] in-app row write failed",
       );
+      writeDispatchLog({
+        userId, type, channel: "IN_APP", title, body,
+        status: "FAILED",
+        errorMessage: err instanceof Error ? err.message : String(err),
+      });
     }
   }
 
@@ -105,7 +197,20 @@ export async function dispatchNotification(job: NotificationsJob): Promise<void>
   const queueChannels = ch.filter((c) => c !== "IN_APP");
   if (queueChannels.length > 0) {
     try {
-      await notificationsQueue.add(type, { ...job, channels: queueChannels });
+      await notificationsQueue.add(type, {
+        ...job,
+        // Pass through the (possibly template-overridden) title/body
+        // so the worker emits the same copy the user saw in-app.
+        title,
+        body,
+        channels: queueChannels,
+      });
+      // Log one QUEUED row per channel. The worker should flip these
+      // to SENT/FAILED after the provider call — that's a follow-up
+      // (the worker currently doesn't write logs).
+      for (const c of queueChannels) {
+        writeDispatchLog({ userId, type, channel: c as NotificationTemplateChannel, title, body, status: "QUEUED" });
+      }
     } catch (err) {
       // Worker enqueue failure shouldn't cascade — the IN_APP row is
       // already written, the user knows. Email/SMS may be missed
@@ -114,6 +219,44 @@ export async function dispatchNotification(job: NotificationsJob): Promise<void>
         { err, userId, type },
         "[dispatchNotification] queue enqueue failed (in-app row already written)",
       );
+      for (const c of queueChannels) {
+        writeDispatchLog({
+          userId, type, channel: c as NotificationTemplateChannel, title, body,
+          status: "FAILED",
+          errorMessage: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
   }
+}
+
+/**
+ * Per-channel dispatch log. Best-effort fire-and-forget so a log
+ * write failure can't break the notification path. Reads from
+ * `/admin/notifications/logs`.
+ */
+function writeDispatchLog(input: {
+  userId: string;
+  type: string;
+  channel: NotificationTemplateChannel;
+  title: string;
+  body?: string;
+  status: "QUEUED" | "SENT" | "FAILED" | "DELIVERED" | "BOUNCED";
+  errorMessage?: string;
+}): void {
+  void db.notificationLog
+    .create({
+      data: {
+        userId: input.userId,
+        type: input.type,
+        channel: input.channel,
+        title: input.title,
+        body: input.body ?? null,
+        status: input.status,
+        errorMessage: input.errorMessage ?? null,
+      },
+    })
+    .catch((err) => {
+      logger.warn({ err, type: input.type }, "[dispatchNotification] log write failed");
+    });
 }

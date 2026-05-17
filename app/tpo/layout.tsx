@@ -50,6 +50,7 @@ export default async function TpoLayout({ children }: { children: React.ReactNod
               <NavLink href="/tpo">Dashboard</NavLink>
               <NavLink href="/tpo/cohorts">Cohorts</NavLink>
               <NavLink href="/tpo/unplaced">Unplaced</NavLink>
+              <NavLink href="/tpo/import">Import</NavLink>
             </nav>
             <span className="hidden h-4 w-px bg-emce-border sm:mx-2 sm:block" />
             <Link

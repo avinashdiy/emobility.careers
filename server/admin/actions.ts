@@ -17,6 +17,29 @@ async function requireAdmin() {
   return session;
 }
 
+/**
+ * Like `requireAdmin` but also lets approved placement officers (TPOs)
+ * through. Used by tools where we've already extended the trust
+ * boundary at approval time — e.g. roster CSV import: a TPO whose
+ * placement cell was approved at /admin/colleges can run the same
+ * import their admin would have to run for them otherwise.
+ *
+ * Returns the session plus a discriminator the caller uses to
+ * narrow what's allowed (e.g. only admins grant DIYguru badges).
+ */
+async function requireAdminOrTpo() {
+  const session = await auth();
+  if (!session?.user) redirect("/signin");
+  const user = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { role: true, isPlacementOfficer: true },
+  });
+  if (!user) redirect("/signin");
+  const isAdmin = user.role === "ADMIN";
+  if (!isAdmin && !user.isPlacementOfficer) redirect("/403");
+  return { session, isAdmin };
+}
+
 // ─── Users ───────────────────────────────────────────────────
 
 export async function setUserRole(formData: FormData) {
@@ -317,13 +340,20 @@ export async function bulkDeleteRejectedCompanies() {
 // ─── DIYguru roster import ───────────────────────────────────
 
 export async function importDIYguruRoster(formData: FormData) {
-  const session = await requireAdmin();
+  // Admins always; approved placement officers also. We narrow what
+  // a non-admin can do (no auto-verify badge flip) further down.
+  const { session, isAdmin } = await requireAdminOrTpo();
   const file = formData.get("file") as File | null;
   const notes = String(formData.get("notes") ?? "");
-  if (!file) redirect("/admin/diyguru?error=No+file");
+  // `returnTo` lets the form post from either /admin/diyguru or
+  // /tpo/cohorts/* and land back on the page that invoked it. Falls
+  // back to the legacy admin route if missing.
+  const returnToRaw = String(formData.get("returnTo") ?? "/admin/diyguru");
+  const returnTo = returnToRaw.startsWith("/") ? returnToRaw : "/admin/diyguru";
+  if (!file) redirect(`${returnTo}?error=No+file`);
 
   if ((file as File).size > 10 * 1024 * 1024) {
-    redirect("/admin/diyguru?error=" + encodeURIComponent("CSV too large (max 10MB)"));
+    redirect(`${returnTo}?error=` + encodeURIComponent("CSV too large (max 10MB)"));
   }
 
   const text = await (file as File).text();
@@ -397,9 +427,15 @@ export async function importDIYguruRoster(formData: FormData) {
         db.candidateProfile.update({
           where: { id: c.profileId },
           data: {
-            isDIYguruVerified: true,
+            // The DIYguru-verified badge is a brand trust signal —
+            // granting it requires ADMIN. A college TPO running the
+            // same import for their cohort still populates the roster
+            // table (so candidates show up in the TPO funnel) but
+            // does NOT flip the badge.
+            ...(isAdmin
+              ? { isDIYguruVerified: true, diyguruVerifiedAt: new Date() }
+              : {}),
             diyguruStudentId: c.row.studentId,
-            diyguruVerifiedAt: new Date(),
             ...(c.row.labTags.length > 0 ? { labExposureTags: c.row.labTags } : {}),
           },
         }),
@@ -420,11 +456,11 @@ export async function importDIYguruRoster(formData: FormData) {
     action: "diyguru.import",
     entity: "DIYguruImportBatch",
     entityId: batch.id,
-    meta: { rowCount: normalized.length, matchedCount: claims.length },
+    meta: { rowCount: normalized.length, matchedCount: claims.length, byAdmin: isAdmin },
   });
 
-  revalidatePath("/admin/diyguru");
-  redirect(`/admin/diyguru?imported=${normalized.length}&matched=${claims.length}`);
+  revalidatePath(returnTo);
+  redirect(`${returnTo}?imported=${normalized.length}&matched=${claims.length}`);
 }
 
 export async function manuallyVerifyCandidate(formData: FormData) {

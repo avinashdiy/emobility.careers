@@ -215,6 +215,16 @@ model User {
   competitionJudgeAssignments CompetitionJudge[]        @relation("CompetitionJudge")
   competitionTeamsVerified    CompetitionRegistration[] @relation("CompetitionTeamVerifier")
   recruitmentDrivesCreated    RecruitmentDrive[]        @relation("RecruitmentDriveCreator")
+  /// Back-relations for fair attendee management. `fairCheckInsConducted`
+  /// is the audit trail of registrations this admin marked present
+  /// at the venue. `fairRosterImports` is the audit trail of CSV
+  /// roster uploads this admin made.
+  fairCheckInsConducted       RecruitmentDriveRegistration[] @relation("FairCheckInBy")
+  fairRosterImports           RecruitmentDriveRosterImport[] @relation("FairRosterImporter")
+  /// College placement-cell sign-ups the user filed (typically one
+  /// per TPO) + the moderation audit trail for admins who reviewed.
+  placementCellsCreated       CollegePlacementCell[]         @relation("PlacementCellCreator")
+  placementCellsReviewed      CollegePlacementCell[]         @relation("PlacementCellReviewer")
   companyClaimsFiled          CompanyClaim[]            @relation("CompanyClaimant")
   companyClaimsReviewed       CompanyClaim[]            @relation("CompanyClaimReviewer")
   articlesAuthored            Article[]                 @relation("ArticleAuthor")
@@ -253,6 +263,14 @@ model User {
   // Wave B back-relations
   outreachCadencesCreated OutreachCadence[]    @relation("OutreachCadenceCreator")
   outreachEnrollments     OutreachEnrollment[] @relation("OutreachEnrolledBy")
+
+  // Admin notification template authoring + per-user dispatch logs.
+  notificationTemplatesAuthored NotificationTemplate[] @relation("NotificationTemplateAuthor")
+  notificationLogs              NotificationLog[]      @relation("NotificationLogUser")
+
+  // Feature flag authoring + targeted enrolment.
+  featureFlagsAuthored FeatureFlag[]       @relation("FeatureFlagAuthor")
+  featureFlagTargets   FeatureFlagTarget[] @relation("FeatureFlagTargetUser")
 
   @@index([role, status])
 }
@@ -573,6 +591,10 @@ model CandidateProfile {
   applications           Application[]
   savedJobs              SavedJob[]
   savedByEmployers       SavedCandidate[]
+  /// Fair attendee registrations (separate from job applications).
+  fairRegistrations      RecruitmentDriveRegistration[]
+  /// Booth interview slots booked by this candidate.
+  interviewSlotBookings  RecruitmentDriveInterviewSlot[] @relation("InterviewSlotCandidate")
   jobAlerts              JobAlert[]
   documents              CandidateDocument[]
   assessmentAttempts     AssessmentAttempt[]
@@ -1139,6 +1161,8 @@ model JobPosting {
   callingSessions  CallingSession[]
   // Wave B #21 — outreach cadences scoped to this job
   outreachCadences OutreachCadence[]
+  // Fair booth interview slots optionally pinned to this job.
+  interviewSlots   RecruitmentDriveInterviewSlot[] @relation("InterviewSlotJob")
 
   // FTS — see Skill.searchTsv for the rationale.
   searchTsv Unsupported("tsvector")?
@@ -1916,6 +1940,10 @@ model Institution {
 
   educationLinks   Education[]
   competitionTeams CompetitionRegistration[] @relation("CompetitionTeamInstitution")
+  /// Self-served college placement-cell sign-ups (one per
+  /// (institution, user) pair via the unique constraint on the
+  /// child table). See `CollegePlacementCell`.
+  placementCells   CollegePlacementCell[]
 
   // FTS — see Skill.searchTsv for the rationale. Built across name +
   // shortName (tier A) + city/state (tier B) + about (tier C).
@@ -1923,6 +1951,72 @@ model Institution {
 
   @@index([verificationStatus, name])
   @@index([type, city])
+}
+
+// ─── College placement cell — self-served college sign-up ─────────
+//
+// The brochure's "150+ Hiring Partner Network + 400+ Institutional
+// Partners" claim implies a college-side audience the platform
+// didn't model. Today `User.isPlacementOfficer` is admin-grantable
+// only, which means scaling college participation requires a DIYguru
+// staffer to manually flip the flag for every new institution. This
+// model gives college TPOs a self-serve sign-up flow that lands in
+// an admin moderation queue.
+//
+// Flow:
+//   1. TPO opens /colleges/register, picks (or creates) an
+//      Institution, fills contact info → row created in PENDING.
+//   2. Admin reviews at /admin/colleges → APPROVED flips
+//      `User.isPlacementOfficer = true` so /tpo opens for them.
+//   3. Approved TPO can bulk-import their college's batch into
+//      any active fair via the existing roster CSV import flow
+//      (gate widened from admin-only → admin OR approved TPO).
+//
+// Unique on (institutionId, createdById) so a TPO can't submit
+// the same college twice; an admin can manually create extras if
+// genuinely needed.
+
+enum CollegePlacementCellStatus {
+  PENDING   // Awaiting admin review
+  APPROVED  // /tpo unlocked + can bulk-invite students to fairs
+  REJECTED  // Application turned down (with optional reason)
+  REVOKED   // Admin pulled access after approval (kept for audit)
+}
+
+model CollegePlacementCell {
+  id              String                       @id @default(cuid())
+  institutionId   String
+  institution     Institution                  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  createdById     String
+  createdBy       User                         @relation("PlacementCellCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  status          CollegePlacementCellStatus   @default(PENDING)
+
+  /// Self-declared contact details — visible to admins reviewing
+  /// the application + later to recruiters who want to coordinate
+  /// directly with a college that's sending students to their booth.
+  contactName     String
+  contactEmail    String
+  contactPhone    String?
+  designation     String?  // "TPO Coordinator", "Director of Placement"
+  studentCount    Int?     // Self-declared cohort size (helps admin gauge)
+  /// Free-form note the TPO can include with their application —
+  /// e.g. "We're aligned with the Pune edition + want to import 60
+  /// of our B.Tech finals". Admin reads this when moderating.
+  notes           String?  @db.Text
+
+  reviewedAt      DateTime?
+  reviewedById    String?
+  reviewedBy      User?    @relation("PlacementCellReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  /// Admin-entered reason for REJECTED status, surfaced back to
+  /// the TPO so they know what to fix on a re-application.
+  rejectionReason String?
+
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([institutionId, createdById])
+  @@index([status, createdAt])
+  @@index([createdById])
 }
 
 // ─── Campus drives (DIYguru / college hiring) ───────────────
@@ -4081,6 +4175,58 @@ model RecruitmentDrive {
   participatingCompanies RecruitmentDriveCompany[]
   driveJobs              RecruitmentDriveJob[]
   applications           Application[]
+  /// Candidate attendance registrations (separate from applying to
+  /// a job). See `RecruitmentDriveRegistration` for the rationale.
+  registrations          RecruitmentDriveRegistration[]
+  /// CSV bulk-invite batches an admin uploaded for this fair.
+  rosterImports          RecruitmentDriveRosterImport[]
+  /// Per-fair industry tracks (#1 from the brochure additions).
+  /// Defined by the admin at config time; surfaced as filter chips
+  /// on the public fair page.
+  tracks                 RecruitmentDriveTrack[]
+  /// Denorm counter — kept in sync inside the registration server
+  /// actions to save the public landing from COUNT(*) on every render.
+  registeredCount        Int @default(0)
+  checkedInCount         Int @default(0)
+
+  // ─── Hiring-partner contact + FAQ (#4 from the brochure) ────────
+  /// Single named point-of-contact rendered prominently on the
+  /// public fair page sidebar — the brochure pattern of "Contact
+  /// Muskan Kumari · WhatsApp +91…". Three plain strings so the
+  /// admin form is two text inputs + a phone input. Null when the
+  /// admin hasn't set them — the sidebar card hides cleanly.
+  primaryContactName  String?
+  primaryContactPhone String?
+  primaryContactEmail String?
+  /// FAQ accordion rendered below the open-roles section. JSON
+  /// array of `{ q: string, a: string }` capped at ~12 entries by
+  /// the admin editor. Null = no FAQ block surfaces. Markdown-free
+  /// text — the brochure uses plain prose answers so we don't need
+  /// rich-text rendering here.
+  faq                 Json?
+
+  // ─── Marketing-grade landing page additions ─────────────────────
+  /// Admin-curated hero stat TARGETS (the brochure's "1,000+ /
+  /// 50+ / 500+ / 5"). Pre-launch the real `registeredCount` and
+  /// `participatingCount` are zero — showing real counts then would
+  /// kill momentum, so the public page falls back to these targets
+  /// until the real number exceeds them. Null = use the live count.
+  heroStatCandidatesTarget Int?
+  heroStatCompaniesTarget  Int?
+  heroStatPositionsTarget  Int?
+  /// Two parallel pitch-block JSON arrays — `[{ heading, body }]`.
+  /// Brochure pattern: "Pre-Event / During Event / Post-Event"
+  /// stack of value-prop blocks, with separate copy aimed at
+  /// hiring partners vs candidates. Either / both can be null to
+  /// hide the corresponding section.
+  pitchForHiringPartners   Json?
+  pitchForCandidates       Json?
+
+  /// Speakers / leadership panel — see RecruitmentDriveSpeaker.
+  speakers                 RecruitmentDriveSpeaker[]
+  /// Event-level endorsement partners (IIT Jammu, AICTE, ASDC,
+  /// industry endorsements) — distinct from booth recruiters.
+  eventPartners            RecruitmentDriveEventPartner[]
 
   @@index([status, startsAt])
   @@index([city, startsAt])
@@ -4120,9 +4266,70 @@ model RecruitmentDriveCompany {
   withdrawnAt DateTime?
 
   driveJobs RecruitmentDriveJob[]
+  /// Booth-level interview slots — see RecruitmentDriveInterviewSlot.
+  interviewSlots RecruitmentDriveInterviewSlot[]
 
   @@unique([driveId, companyId])
   @@index([companyId, status])
+}
+
+// ─── Booth interview slot booking (#3 in the brochure pack) ──────
+//
+// Brochure pattern: "Dedicated interview bay with company branding,
+// AV support. Walk-in interviews begin at 10 AM — highest candidate
+// footfall". Today the platform models the BOOTH (RecruitmentDriveCompany)
+// but doesn't model the 30-minute interview window AT the booth.
+//
+// Recruiters create N slots per booth (single or bulk-generated
+// every 30 min over the fair days). Registered candidates browse a
+// booth's available slots + book one. Eligibility gate: candidate
+// must be a registered fair attendee AND pass the fair eligibility
+// check (60% + CV + phone + email).
+//
+// Idempotency: once a slot is BOOKED, its candidateId is set and
+// subsequent book attempts return "already taken". Cancelling
+// frees the slot back to AVAILABLE.
+
+enum InterviewSlotStatus {
+  AVAILABLE       // Open to bookings
+  BOOKED          // Candidate locked in
+  CANCELLED       // Recruiter killed the slot
+  COMPLETED       // Recruiter marked interview done
+  NO_SHOW         // Candidate booked but didn't turn up
+}
+
+model RecruitmentDriveInterviewSlot {
+  id                 String                  @id @default(cuid())
+  driveCompanyId     String
+  driveCompany       RecruitmentDriveCompany @relation(fields: [driveCompanyId], references: [id], onDelete: Cascade)
+  /// Optional job pin — slot scoped to a specific JobPosting at
+  /// this booth. Null = generic "talk to us" slot any candidate
+  /// can book regardless of which role they're after. Recruiter
+  /// chooses at create time; defaults to null.
+  jobId              String?
+  job                JobPosting?             @relation("InterviewSlotJob", fields: [jobId], references: [id], onDelete: SetNull)
+  startsAt           DateTime
+  /// 30-minute default matches the brochure's "interview bay"
+  /// cadence; recruiter can override per slot.
+  durationMinutes    Int                     @default(30)
+  status             InterviewSlotStatus     @default(AVAILABLE)
+  /// Booked-by candidate. Set on book, cleared on cancel. SetNull
+  /// on candidate deletion so the audit trail ("slot was once
+  /// booked, candidate later purged") survives.
+  candidateId        String?
+  candidate          CandidateProfile?       @relation("InterviewSlotCandidate", fields: [candidateId], references: [id], onDelete: SetNull)
+  bookedAt           DateTime?
+  cancelledAt        DateTime?
+  /// Recruiter-private note about this slot (e.g. "panel of 2
+  /// interviewers", "bring portfolio"). Surfaced to the candidate
+  /// once booked.
+  notes              String?                 @db.Text
+  createdAt          DateTime                @default(now())
+  updatedAt          DateTime                @updatedAt
+
+  @@index([driveCompanyId, startsAt])
+  @@index([candidateId, startsAt])
+  @@index([status, startsAt])
 }
 
 /// A specific JobPosting that a participating company is featuring
@@ -4148,6 +4355,12 @@ model RecruitmentDriveJob {
   /// past ASSESSMENT stage.
   challengeAssessmentId String?
   challengeAssessment   Assessment?             @relation("RecruitmentDriveJobChallenge", fields: [challengeAssessmentId], references: [id], onDelete: SetNull)
+  /// Optional fair-specific track grouping (e.g. "Battery",
+  /// "Embedded", "Sales & Service"). Powers the candidate-side
+  /// filter chips on the public fair page. SetNull on track
+  /// deletion so removing a track doesn't cascade-delete jobs.
+  trackId               String?
+  track                 RecruitmentDriveTrack?  @relation(fields: [trackId], references: [id], onDelete: SetNull)
   /// Display order on the fair page (admin or company can sort
   /// hot jobs first). Defaults to row creation time.
   sortOrder             Int                     @default(0)
@@ -4156,6 +4369,243 @@ model RecruitmentDriveJob {
   @@unique([driveId, jobId])
   @@index([driveId, companyId])
   @@index([companyId])
+  @@index([trackId])
+}
+
+// ─── Event-level endorsement partners ─────────────────────────────
+//
+// The brochure shows a distinct "Affiliations & Partners" panel
+// — IIT Jammu (academic), AICTE / NEAT / ASDC (certifier/government),
+// industry endorsements (Bosch / Hyundai / Maruti / Tata) that are
+// NOT booth-running recruiters. Today the participatingCompanies
+// list conflates "company running a booth" with "company endorsing
+// the event" — separating them lets colleges and regulators see
+// the trust signals without scrolling through a booth grid.
+//
+// Per-fair (not platform-wide) because the partner mix differs
+// per edition — the Delhi fair lists Ministry of Skill Dev,
+// Malaysia DSD, KSA SIMOPS; a Pune edition might lean on MSBTE
+// + SPPU + Maharashtra ITI directorate.
+
+enum RecruitmentDrivePartnerType {
+  ACADEMIC      // IIT Jammu, IISc, NIT Trichy, college boards
+  GOVERNMENT    // NSDC, Ministry of Skill Dev, state ITI directorates
+  CERTIFIER     // AICTE, ASDC, NEAT, ISO bodies
+  INDUSTRY      // Bosch, Hyundai — name-recognised endorsements
+  ASSOCIATION   // SIAM, ACMA, FICCI
+  MEDIA         // Trade press
+  OTHER
+}
+
+model RecruitmentDriveEventPartner {
+  id        String                      @id @default(cuid())
+  driveId   String
+  drive     RecruitmentDrive            @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  name      String
+  type      RecruitmentDrivePartnerType @default(OTHER)
+  /// Optional logo. When null, the public panel falls back to a
+  /// text-pill ("IIT Jammu") so a brand-new fair without uploaded
+  /// logos still surfaces the partners.
+  logoUrl   String?
+  /// Optional outbound URL (partner's homepage). When set, the
+  /// panel renders the partner as an anchor target=_blank.
+  url       String?
+  /// Optional one-line context shown in the partner-card tooltip
+  /// (e.g. "Patron institution", "Skill ecosystem alignment").
+  caption   String?
+  sortOrder Int                         @default(0)
+  createdAt DateTime                    @default(now())
+
+  @@index([driveId, type, sortOrder])
+}
+
+// ─── Speakers / leadership panel ─────────────────────────────────
+//
+// The brochure's "Event Leadership & Dignitaries" panel — Prof.
+// B.K. Panigrahi (Patron), CEO (Event Chair), ASDC Dignitaries,
+// L&D Head, Corporate Relations Head, Placement Executive.
+//
+// The role enum lets the admin classify each entry so the public
+// page can group them (Patron → top, Speakers → grid, etc.) and
+// so a future search ("fairs where Prof Panigrahi is speaking")
+// can index on the column.
+
+enum RecruitmentDriveSpeakerRole {
+  PATRON       // Honorary head — appears top of panel
+  CHAIR        // Event chair / organiser
+  KEYNOTE      // Headlining the opening or closing
+  PANELIST     // Part of a moderated panel
+  DIGNITARY    // Government / institutional rep
+  SPEAKER      // Generic — talks, workshop leads
+  COORDINATOR  // Operational POC (Corp Relations / Placement Executive)
+}
+
+model RecruitmentDriveSpeaker {
+  id          String                       @id @default(cuid())
+  driveId     String
+  drive       RecruitmentDrive             @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  name        String
+  /// Short title — "CEO, DIYguru", "Head L&D", "Placement Executive".
+  title       String?
+  /// Optional affiliation when distinct from the title — used when
+  /// a speaker's company isn't part of the title, e.g. "Prof. BK
+  /// Panigrahi · IIT Delhi CART · Patron & Mentor".
+  affiliation String?
+  /// Headshot URL. Null falls back to an initials-circle.
+  photoUrl    String?
+  /// Short bio for the hover-card / expanded view (1-2 sentences).
+  bio         String?                      @db.Text
+  role        RecruitmentDriveSpeakerRole  @default(SPEAKER)
+  /// Display order within the speaker panel (admin-controlled).
+  sortOrder   Int                          @default(0)
+  createdAt   DateTime                     @default(now())
+
+  @@index([driveId, role, sortOrder])
+}
+
+/// Per-fair industry track (#1 of the brochure-driven additions).
+/// A track is a slicing axis the admin defines at fair-creation —
+/// the brochure example has 5: "Electric Vehicles", "Automotive &
+/// OEMs", "Embedded Systems", "Manufacturing", "Sales & Service".
+/// Each RecruitmentDriveJob optionally maps to one track; the
+/// public fair page renders a filter-chip row driven by the track
+/// list and a `?track=<slug>` query param.
+///
+/// Scoped per-fair (not platform-wide) because each fair tends to
+/// theme its own track names — a powertrain-focused fair would
+/// split into "Battery / Motor / Charging" instead of the 5 above.
+/// Keeping the model fair-scoped lets organisers experiment without
+/// polluting a global taxonomy.
+model RecruitmentDriveTrack {
+  id          String           @id @default(cuid())
+  driveId     String
+  drive       RecruitmentDrive @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  /// Stable slug — used in `?track=<slug>` URLs so a shareable fair
+  /// link can pre-filter to "show me the embedded-systems roles".
+  slug        String
+  /// Human-readable label shown on chips + job cards.
+  name        String
+  /// Optional accent colour for the chip (Tailwind class name fragment
+  /// — e.g. "emce-mid", "amber-400", "rose-300"). Null falls back to
+  /// the default chip styling.
+  color       String?
+  /// Optional one-line description rendered in the chip's tooltip
+  /// and on a track's own filtered view header.
+  description String?
+  sortOrder   Int              @default(0)
+  createdAt   DateTime         @default(now())
+
+  jobs        RecruitmentDriveJob[]
+
+  @@unique([driveId, slug])
+  @@index([driveId, sortOrder])
+}
+
+// ─── Fair attendee registration (#2 of the fair feature set) ───────
+//
+// Until now, a candidate "registered" for a fair only implicitly — by
+// applying to a job attached to the fair. That's good for high-intent
+// applicants but loses every browser who wanted to "just show up" or
+// "browse the booths". This separate registration captures attendance
+// intent without forcing a job pick at sign-up time.
+//
+// Each row produces a short, candidate-facing check-in code printed
+// on the digital "fair pass" (a 6-char alphanumeric that's easier to
+// read off a phone than a QR code; QR rendering can layer in later
+// without changing this schema).
+//
+// The unique(driveId, candidateId) constraint enforces one
+// registration per candidate per fair — second clicks idempotently
+// no-op rather than creating duplicates.
+
+enum RecruitmentDriveRegistrationStatus {
+  /// Default — candidate signed up but hasn't checked in yet.
+  REGISTERED
+  /// Admin scanned the check-in code (or entered it manually) at
+  /// the fair's reception. Stamps `checkedInAt` + `checkedInById`.
+  CHECKED_IN
+  /// Fair ended without the candidate checking in. Useful for
+  /// recap analytics ("47% no-show rate") and for the candidate's
+  /// own past-fair history. Stamped by a post-fair cron.
+  NO_SHOW
+  /// Candidate cancelled before the fair started.
+  CANCELLED
+}
+
+model RecruitmentDriveRegistration {
+  id          String           @id @default(cuid())
+  driveId     String
+  drive       RecruitmentDrive @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  candidateId String
+  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  /// Short alphanumeric (6 chars, 32-char alphabet — no I/O/0/1 to
+  /// avoid mis-reads at the check-in desk). Minted at create. Unique
+  /// across all registrations to keep the admin scanner's input
+  /// unambiguous — no per-fair-namespace ambiguity to resolve.
+  /// Format: `[A-HJ-NP-Z2-9]{6}`.
+  checkInCode String           @unique
+  /// Optional one-line answer to "what brings you to this fair?".
+  /// Surfaced to recruiters who view the registration list so they
+  /// can pre-target conversations ("Hi — I saw you wrote you're
+  /// looking for BMS roles, our booth is in Hall B").
+  intentNote  String?          @db.Text
+  status      RecruitmentDriveRegistrationStatus @default(REGISTERED)
+  /// How the candidate landed on the fair — DIRECT = browsed
+  /// /fairs/[slug] and clicked Register. ROSTER_IMPORT = an admin
+  /// uploaded their email via the CSV import flow.
+  source      String           @default("DIRECT")
+  /// Set when the admin checks the candidate in at the venue.
+  checkedInAt DateTime?
+  /// The admin user who scanned / entered the code. SetNull to
+  /// preserve the check-in record if the admin account is later
+  /// deleted (we still want "checked in by [removed user]").
+  checkedInById String?
+  checkedInBy   User?          @relation("FairCheckInBy", fields: [checkedInById], references: [id], onDelete: SetNull)
+  createdAt   DateTime         @default(now())
+  cancelledAt DateTime?
+
+  @@unique([driveId, candidateId])
+  @@index([driveId, status])
+  @@index([candidateId])
+}
+
+// ─── Roster CSV import — "Bulk-invite a college's batch" ──────────
+//
+// Mirror of `DIYguruImportBatch`. Lets an admin upload a CSV of
+// (email, optional name, optional college) tied to one fair. For
+// each row we either find the existing candidate user or create a
+// shell account + send an invite email; either way a
+// RecruitmentDriveRegistration row lands in REGISTERED state with
+// `source = "ROSTER_IMPORT"`. The job worker processes the CSV
+// async so the admin doesn't hold an HTTP request for a 500-row
+// upload.
+//
+// Tracks per-import counters so admin can verify everyone landed
+// (`rowCount` = lines parsed, `invitedCount` = invites sent,
+// `registeredCount` = successful registrations, `failedCount` =
+// errors with a reason captured in `errorReport`).
+
+model RecruitmentDriveRosterImport {
+  id              String           @id @default(cuid())
+  driveId         String
+  drive           RecruitmentDrive @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  uploadedById    String
+  uploadedBy      User             @relation("FairRosterImporter", fields: [uploadedById], references: [id])
+  fileUrl         String
+  fileName        String?
+  rowCount        Int              @default(0)
+  invitedCount    Int              @default(0)
+  registeredCount Int              @default(0)
+  failedCount     Int              @default(0)
+  /// JSON array of `{ row: number, email: string, reason: string }`
+  /// — only populated when failedCount > 0. Helps admins audit which
+  /// rows didn't import and why ("invalid email", "duplicate
+  /// candidate", "user opt-out").
+  errorReport     Json?
+  uploadedAt      DateTime         @default(now())
+  completedAt     DateTime?
+
+  @@index([driveId, uploadedAt])
 }
 
 // ─── CompanyClaim — "I work here, prove me admin" workflow ────
@@ -5526,4 +5976,200 @@ model OutreachEnrollment {
   @@unique([cadenceId, candidateId])
   @@index([status, nextStepIndex])
   @@index([candidateId])
+}
+
+// ─── Notification templates (admin-editable copy) ────────────────
+//
+// Until now, every notification's title / body text was hard-coded
+// at the call site. That made small copy fixes a code+deploy round
+// trip and put translation / tone management out of admin's reach.
+//
+// This model gives admin a row-per-type editable surface:
+//
+//   • `key` matches the `type` string passed to `dispatchNotification`
+//     (e.g. "fair.slot_booked", "application.stage_changed"). The
+//     dispatcher does a lookup on every call; if a row exists AND
+//     `active = true`, its title/body OVERRIDE the inline values.
+//     Backward-compat: if no row exists, behaviour is unchanged.
+//   • Channel pinning is intentional — admin can flip "send the
+//     'stage changed' notification via EMAIL+IN_APP only" without
+//     touching code.
+//   • `variables` documents what placeholders the inline call passes
+//     (e.g. ["candidateName", "companyName", "stage"]). Used by the
+//     editor preview pane to show admins what they can interpolate.
+//
+// Templates ARE NOT migrations — they coexist with the hard-coded
+// defaults. A template row is opt-in per-key.
+
+enum NotificationTemplateChannel {
+  IN_APP
+  EMAIL
+  SMS
+  WHATSAPP
+  PUSH
+}
+
+model NotificationTemplate {
+  id            String                        @id @default(cuid())
+  /// Notification type key — matches `dispatchNotification({ type })`.
+  /// Unique because one template per type. Examples:
+  /// "application.stage_changed", "fair.slot_booked".
+  key           String                        @unique
+  /// Human label for the admin list. Optional — falls back to `key`.
+  label         String?
+  /// Short admin-facing note about when this fires.
+  description   String?                       @db.Text
+  /// Title override. Supports `{{var}}` placeholders sourced from
+  /// the inline call's `title` PLUS payload. If null, inline wins.
+  titleOverride String?
+  /// Body override. Same placeholder rules as title.
+  bodyOverride  String?                       @db.Text
+  /// Which channels this template should fan out to. Null = use
+  /// channels passed at the call site. Non-empty = enforce this set.
+  channels      NotificationTemplateChannel[] @default([])
+  /// Documented variables the call site provides. Used by the
+  /// preview pane in the admin editor — not enforced at dispatch.
+  variables     String[]                      @default([])
+  /// Inactive templates are skipped by the dispatcher — useful for
+  /// testing copy without breaking sends.
+  active        Boolean                       @default(true)
+  createdAt     DateTime                      @default(now())
+  updatedAt     DateTime                      @updatedAt
+  authorId      String?
+  author        User?                         @relation("NotificationTemplateAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([active])
+}
+
+// ─── Notification dispatch log (per-user send history) ───────────
+//
+// The existing `Notification` model records IN_APP deliveries only.
+// EMAIL / SMS / WHATSAPP / PUSH go to BullMQ + external providers,
+// so there's been no central log of "did we send the welcome SMS
+// to user X". This model fills that gap — the worker writes one row
+// per channel per dispatch, including the provider's message id +
+// final status. Powers /admin/notifications/logs and ad-hoc
+// troubleshooting ("did the candidate get the rejection email?").
+
+enum NotificationLogStatus {
+  /// Worker accepted the dispatch and queued the provider call.
+  QUEUED
+  /// Provider accepted the message (returned 2xx + a message id).
+  SENT
+  /// Provider rejected the message (4xx) or upstream returned an error.
+  FAILED
+  /// Optional inbound webhook from the provider (e.g. SES bounce,
+  /// MSG91 delivery) flipped the status post-send.
+  DELIVERED
+  BOUNCED
+}
+
+model NotificationLog {
+  id          String                       @id @default(cuid())
+  userId      String
+  user        User                         @relation("NotificationLogUser", fields: [userId], references: [id], onDelete: Cascade)
+  /// Same `type` as `dispatchNotification` — links log rows back
+  /// to the template / call site.
+  type        String
+  channel     NotificationTemplateChannel
+  /// Snapshot of what actually went out (post-template, post-
+  /// interpolation). Stored so we can show admins the exact copy
+  /// the user received, not the template version at audit time.
+  title       String?
+  body        String?                      @db.Text
+  /// Provider message id (Resend id, MSG91 id, Soketi message id).
+  /// Useful for cross-referencing in the provider's own dashboard.
+  providerMessageId String?
+  status      NotificationLogStatus        @default(QUEUED)
+  /// Provider error message on FAILED / BOUNCED.
+  errorMessage String?
+  sentAt      DateTime                     @default(now())
+  /// Stamped when status flips post-send (DELIVERED / BOUNCED via
+  /// inbound webhook).
+  deliveredAt DateTime?
+
+  @@index([userId, sentAt])
+  @@index([type, sentAt])
+  @@index([status, sentAt])
+}
+
+// ─── Feature flags (gradual rollout + targeted enrolment) ────────
+//
+// `SiteSetting` already handles binary kill switches for the four
+// pillars. This model layers on top for the messier case: rolling a
+// new feature out to 5% → 25% → 100% over a week, or A-team-only
+// access during a private beta.
+//
+// Resolution order at `isFeatureEnabled(key, ctx)`:
+//   1. If `enabled = false` → return false (universal kill).
+//   2. If the user is in `FeatureFlagTarget` rows for this flag →
+//      return targeted bool (overrides everything).
+//   3. If `rolloutPercent > 0` → deterministic hash(key, userId) %
+//      100 < rolloutPercent → true. Sticky per user.
+//   4. Otherwise → false.
+//
+// Anonymous (signed-out) checks use the flag's `defaultForAnonymous`
+// value rather than hashing — no userId to bucket on.
+
+enum FeatureFlagType {
+  /// Pure on/off — equivalent to a kill switch but lives in
+  /// FeatureFlag rather than SiteSetting so newer flags ride the
+  /// same audit surface.
+  BOOLEAN
+  /// Rolled out to `rolloutPercent`% of users via deterministic
+  /// hashing. Sticky — same user gets same answer until percent
+  /// changes.
+  PERCENTAGE
+  /// Only members of `FeatureFlagTarget` get true. Use for private
+  /// betas, internal team flags, single-customer early access.
+  TARGETED
+}
+
+model FeatureFlag {
+  id                  String              @id @default(cuid())
+  /// Programmatic key (e.g. "new_search_ui"). Unique.
+  key                 String              @unique
+  /// Human label for the admin list.
+  label               String
+  /// Markdown-supported notes — what does this flag toggle? Who owns it?
+  description         String?             @db.Text
+  type                FeatureFlagType     @default(BOOLEAN)
+  /// Master switch — false short-circuits all resolution. Set to
+  /// false to fully kill without losing the percent / target config.
+  enabled             Boolean             @default(false)
+  /// 0–100 for PERCENTAGE flags. Ignored for BOOLEAN / TARGETED.
+  rolloutPercent      Int                 @default(0)
+  /// Behaviour for signed-out (anonymous) calls. PERCENTAGE flags
+  /// have no userId to hash on — this is what they return instead.
+  defaultForAnonymous Boolean             @default(false)
+  /// Soft milestones — admin-set, not enforced. Useful for the
+  /// "started rollout 3 days ago" banner.
+  startedAt           DateTime?
+  completedAt         DateTime?
+  authorId            String?
+  author              User?               @relation("FeatureFlagAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+  targets             FeatureFlagTarget[]
+
+  @@index([enabled])
+}
+
+model FeatureFlagTarget {
+  id        String      @id @default(cuid())
+  flagId    String
+  flag      FeatureFlag @relation(fields: [flagId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation("FeatureFlagTargetUser", fields: [userId], references: [id], onDelete: Cascade)
+  /// Boolean override for this user on this flag. Almost always
+  /// true (private-beta enrolment), but `false` lets us explicitly
+  /// EXCLUDE a user from a PERCENTAGE rollout that would otherwise
+  /// have included them.
+  enabled   Boolean     @default(true)
+  /// Optional admin note ("VIP customer; opted into beta").
+  note      String?
+  createdAt DateTime    @default(now())
+
+  @@unique([flagId, userId])
+  @@index([userId])
 }

@@ -156,6 +156,34 @@ export default async function FairsListPage() {
               <FairGrid drives={closed} dimmed />
             </Section>
           )}
+
+          {/* TPO outreach band — the brochure's "400+ Institutional
+              Partners" target depends on this CTA being visible to
+              college coordinators visiting /fairs to research the
+              event before bringing their cohort. */}
+          <section className="rounded-2xl bg-gradient-to-br from-emce-light-soft to-white p-6 ring-1 ring-emce-border md:p-8">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div className="max-w-xl">
+                <p className="text-hint font-bold uppercase tracking-wide text-emce-text-muted">
+                  For colleges & TPOs
+                </p>
+                <h2 className="mt-1 text-section text-emce-text">
+                  Bring your cohort to a fair
+                </h2>
+                <p className="mt-2 text-body text-emce-text-sec">
+                  Register your placement cell, bulk-import your students,
+                  and pre-register them for the next Bharat eMobility
+                  Recruitathon edition.
+                </p>
+              </div>
+              <Link
+                href="/colleges/register"
+                className="inline-flex h-11 items-center justify-center rounded-md bg-emce-dark px-6 text-sm font-bold text-white hover:bg-emce-darkest"
+              >
+                Register your college →
+              </Link>
+            </div>
+          </section>
         </div>
       </main>
       <SiteFooter />

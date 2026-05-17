@@ -10,6 +10,7 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { logger } from "@/lib/logger";
 import { COMPLETENESS_THRESHOLDS } from "@/lib/profile-completeness";
+import { evaluateFairEligibility } from "@/lib/fair-eligibility";
 // Prisma is needed for both types (InputJsonValue) and runtime values
 // (Prisma.JsonNull) so the value-import is mandatory here.
 import { Prisma } from "@prisma/client";
@@ -80,7 +81,11 @@ export async function applyToJob(formData: FormData) {
 
   const profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
-    include: { user: { select: { emailVerifiedAt: true } } },
+    include: {
+      // User-side phone is the SMS-OTP fallback for the fair
+      // strict-eligibility check below.
+      user: { select: { emailVerifiedAt: true, phone: true } },
+    },
   });
   if (!profile) redirect("/onboarding");
 
@@ -89,12 +94,31 @@ export async function applyToJob(formData: FormData) {
     redirect(`/jobs/${jobId}?error=` + encodeURIComponent("Verify your email before applying. Check /me for the link."));
   }
 
-  // Profile-completeness gate — applications require the threshold
-  // defined in COMPLETENESS_THRESHOLDS.APPLY (60% as of 2026-05; was
-  // 90% — see lib/profile-completeness.ts for the rationale). The
-  // calculated value is denormalised on the row, kept fresh by every
-  // profile-edit action via recalcCompleteness().
-  if (profile.profileCompleteness < COMPLETENESS_THRESHOLDS.APPLY) {
+  // Strict gate for FAIR-attributed applications: 60% + CV +
+  // phone + email. The carry-through `recruitmentDriveId` is the
+  // signal "this application came through a fair page" — when
+  // present, fair-eligibility rules apply. Direct /jobs/[id]
+  // applications keep the existing 60% + email gate (no
+  // back-compat break for the 50k existing users mid-flow).
+  if (recruitmentDriveIdInput) {
+    const eligibility = evaluateFairEligibility(
+      {
+        profileCompleteness: profile.profileCompleteness,
+        resumeUrl: profile.resumeUrl,
+        aiResumeUrl: profile.aiResumeUrl,
+        phone: profile.phone,
+      },
+      profile.user,
+    );
+    if (!eligibility.ok) {
+      const missingCsv = eligibility.missing.join(",");
+      redirect(
+        `/me/profile?incomplete=fair-apply&jobId=${jobId}` +
+          `&pct=${eligibility.completeness}&missing=${encodeURIComponent(missingCsv)}`,
+      );
+    }
+  } else if (profile.profileCompleteness < COMPLETENESS_THRESHOLDS.APPLY) {
+    // Non-fair path: existing 60%-only gate stays.
     redirect(
       `/me/profile?incomplete=apply&pct=${profile.profileCompleteness}&jobId=${jobId}`,
     );
