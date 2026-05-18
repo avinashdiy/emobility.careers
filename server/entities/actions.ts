@@ -10,6 +10,10 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { buildTsQuery } from "@/lib/search-fts";
 import type { InstitutionType } from "@prisma/client";
 import { optionalUrl } from "@/lib/forms/zod-url";
+import {
+  resolveProtectedCompany,
+  resolveProtectedInstitution,
+} from "@/lib/protected-brands";
 
 /**
  * Lookup + create endpoints for the two "entity references" candidates can
@@ -120,6 +124,14 @@ export async function createCompanyLite(input: {
 
   const parsed = CreateCompanySchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: "Invalid company details." };
+
+  // Protected-brand guard — DIYguru (and any future protected brands)
+  // resolve to the canonical row instead of creating a new variant.
+  // See lib/protected-brands.ts for the canonical-slug map.
+  const protectedHit = await resolveProtectedCompany(parsed.data.name);
+  if (protectedHit.protected) {
+    return { ok: true, id: protectedHit.id, slug: protectedHit.slug, message: protectedHit.message };
+  }
 
   // Dedupe by case-insensitive name match — surfaces existing rows the user
   // might have missed in the search list.
@@ -246,6 +258,13 @@ export async function createInstitutionLite(input: {
 
   const parsed = CreateInstitutionSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: "Invalid institution details." };
+
+  // Protected-brand guard — DIYguru eMobility Academy (and any
+  // future protected brands) resolve to the canonical row.
+  const protectedHit = await resolveProtectedInstitution(parsed.data.name);
+  if (protectedHit.protected) {
+    return { ok: true, id: protectedHit.id, slug: protectedHit.slug, message: protectedHit.message };
+  }
 
   // Same dedupe trick as companies — case-insensitive name + same city tier.
   const existing = await db.institution.findFirst({

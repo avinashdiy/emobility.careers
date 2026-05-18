@@ -323,7 +323,17 @@ export default async function FairLandingPage({
           </div>
         )}
 
-        {/* Hero */}
+        {/* Hero — stronger gradient over banner so titles + meta
+            strip stay legible on busy / light banners. The single
+            `bg-black/40` overlay was insufficient on day-time event
+            photos with bright skies. We layer:
+              1. a darker base (bg-black/55) so the floor contrast
+                 is always above WCAG AA for white text
+              2. a vertical gradient pinning extra darkness at the
+                 bottom where the title + meta row sit
+              3. a left-side gradient on wide screens that keeps the
+                 right-half of the banner imagery breathing while
+                 the text-heavy left side stays high-contrast. */}
         <section className="relative">
           {drive.bannerImageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -335,8 +345,9 @@ export default async function FairLandingPage({
           ) : (
             <div className="emce-hero-gradient absolute inset-0" />
           )}
-          <div className="absolute inset-0 bg-black/40" />
-          <div className="container relative max-w-5xl py-10 text-white md:py-14">
+          <div className="absolute inset-0 bg-black/55" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-black/30" />
+          <div className="container relative max-w-5xl py-10 text-white md:py-14 [text-shadow:_0_1px_2px_rgba(0,0,0,0.5)]">
             <div className="flex flex-wrap items-center gap-2">
               {isLive && <Badge variant="warning">🔴 Live now</Badge>}
               {isClosed && <Badge variant="outline">Closed</Badge>}
@@ -683,38 +694,97 @@ export default async function FairLandingPage({
                 )}
               </div>
 
-              {/* Inline conversion panel — recruiter reads the
-                  pitch above, lands on the WhatsApp/email CTAs here
-                  with zero scrolling away. Renders only when an
-                  admin set the contact details. Mailto pre-fills a
-                  subject line referencing the fair so the recruiter
-                  doesn't have to type one. */}
-              {(drive.primaryContactPhone || drive.primaryContactEmail) && (
-                <div className="mt-6 rounded-md border border-emce-mid/40 bg-white p-4 md:flex md:items-center md:justify-between md:gap-4">
-                  <div>
-                    <p className="text-section text-emce-text">
-                      Ready to participate?
-                    </p>
-                    <p className="mt-1 text-hint text-emce-text-sec">
-                      Share your JDs with{" "}
-                      {drive.primaryContactName ?? "our placement team"} and we&apos;ll
-                      pre-screen candidates from the pool 2 weeks before the fair.
-                      Participation is free for companies with active hiring mandates.
-                    </p>
-                  </div>
-                  <div className="mt-3 flex shrink-0 flex-wrap gap-2 md:mt-0">
-                    {drive.primaryContactPhone && (
-                      <a
-                        href={`https://wa.me/${drive.primaryContactPhone.replace(/[^\d]/g, "")}?text=${encodeURIComponent(
-                          `Hi! We'd like to participate as a hiring partner at ${drive.title}.`,
-                        )}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex h-10 items-center rounded-md bg-emce-light px-5 text-sm font-bold text-emce-darkest hover:bg-emce-mid"
+              {/* Dual-path conversion panel — separates candidates
+                  from hiring partners so each audience sees the right
+                  next step. Candidate path: sign up + register for
+                  the fair (or register directly if signed in).
+                  Hiring-partner path: sign up as employer + WhatsApp
+                  / email shortcuts. WhatsApp falls back to the DIYguru
+                  central number (9910918719) when no per-drive
+                  contact is set. */}
+              <div className="mt-6 grid gap-4 rounded-md border border-emce-mid/40 bg-white p-5 md:grid-cols-2">
+                {/* Candidate path */}
+                <div className="space-y-3 border-emce-border md:border-r md:pr-5">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+                    For candidates
+                  </p>
+                  <p className="text-section text-emce-text">
+                    Ready to participate as a candidate?
+                  </p>
+                  <p className="text-hint text-emce-text-sec">
+                    {registrationOpen
+                      ? "Create your free emobility.careers profile, then register for the fair. We'll send your check-in pass + match you to recruiters who fit your background."
+                      : "Registration for this drive is now closed. Create a profile so you're matched to the next fair the moment it opens."}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {!session?.user ? (
+                      <Link
+                        href={`/signup?next=${encodeURIComponent(`/fairs/${drive.slug}`)}`}
+                        className="inline-flex h-10 items-center rounded-md bg-emce-dark px-5 text-sm font-bold text-white hover:bg-emce-darkest"
                       >
-                        💬 WhatsApp to participate
-                      </a>
-                    )}
+                        ✍️ Sign up + register
+                      </Link>
+                    ) : myRegistration && myRegistration.status !== "CANCELLED" ? (
+                      <Link
+                        href={`/me/fairs/${drive.slug}/pass`}
+                        className="inline-flex h-10 items-center rounded-md bg-emce-dark px-5 text-sm font-bold text-white hover:bg-emce-darkest"
+                      >
+                        ✓ View your fair pass
+                      </Link>
+                    ) : registrationOpen && session.user.role === "CANDIDATE" ? (
+                      myEligibility?.ok ? (
+                        <form action={registerForDrive}>
+                          <input type="hidden" name="driveId" value={drive.id} />
+                          <button
+                            type="submit"
+                            className="inline-flex h-10 items-center rounded-md bg-emce-dark px-5 text-sm font-bold text-white hover:bg-emce-darkest"
+                          >
+                            Register for this fair →
+                          </button>
+                        </form>
+                      ) : (
+                        <Link
+                          href={`/me/profile?incomplete=fair&fairSlug=${drive.slug}`}
+                          className="inline-flex h-10 items-center rounded-md bg-emce-dark px-5 text-sm font-bold text-white hover:bg-emce-darkest"
+                        >
+                          Finish profile to register
+                        </Link>
+                      )
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* Hiring-partner path */}
+                <div className="space-y-3">
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+                    For hiring partners
+                  </p>
+                  <p className="text-section text-emce-text">
+                    Ready to participate as an employer?
+                  </p>
+                  <p className="text-hint text-emce-text-sec">
+                    Share your JDs with{" "}
+                    {drive.primaryContactName ?? "our placement team"} and we&apos;ll
+                    pre-screen candidates from the pool 2 weeks before the fair.
+                    Participation is free for companies with active hiring mandates.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href="/employer/onboarding"
+                      className="inline-flex h-10 items-center rounded-md bg-emce-dark px-5 text-sm font-bold text-white hover:bg-emce-darkest"
+                    >
+                      🏢 Sign up as employer
+                    </Link>
+                    <a
+                      href={`https://wa.me/${(drive.primaryContactPhone ?? "+919910918719").replace(/[^\d]/g, "")}?text=${encodeURIComponent(
+                        `Hi! We'd like to participate as a hiring partner at ${drive.title}.`,
+                      )}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex h-10 items-center rounded-md border-2 border-emce-dark px-5 text-sm font-bold text-emce-dark hover:bg-emce-light-soft"
+                    >
+                      💬 WhatsApp
+                    </a>
                     {drive.primaryContactEmail && (
                       <a
                         href={`mailto:${drive.primaryContactEmail}?subject=${encodeURIComponent(
@@ -724,12 +794,12 @@ export default async function FairLandingPage({
                         )}`}
                         className="inline-flex h-10 items-center rounded-md border-2 border-emce-dark px-5 text-sm font-bold text-emce-dark hover:bg-emce-light-soft"
                       >
-                        ✉️ Email to participate
+                        ✉️ Email
                       </a>
                     )}
                   </div>
                 </div>
-              )}
+              </div>
             </section>
           )}
 

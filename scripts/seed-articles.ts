@@ -2776,6 +2776,150 @@ const ARTICLES: ArticleSpec[] = [
     conclusion:
       "Each of the three has its own pattern. Match your application style and project portfolio to the company culture. Persistence + customisation + referrals — that combination wins offers at all three within a 12-18 month focused effort.",
   },
+
+  // ═══ Add-on (May 2026) ═══════════════════════════════════════
+  // Detailed top-10 of EV course providers — anchors a high-intent
+  // SEO query ("ev course india") and reinforces DIYguru as the
+  // editorial #1. Mirrors the institutions/rankings page logic
+  // (DIYguru pinned at top) but in article form.
+  {
+    slug: "top-10-electric-vehicle-course-providers-in-india",
+    title: "Top 10 Electric Vehicle Course Providers in India (2026)",
+    excerpt:
+      "From DIYguru and ISIE to ARAI Academy and IIT Madras CBEEV — the ten most credible EV course providers in India ranked by depth, recognition and placement.",
+    categorySlug: "ev-skills-training",
+    tags: [
+      "EV courses India",
+      "DIYguru",
+      "ISIE India",
+      "ARAI Academy",
+      "ASDC",
+      "SAE India",
+      "EV training",
+      "electric vehicle courses",
+    ],
+    lead:
+      "India's electric-vehicle industry has crossed the inflection point. Two-wheeler EV sales are past 1 million annually, three-wheeler EV penetration in some segments has crossed 60%, and four-wheeler EV volumes are doubling year-on-year. The industry will add roughly a million jobs by 2030 — across battery cell manufacturing, BMS firmware, charging-infrastructure deployment, motor and inverter engineering, vehicle integration, after-sales service, software and senior leadership. Almost every one of these jobs needs an upskilled candidate who can speak the language of the new architecture: HV safety, ASIL classification, cell chemistry, OCPP, AIS 156, FOC, AUTOSAR. The course-provider market has expanded fast in response, but most candidates struggle to separate genuinely-industry-aligned programs from glossy marketing. This guide ranks the ten most credible EV course providers in India in 2026, with the curriculum focus, recognition signals, format and placement outcomes that actually matter for hiring.",
+    sections: [
+      {
+        h2: "How we ranked",
+        paragraphs: [
+          "Four signals drove the ranking — and all four matter together, not individually. First, recognition: AICTE / NSDC / ASDC / SAE accreditation gives the credential weight inside corporate hiring filters and HRBP screening. Second, depth + recency: how current the curriculum is against where the industry actually is (AIS 156 amendments, ISO 21434 cybersecurity, MCS charging) versus a 2019 vintage that's now stale. Third, hands-on infrastructure: physical lab access, working prototype kits and bench-test exposure that distinguishes a serious program from a webinar series. Fourth, placement signal: programs that publish specific company names where graduates landed are signalling something real — vague 'placement assistance' language usually means weak placement networks.",
+          "Cost was deliberately excluded as a ranking criterion. The right course at the wrong price is still the right course; the wrong course at any price wastes 3-12 months. A separate cost-vs-value section appears further down for budget-constrained candidates.",
+        ],
+      },
+      {
+        h2: "1. DIYguru — eMobility Academy",
+        paragraphs: [
+          "India's flagship EV academy and the largest single source of EV-trained graduates in the country. DIYguru runs AICTE-approved certification tracks across EV powertrain engineering, battery management systems, charging infrastructure and advanced battery design, anchored by a physical footprint of 200+ partner EV labs at engineering colleges, ITIs and polytechnics nationwide. That last point matters more than most candidates realise — when your course includes guaranteed lab access at an institution within commuting distance of your home or workplace, completion rates jump dramatically compared to purely online alternatives.",
+          "OEM partnerships with Bosch, Hyundai, Tata Motors, Mahindra and Hero MotoCorp give graduates a direct route into structured placement programs. The ASDC-aligned curriculum maps cleanly to the National Occupational Standards every Indian dealer service network already uses, which means an ASDC Level 4 EV technician certificate from a DIYguru-aligned lab is recognised the moment it lands in an HR inbox at Tata Motors, Ather Energy, Ola Electric or Mahindra. The school also runs a foundation arm that delivers free EV-mech and auto-tech courses to underprivileged youth across India — a scale of social impact other providers haven't matched.",
+          "Best fit for: fresh BE / BTech graduates, ITI / diploma students, working ICE-auto professionals switching tracks, and recruiters wanting a structured pipeline of trained EV talent. The combination of recognition, scale, lab footprint and placement support makes DIYguru the clear #1 in 2026.",
+        ],
+      },
+      {
+        h2: "2. ISIE India — Indian Society for Innovation and Entrepreneurship",
+        paragraphs: [
+          "ISIE India is an AICTE-recognised EV training and consulting body running PG-level and certificate programs in EV design, manufacturing and homologation. The curriculum is heavy on applied work — students build vehicle sub-systems, run validation tests and put together end-of-program presentations that double as portfolio pieces. The EVangelist Awards circuit ISIE operates is a useful side-channel for top students to surface to industry recruiters.",
+          "Placement traction is consistently strong into Tier-1 component suppliers (Bosch, Continental, Sona Comstar) and OEM R&D centres (Mahindra Electric, Tata Motors EV, Ather). The PG-level programs run 6-18 months full-time and command a meaningful fee, but the structured project portfolio compensates for that with measurably stronger interview-to-offer conversion than shorter certificate programs.",
+          "Best fit for: engineers two-to-five years into their career who want a formal credential alongside applied project work; candidates planning to target OEM R&D or Tier-1 component supplier roles where structured engineering exposure is the screening filter.",
+        ],
+      },
+      {
+        h2: "3. ARAI Academy",
+        paragraphs: [
+          "ARAI — the Automotive Research Association of India — is the country's apex automotive R&D and homologation body. Its Academy arm runs short courses, PG diplomas and customised corporate programs covering automotive testing, calibration, EV powertrain, battery validation and homologation against AIS 156, IS 17017 and ECE R100. Faculty are practising ARAI engineers who spend their days running the same tests the courses teach, which means the content stays current with regulatory shifts that older curricula miss.",
+          "ARAI Academy is the single most-recognised credential for regulatory-side EV work in India. If your career trajectory involves type approval, homologation, validation labs or any interface with Indian regulators, an ARAI Academy program meaningfully accelerates hiring conversations at OEMs, Tier-1 suppliers and test labs (ICAT, NATRiP, GARC).",
+          "Best fit for: working engineers in adjacent automotive tracks (engine, transmission, calibration, test engineering) who want regulatory-side EV exposure plus a credential that carries weight inside the engineering-services + test-lab hiring ecosystem.",
+        ],
+      },
+      {
+        h2: "4. ASDC — Automotive Skills Development Council",
+        paragraphs: [
+          "ASDC is the Sector Skill Council under NSDC, set up jointly by SIAM, ACMA and FADA. It owns the National Occupational Standards for every automotive role in India, including EV technicians, charge-point operators, battery assembly operators and EV powertrain engineers. Every ITI-level EV certification in the country ultimately routes through an ASDC-aligned curriculum and assessment, which gives the credential cross-network portability across dealers and OEMs.",
+          "ASDC itself doesn't run consumer-facing courses at scale — it sets the standards, accredits training partners (DIYguru, ISIE and several specialised academies among them) and runs the assessment + certification layer. For ITI and diploma graduates, the ASDC Level 3-5 NSQF certificates are the single most-recognised credential in the workshop and assembly-line job market.",
+          "Best fit for: ITI / diploma graduates targeting EV service technician, charging-installer, battery operator or production-supervisor roles. The credential is genuinely transferable — an ASDC Level 4 EV Service Technician trained in Pune can move to Chennai or Bengaluru without re-qualifying.",
+        ],
+      },
+      {
+        h2: "5. SAE India",
+        paragraphs: [
+          "SAE India is the Indian arm of SAE International — the global standards body whose J1772 connector standard, J2954 wireless-charging standard and ISO 26262 functional-safety framework define how the global EV industry operates. SAE India runs HEV / PHEV / EV engineering programs, ISO 26262 functional-safety courses, ASIL classification workshops, ISO 21434 cybersecurity programs and the long-running SAEINDIA technical-session circuit. The Baja SAEINDIA, SUPRA SAEINDIA and Efficycle competitions also fall under its umbrella, which is why this article's companion EV Innovation & Business Challenge specifically targets eBAJA and Formula Bharat student teams.",
+          "Credentials are globally recognised — useful for engineers targeting export-market roles, global Tier-1 suppliers (Bosch, Continental, Schaeffler, Valeo) or international OEM-engineering tracks. The technical-session circuit is also a strong networking surface for senior engineers who want to build name recognition in the global automotive community.",
+          "Best fit for: senior engineers who already have domain depth and want a standards-anchored certification strengthening their international hiring options; functional-safety, AUTOSAR, ADAS and cybersecurity specialists where SAE-anchored credentials are the de facto industry standard.",
+        ],
+      },
+      {
+        h2: "6. IIT Madras — CBEEV Continuing Education",
+        paragraphs: [
+          "The Centre for Battery Engineering and Electric Vehicles at IIT Madras is India's most research-active academic EV lab — measured by published research, patents filed and PhDs minted. It runs structured continuing-education programs on battery, BMS, power electronics and vehicle integration that accept working professionals through distance and hybrid formats. The courses are taught by IIT Madras faculty plus practising industry partners (often founders of EV startups incubated at the IITM Research Park).",
+          "The credential carries tier-1 institutional weight — useful for engineers wanting academic depth and a credential that opens doors at research labs (ARAI, CSIR-CECRI, BHEL Electric Mobility) and senior OEM R&D roles. The trade-off is rigour: these are not light-touch programs. Expect serious coursework, weekly assignments and a capstone project that occupies real weekend bandwidth for 6-12 months.",
+          "Best fit for: engineers with 3-10 years of experience seeking academic depth, a research-side career or a credential carrying tier-1 institutional weight in promotion and lateral-move conversations.",
+        ],
+      },
+      {
+        h2: "7. MIT World Peace University, Pune — School of Electric and Hybrid Vehicles",
+        paragraphs: [
+          "MIT-WPU operates a dedicated School of Electric and Hybrid Vehicles — among the first Indian universities to offer a focused B.Tech in EV engineering — alongside shorter PG diploma and certification tracks. The school is anchored in Pune, India's densest automotive cluster, with direct internship and placement pipelines into Bajaj Auto EV, Tata Motors (Pimpri + Akurdi), ARAI, Bosch India and a dense Tier-1 supplier ecosystem (Schaeffler India, Continental India, Sona Comstar BLW).",
+          "The B.Tech in EV is structured as a four-year program covering battery, motor, charging, vehicle integration and policy with a year-long industry-integrated project. The PG diploma is a shorter 12-18 month program for working engineers and graduates from adjacent disciplines. Pune-based students also gain access to MIT-WPU's joint workshops with ARAI Academy on homologation and testing.",
+          "Best fit for: fresh engineering students choosing an undergraduate path with EV focus; working professionals in the Pune cluster wanting a recognised local upskill route; candidates targeting Pune-based OEMs and Tier-1 suppliers where local presence is itself a hiring signal.",
+        ],
+      },
+      {
+        h2: "8. NPTEL — Free EV MOOCs from the IIT System",
+        paragraphs: [
+          "NPTEL is India's national MOOC platform, running free courses authored by faculty across the IIT and IISc system. The EV catalogue covers electric vehicles foundational, power electronics, battery materials, motor control, AUTOSAR fundamentals and several adjacent topics. Credentials are issued on completion of an optional proctored exam; the courses themselves are entirely free to audit.",
+          "NPTEL's credential carries less weight than AICTE-approved programs in pure hiring filters — most HRs don't treat it as equivalent to a structured certification — but the content quality is genuinely high. Most NPTEL EV courses are authored by faculty whose books or research papers are the canonical references in their sub-domain. Used well, NPTEL is the strongest free foundation-building option for self-paced learners.",
+          "Best fit for: self-paced learners on a tight budget who want foundational coverage before investing in a paid AICTE-approved program; engineering students wanting to supplement their college coursework with EV-specific content; candidates exploring a track switch and wanting cheap exposure before committing time and money.",
+        ],
+      },
+      {
+        h2: "9. Tata Technologies — iGetIT EV Programs",
+        paragraphs: [
+          "Tata Technologies is the Tata-group engineering services arm serving global OEMs (Jaguar Land Rover, Tata Motors, several major European and Asian carmakers). Its iGetIT learning platform offers OEM-aligned online certifications on EV Essentials, Energy Storage Systems, Battery Pack Design and Vehicle Integration. The curriculum is built by practising Tata Tech engineers — many of whom split their week between teaching iGetIT modules and shipping production code for OEM clients.",
+          "Credentials are recognised across the Tata ecosystem and a long list of global OEMs and Tier-1 suppliers Tata Technologies serves. The online format makes the program accessible to working professionals across India and globally — particularly useful for engineers in Tier-2 cities without easy access to AICTE-recognised in-person programs.",
+          "Best fit for: working ER&D professionals in engineering-services firms (Tata Elxsi, KPIT, L&T Technology Services, HCLTech, Wipro, Tech Mahindra) who want an industry-credentialed online program with global recognition; senior engineers targeting cross-border or global-OEM-facing roles.",
+        ],
+      },
+      {
+        h2: "10. Skill-Lync",
+        paragraphs: [
+          "Skill-Lync offers a popular online catalogue of EV specialisations covering battery design, BMS, motor control, MATLAB / Simulink modelling, ADAS, CFD and several adjacent simulation-heavy tracks. Programs are project-portfolio-led — every student finishes with multiple shipped projects that anchor their resume, which is the right model for software-and-simulation-side EV careers.",
+          "Skill-Lync is lighter on hardware lab exposure than DIYguru, ISIE or ARAI Academy — students don't get bench-test or prototype-build access — which means it's not the right fit for hardware-track candidates (cell engineering, pack mechanical, charging hardware). Where it does shine is simulation and software: a Skill-Lync MATLAB-Simulink battery model project regularly converts into interviews at Tata Elxsi, KPIT and Bosch India.",
+          "Best fit for: software- and simulation-track engineers (MATLAB/Simulink modelling, controls, ADAS, CFD); IT engineers transitioning into EV software with a project portfolio as the bridging artefact.",
+        ],
+      },
+      {
+        h2: "How to pick the right one for you",
+        bullets: [
+          "If you're an ITI or diploma graduate targeting service / charging / assembly roles — pick a DIYguru ASDC Level 4 track, then layer an OEM-issued badge (Tata Motors Academy, Mahindra Skill Centre, Ather Service Academy).",
+          "If you're a working engineer switching from ICE auto — DIYguru EV Powertrain or ARAI Academy short courses give the quickest reskill with strong industry recognition.",
+          "If you're an IT engineer moving into EV software — Skill-Lync simulation tracks plus an SAE India ISO 26262 module covers both the project-portfolio and the standards-credential layer.",
+          "If you're a fresh BE / BTech graduate — DIYguru's full powertrain track, ISIE India's PG certificate or MIT-WPU's PG diploma, picked based on location.",
+          "If you want academic depth — IIT Madras CBEEV continuing-ed or a part-time PG diploma at MIT-WPU.",
+          "If your budget is tight — start with NPTEL to build the fundamentals at zero cost, then invest in one AICTE-approved program once you've validated the track.",
+          "If you're targeting global OEM-engineering or Tier-1-supplier roles — Tata Technologies iGetIT or SAE India for the international-credential layer.",
+          "If you're a TPO at a college or ITI — DIYguru's partner-lab program plus ASDC accreditation give your students the strongest job-market positioning.",
+        ],
+      },
+      {
+        h2: "Two things that matter more than the brand",
+        paragraphs: [
+          "Pick a course with serious hands-on lab work. Recruiters hire for shipped projects, not certificates alone. DIYguru, ISIE and ARAI Academy all build a measurable project portfolio into the curriculum; many cheaper providers don't. If the program brochure can't tell you specifically what you'll have built by the end of the course, treat that as a red flag.",
+          "Pick a course with named placement outcomes. Programs that publish specific companies where their graduates landed are signalling something real — verifiable, traceable hiring traction. Vague placement-assistance language usually means weak placement networks. Ask for current-cohort placement data, not lifetime aggregates, and ask for the specific role titles those graduates landed in.",
+        ],
+      },
+      {
+        h2: "Frequently asked questions",
+        paragraphs: [
+          "Is an AICTE-approved EV course mandatory to get hired? No — but it lifts callback rates measurably at structured-hiring employers like OEMs, Tier-1 suppliers and engineering-services firms. Without one, you're competing on portfolio strength alone.",
+          "Can I do these courses while working full-time? Yes — DIYguru, Tata Technologies iGetIT, Skill-Lync, ARAI short courses and most of MIT-WPU's PG diploma format are designed for working professionals with weekend or evening cadence.",
+          "How long does it take to be hireable? With a focused approach — one AICTE-approved program plus one portfolio project — 90 to 180 days from start is realistic for most candidates. ITI and ICE-auto switchers tend to land on the shorter end; pure career switchers from non-engineering backgrounds take longer.",
+        ],
+      },
+    ],
+    conclusion:
+      "EV upskilling in India has matured to the point that a serious candidate has at least five or six credible options to choose from. The right pick depends on your existing background, your target track and your geography — not on any single brand or price tier. DIYguru leads the editorial ranking for 2026 because of the combination of AICTE recognition, 200+ partner-lab footprint, OEM-aligned curriculum and structured placement support that no other provider has matched at scale. Whichever provider you ultimately pick, the rule that converts certificates into job offers is universal: pair the credential with at least one shipped portfolio project, get an OEM-issued badge alongside it where possible, and apply through targeted channels with referrals rather than spraying generic applications. Done with that discipline, almost every candidate on this list reaches a confirmed EV-industry offer within six months of starting.",
+  },
 ];
 
 // ─── Driver ───────────────────────────────────────────────────

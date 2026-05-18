@@ -1,10 +1,12 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, useTransition } from "react";
 import { Button } from "@/components/ui/button";
 import {
   uploadDriveBanner,
   uploadDriveHero,
+  removeDriveBanner,
+  removeDriveHero,
 } from "@/server/recruitment-drives/actions";
 
 /**
@@ -40,6 +42,7 @@ export function FairImageUploader({
         driveId={driveId}
         currentUrl={bannerUrl}
         action={uploadDriveBanner}
+        removeAction={removeDriveBanner}
         label="Banner image"
         helper="3:1 thumbnail used on the /fairs list. Auto-cropped centre to 1500×500."
         previewClass="aspect-[3/1]"
@@ -48,6 +51,7 @@ export function FairImageUploader({
         driveId={driveId}
         currentUrl={heroUrl}
         action={uploadDriveHero}
+        removeAction={removeDriveHero}
         label="Hero image"
         helper="16:9 full-bleed background on the fair landing. Auto-cropped to 1920×1080."
         previewClass="aspect-[16/9]"
@@ -60,6 +64,7 @@ function UploadSlot({
   driveId,
   currentUrl,
   action,
+  removeAction,
   label,
   helper,
   previewClass,
@@ -67,6 +72,7 @@ function UploadSlot({
   driveId: string;
   currentUrl: string | null;
   action: (formData: FormData) => Promise<{ ok: boolean; message?: string; url?: string }>;
+  removeAction: (formData: FormData) => Promise<{ ok: boolean; message?: string }>;
   label: string;
   helper: string;
   previewClass: string;
@@ -76,6 +82,7 @@ function UploadSlot({
   const [busy, setBusy] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(currentUrl);
   const [error, setError] = useState<string | null>(null);
+  const [pendingRemove, startRemove] = useTransition();
 
   return (
     <div>
@@ -141,15 +148,46 @@ function UploadSlot({
           disabled={busy}
           onChange={() => formRef.current?.requestSubmit()}
         />
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          disabled={busy}
-          onClick={() => fileRef.current?.click()}
-        >
-          {busy ? "Uploading…" : currentUrl ? "Replace" : "Upload"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy || pendingRemove}
+            onClick={() => fileRef.current?.click()}
+          >
+            {busy ? "Uploading…" : previewUrl ? "Replace" : "Upload"}
+          </Button>
+          {/* Remove button — only shown when there's an image to
+              remove. Clears the FK on the drive row; the underlying
+              S3 object stays put. Falls back to the brand gradient
+              on the public page. */}
+          {previewUrl && (
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy || pendingRemove}
+              className="text-emce-orange-deep"
+              onClick={() => {
+                if (!confirm(`Remove this ${label.toLowerCase()}? The public page will fall back to the brand gradient.`)) return;
+                setError(null);
+                startRemove(async () => {
+                  const fd = new FormData();
+                  fd.append("driveId", driveId);
+                  const r = await removeAction(fd);
+                  if (r.ok) {
+                    setPreviewUrl(null);
+                  } else {
+                    setError(r.message ?? "Couldn't remove image.");
+                  }
+                });
+              }}
+            >
+              {pendingRemove ? "Removing…" : "Remove"}
+            </Button>
+          )}
+        </div>
       </form>
       <p className="mt-1 text-hint text-emce-text-muted">{helper}</p>
       {error && (

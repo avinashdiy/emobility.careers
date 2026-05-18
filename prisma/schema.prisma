@@ -258,6 +258,10 @@ model User {
   callingSessionsTriggered CallingSession[]        @relation("CallingTriggerer")
   companyReviewsAuthored   CompanyReview[]         @relation("CompanyReviewAuthor")
   companyReviewsModerated  CompanyReview[]         @relation("CompanyReviewModerator")
+  institutionReviewsAuthored InstitutionReview[]   @relation("InstitutionReviewAuthor")
+  institutionReviewsModerated InstitutionReview[]  @relation("InstitutionReviewModerator")
+  discussionThreadsAuthored EntityDiscussionThread[] @relation("DiscussionThreadAuthor")
+  discussionRepliesAuthored EntityDiscussionReply[] @relation("DiscussionReplyAuthor")
   careerExplorations       CareerExplorationLog[]  @relation("CareerExplorerUser")
 
   // Wave A back-relations
@@ -1981,12 +1985,58 @@ model Institution {
   // as deliberate, not opaque. Plain text, ≤500 chars.
   evRankingNote         String? @db.Text
 
+  // ─── Detailed enrichment data ────────────────────────────────
+  //
+  // Populated by scripts/seed-institution-enrichment.ts in batches
+  // of ~100 institutions. Every field is optional — institutions
+  // without enrichment data still render fine, the page just shows
+  // fewer sections.
+  //
+  // JSON columns are used for nested arrays so we can iterate the
+  // shape without a schema change for every tweak.
+
+  /// Array of { name, focus, established?, headFaculty?, website? }
+  researchCentres       Json?
+  /// Array of { oem, type: "research"|"placement"|"curriculum"|"funding"|"internship", since?, projects? }
+  oemCollaborations     Json?
+  /// Array of { title, area, lead?, funding?, status? }
+  ongoingResearch       Json?
+  /// Array of { name, level: "UG"|"PG"|"PHD"|"CERTIFICATE"|"DIPLOMA", duration?, evFocus?, seats?, fees? }
+  programsOffered       Json?
+  /// Array of { name, currentRole, currentCompany, batch?, linkedin? }.
+  /// Capped at ~10 per institution; the public page renders a card grid.
+  notableAlumni         Json?
+  /// JSON shape: { medianCtcLakhs?, placementRate?, highestCtcLakhs?,
+  /// recruiterCount?, year? }. Lives behind the "Placement report"
+  /// tab on /institutions/<slug>.
+  placementStats        Json?
+  /// Free-text top recruiter list. Surfaces as chips on the placement
+  /// tab and feeds the institution's recruiter-cluster signal.
+  topRecruiters         String[] @default([])
+  /// Standard accreditation labels — "NAAC A+", "NBA accredited",
+  /// "UGC", "AICTE", "AACSB" etc. Rendered as chips on the hero.
+  accreditations        String[] @default([])
+  /// Major lab / equipment names — "Battery formation lab",
+  /// "Dynamometer test cell", "Anechoic EMC chamber". Rendered as a
+  /// bullet list on the Research tab.
+  facilities            String[] @default([])
+  /// Broader non-OEM industry partnerships — utilities, government
+  /// bodies, standards orgs, multilateral funders.
+  industryPartnerships  String[] @default([])
+  /// Free-form long-form text rendered on the Research tab.
+  researchOverview      String?  @db.Text
+  /// Free-form long-form text on the Placement tab — narrative
+  /// around hiring story, common career paths, programme-to-recruiter
+  /// mappings.
+  placementOverview     String?  @db.Text
+
   educationLinks   Education[]
   competitionTeams CompetitionRegistration[] @relation("CompetitionTeamInstitution")
   /// Self-served college placement-cell sign-ups (one per
   /// (institution, user) pair via the unique constraint on the
   /// child table). See `CollegePlacementCell`.
   placementCells   CollegePlacementCell[]
+  reviews          InstitutionReview[]
 
   // FTS — see Skill.searchTsv for the rationale. Built across name +
   // shortName (tier A) + city/state (tier B) + about (tier C).
@@ -5668,6 +5718,152 @@ model CompanyReview {
   @@index([status, createdAt])
 }
 
+// ─── InstitutionReview ────────────────────────────────────────
+//
+// Mirrors CompanyReview structure but with axis ratings tuned for
+// educational institutions — faculty / infrastructure / placement /
+// content quality / alumni network — and an institution-specific
+// reviewer-relationship enum (CURRENT_STUDENT, ALUMNI, FACULTY,
+// EMPLOYER_RECRUITER, TRAINEE).
+//
+// Public reviews drive AggregateRating JSON-LD on the institution
+// detail page → Google rich-result eligibility. Same PENDING-by-
+// default moderation flow as CompanyReview.
+
+enum InstitutionReviewerRelationship {
+  CURRENT_STUDENT
+  ALUMNI
+  FACULTY
+  EMPLOYER_RECRUITER // recruiter who hired graduates from this institution
+  TRAINEE // short-course / certification participant
+  PROSPECTIVE // attended an open day / talked to admissions
+}
+
+enum InstitutionReviewStatus {
+  PENDING
+  PUBLISHED
+  REJECTED
+  WITHDRAWN
+}
+
+model InstitutionReview {
+  id                   String                          @id @default(cuid())
+  institutionId        String
+  institution          Institution                     @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  /// Nullable — anonymous reviews allowed (moderated more strictly).
+  /// Signed-in reviewers with an Education row at this institution
+  /// get a "verified alumni" pill on the public profile.
+  reviewerUserId       String?
+  reviewerUser         User?                           @relation("InstitutionReviewAuthor", fields: [reviewerUserId], references: [id], onDelete: SetNull)
+  relationship         InstitutionReviewerRelationship
+  /// Five-axis ratings, 1-5 each. All required so the aggregate
+  /// shown on the public page is consistent.
+  facultyRating        Int
+  infrastructureRating Int
+  placementRating      Int
+  contentRating        Int
+  alumniRating         Int
+  overallRating        Int
+  headline             String                          @db.VarChar(220)
+  pros                 String                          @db.Text
+  cons                 String                          @db.Text
+  programName          String? // "B.Tech EV", "PG Diploma in BMS"
+  graduationYear       Int?
+  status               InstitutionReviewStatus         @default(PENDING)
+  moderatedById        String?
+  moderatedBy          User?                           @relation("InstitutionReviewModerator", fields: [moderatedById], references: [id])
+  moderatedAt          DateTime?
+  moderationNotes      String?                         @db.Text
+  helpfulCount         Int                             @default(0)
+  reportCount          Int                             @default(0)
+  createdAt            DateTime                        @default(now())
+  updatedAt            DateTime                        @updatedAt
+
+  @@unique([institutionId, reviewerUserId])
+  @@index([institutionId, status])
+  @@index([status, createdAt])
+}
+
+// ─── EntityDiscussion (Reddit-style Q&A on Company / Institution) ──
+//
+// A polymorphic discussion surface attached to either a Company or
+// an Institution — same UX, same table, different `entityType`.
+// Anyone signed in can start a thread or reply. Threads get a public
+// URL so Google indexes them as `DiscussionForumPosting` for SERP
+// "Discussions and forums" rich results.
+//
+// Moderation: every new thread + reply lands PUBLISHED (low friction)
+// but admin can hide / delete and the report counter on each row
+// surfaces abuse for review.
+
+enum EntityDiscussionTarget {
+  COMPANY
+  INSTITUTION
+}
+
+enum EntityDiscussionStatus {
+  PUBLISHED
+  HIDDEN // admin / author hid
+  REMOVED // admin removed for policy violation
+}
+
+model EntityDiscussionThread {
+  id           String                 @id @default(cuid())
+  /// Which entity this thread belongs to. Combined with `entityId`
+  /// to make the FK polymorphic. We don't model FK constraints to
+  /// Company / Institution because Prisma doesn't support
+  /// conditional / polymorphic relations cleanly; the application
+  /// layer validates the FK shape on insert.
+  entityType   EntityDiscussionTarget
+  entityId     String
+  /// Public thread slug. /company/<slug>/discuss/<threadSlug> or
+  /// /institutions/<slug>/discuss/<threadSlug>. Unique per entity.
+  slug         String
+  title        String
+  body         String                 @db.Text
+  authorUserId String
+  authorUser   User                   @relation("DiscussionThreadAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+  status       EntityDiscussionStatus @default(PUBLISHED)
+  /// Denormalised counts to keep the listing page fast — incremented
+  /// inside the reply / report / vote actions.
+  replyCount   Int                    @default(0)
+  upvoteCount  Int                    @default(0)
+  reportCount  Int                    @default(0)
+  /// Last activity drives the "Recently active" rail on the
+  /// discussion tab; bumped on every new reply.
+  lastActivity DateTime               @default(now())
+  createdAt    DateTime               @default(now())
+  updatedAt    DateTime               @updatedAt
+
+  replies EntityDiscussionReply[]
+
+  @@unique([entityType, entityId, slug])
+  @@index([entityType, entityId, lastActivity])
+  @@index([status, createdAt])
+}
+
+model EntityDiscussionReply {
+  id              String                 @id @default(cuid())
+  threadId        String
+  thread          EntityDiscussionThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  /// Optional parent reply for nested threading (Reddit-style).
+  /// NULL = top-level reply directly under the thread.
+  parentReplyId   String?
+  parentReply     EntityDiscussionReply?  @relation("DiscussionReplyParent", fields: [parentReplyId], references: [id], onDelete: Cascade)
+  childReplies    EntityDiscussionReply[] @relation("DiscussionReplyParent")
+  body            String                  @db.Text
+  authorUserId    String
+  authorUser      User                    @relation("DiscussionReplyAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+  status          EntityDiscussionStatus  @default(PUBLISHED)
+  upvoteCount     Int                     @default(0)
+  reportCount     Int                     @default(0)
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([threadId, createdAt])
+  @@index([parentReplyId])
+}
+
 enum EmployerAwardCategory {
   BEST_OVERALL // top-of-the-list award
   BEST_FOR_BATTERY_ROLES
@@ -6218,6 +6414,49 @@ model FeatureFlagTarget {
 
   @@unique([flagId, userId])
   @@index([userId])
+}
+
+// ─── Slug redirects (generic 308 lookup) ──────────────────────
+//
+// When we merge two entities (e.g. consolidating multiple DIYguru
+// Company / Institution rows into one canonical row), the historical
+// URLs at the old slugs must keep working so:
+//   • inbound links from search engines, shares, and PDFs don't 404
+//   • link equity flows to the canonical URL
+//   • bookmarks survive
+//
+// This table holds a generic (entityType, fromSlug → toSlug) map.
+// The /company/[slug], /institutions/[slug] and /[username] routes
+// each do a redirect lookup *before* the entity-table lookup so the
+// 308 fires fast (sub-50ms) without us touching the entity table.
+//
+// Idempotent — re-running a dedupe script overwrites the toSlug if
+// it already exists for that (entityType, fromSlug) pair.
+
+enum SlugRedirectEntityType {
+  COMPANY
+  INSTITUTION
+  ARTICLE
+  CANDIDATE
+}
+
+model SlugRedirect {
+  id          String                 @id @default(cuid())
+  entityType  SlugRedirectEntityType
+  /// The old slug that should 308-redirect. Stored verbatim.
+  fromSlug    String
+  /// The canonical slug to redirect to. The frontend constructs the
+  /// final URL by combining the entityType and toSlug.
+  toSlug      String
+  /// Free-text note for the admin who set this up — usually the
+  /// rationale (e.g. "Merged DIYguru Foundation → canonical DIYguru
+  /// company on 2026-05-18").
+  reason      String?
+  createdById String?
+  createdAt   DateTime               @default(now())
+
+  @@unique([entityType, fromSlug])
+  @@index([entityType, toSlug])
 }
 
 // ─── Job-description templates (SEO + lead-gen surface) ────────

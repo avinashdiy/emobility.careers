@@ -41,7 +41,7 @@ const db = new PrismaClient();
 
 // ─── Constants from the brief ─────────────────────────────────
 const SLUG = "ev-innovation-business-challenge-2026";
-const HOST_COMPANY_SLUG = "diyguru-academy";
+const HOST_COMPANY_SLUG = "u-diyguru";
 
 // Timeline anchored on Asia/Kolkata. We construct the dates in UTC
 // so they're stable regardless of the host machine's TZ.

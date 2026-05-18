@@ -1,8 +1,9 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
+import { getSlugRedirect } from "@/lib/slug-redirects";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
@@ -18,10 +19,26 @@ import { breadcrumbJsonLd, organizationJsonLd } from "@/lib/seo/schemas";
 import { getCompanyResponseStats, getRecruiterRating } from "@/lib/sla";
 import { ResponseTimePill } from "@/components/recruiter/ResponseTimePill";
 import { RecruiterRating } from "@/components/recruiter/RecruiterRating";
+import {
+  EntityReviewsSection,
+  type ReviewItem,
+} from "@/components/reviews/EntityReviewsSection";
+import {
+  EntityDiscussionSection,
+  type DiscussionThreadCard,
+} from "@/components/discussions/EntityDiscussionSection";
 import { Globe, MapPin, Users } from "lucide-react";
 
-const TABS = ["home", "jobs", "events", "people"] as const;
+const TABS = ["home", "jobs", "events", "people", "reviews", "discuss"] as const;
 type Tab = (typeof TABS)[number];
+
+const COMPANY_CRITERIA_LABELS: Record<string, string> = {
+  cultureRating: "Culture",
+  compensationRating: "Compensation",
+  managementRating: "Management",
+  growthRating: "Career growth",
+  workLifeRating: "Work-life",
+};
 
 export async function generateMetadata({
   params,
@@ -82,6 +99,13 @@ export default async function PublicCompanyPage({
   searchParams: Promise<{ tab?: string }>;
 }) {
   const { slug } = await params;
+  // Slug-redirect check first — a 308 here is cheaper than a full
+  // company fetch and ensures merged DIYguru variants (and any
+  // future entity merges) land users on the canonical URL.
+  const redirectTo = await getSlugRedirect("COMPANY", slug);
+  if (redirectTo && redirectTo !== slug) {
+    permanentRedirect(`/company/${redirectTo}`);
+  }
   const sp = await searchParams;
   const activeTab: Tab = (TABS as readonly string[]).includes(sp.tab ?? "")
     ? (sp.tab as Tab)
@@ -566,6 +590,20 @@ export default async function PublicCompanyPage({
                 )}
               </Card>
             )}
+
+            {/* Reviews + Discussion tabs — fetched inline so the page
+                stays a single server component. Loaded only when the
+                tab is active to keep non-review/-discuss tabs fast. */}
+            {activeTab === "reviews" && (
+              <CompanyReviewsTab companyId={company.id} companySlug={company.slug} />
+            )}
+            {activeTab === "discuss" && (
+              <CompanyDiscussionTab
+                companyId={company.id}
+                companySlug={company.slug}
+                isSignedIn={!!session?.user}
+              />
+            )}
           </div>
 
           <aside className="space-y-4">
@@ -624,5 +662,101 @@ export default async function PublicCompanyPage({
       </div>
       <SiteFooter />
     </>
+  );
+}
+
+/**
+ * Reviews tab — fetched as its own async server component so the
+ * default tabs (Home / Jobs / Events / People) don't pay the
+ * reviews-query cost.
+ */
+async function CompanyReviewsTab({
+  companyId,
+  companySlug,
+}: {
+  companyId: string;
+  companySlug: string;
+}) {
+  const reviews = await db.companyReview.findMany({
+    where: { companyId, status: "PUBLISHED" },
+    orderBy: [{ helpfulCount: "desc" }, { createdAt: "desc" }],
+    take: 20,
+    include: {
+      reviewerUser: { select: { name: true } },
+    },
+  });
+  const items: ReviewItem[] = reviews.map((r) => ({
+    id: r.id,
+    headline: r.headline,
+    pros: r.pros,
+    cons: r.cons,
+    overallRating: r.overallRating,
+    axisScores: {
+      cultureRating: r.cultureRating,
+      compensationRating: r.compensationRating,
+      managementRating: r.managementRating,
+      growthRating: r.growthRating,
+      workLifeRating: r.workLifeRating,
+    },
+    reviewerLabel: r.reviewerUser?.name ?? "Anonymous reviewer",
+    reviewerJobTitle: r.reviewerJobTitle,
+    reviewerLocation: r.reviewerLocation,
+    verifiedBadge: r.reviewerUserId ? "Verified profile" : undefined,
+    createdAt: r.createdAt,
+    helpfulCount: r.helpfulCount,
+  }));
+  return (
+    <EntityReviewsSection
+      reviews={items}
+      criteriaLabels={COMPANY_CRITERIA_LABELS}
+      writeReviewHref={`/company/${companySlug}/review`}
+      entityName={companySlug}
+    />
+  );
+}
+
+/**
+ * Discussion tab — Reddit-style threads polymorphically attached to
+ * this company. Mirrors the institution-side surface.
+ */
+async function CompanyDiscussionTab({
+  companyId,
+  companySlug,
+  isSignedIn,
+}: {
+  companyId: string;
+  companySlug: string;
+  isSignedIn: boolean;
+}) {
+  const threads = await db.entityDiscussionThread.findMany({
+    where: { entityType: "COMPANY", entityId: companyId, status: "PUBLISHED" },
+    orderBy: { lastActivity: "desc" },
+    take: 20,
+    include: {
+      authorUser: {
+        select: { name: true, candidateProfile: { select: { slug: true } } },
+      },
+    },
+  });
+  const cards: DiscussionThreadCard[] = threads.map((t) => ({
+    id: t.id,
+    slug: t.slug,
+    title: t.title,
+    body: t.body,
+    replyCount: t.replyCount,
+    upvoteCount: t.upvoteCount,
+    createdAt: t.createdAt,
+    lastActivity: t.lastActivity,
+    authorName: t.authorUser.name ?? "Anonymous",
+    authorSlug: t.authorUser.candidateProfile?.slug ?? null,
+  }));
+  return (
+    <EntityDiscussionSection
+      threads={cards}
+      entityType="COMPANY"
+      entityId={companyId}
+      entityHref={`/company/${companySlug}`}
+      isSignedIn={isSignedIn}
+    />
   );
 }

@@ -133,7 +133,12 @@ const COMPANIES: Array<{
   { slug: "ultraviolette",     name: "Ultraviolette",     description: "F77 sportbike — high-performance electric two-wheeler.",    companyType: CompanyType.STARTUP,  hqLocation: "Bengaluru",  emailDomains: ["ultraviolette.com"],                       evDomains: ["powertrain", "vehicle-engineering", "battery-tech"], techStack: ["BMS", "Motor Controller", "Vehicle Packaging"], teamSize: "200-500", website: "https://ultraviolette.com" },
   { slug: "revolt-motors",     name: "Revolt Motors",     description: "Connected electric motorcycles — RV400 / RV1.",            companyType: CompanyType.OEM,      hqLocation: "Manesar",     emailDomains: ["revoltmotors.com"],                       evDomains: ["powertrain", "vehicle-engineering", "software-iot"], techStack: ["BLDC", "Telematics Stack", "OTA Updates"], teamSize: "200-500", website: "https://revoltmotors.com" },
   { slug: "matter-energy",     name: "Matter Energy",     description: "Aera 5000 — geared electric motorcycle + battery tech.",   companyType: CompanyType.STARTUP,  hqLocation: "Ahmedabad",  emailDomains: ["matter.in"],                                evDomains: ["battery-tech", "powertrain", "vehicle-engineering"], techStack: ["Battery Pack Design", "Reduction Gearbox", "BMS"], teamSize: "200-500", website: "https://matter.in" },
-  { slug: "diyguru-academy",   name: "DIYguru Academy",   description: "EV training, certifications, and labs powering this platform.", companyType: CompanyType.CONSULTING, hqLocation: "New Delhi",   emailDomains: ["diyguru.org", "campus.diyguru.com"],     evDomains: ["policy-research", "battery-tech", "charging-infra"], techStack: ["MATLAB/Simulink", "Battery Testing", "Cell Chemistry"], teamSize: "50-200", website: "https://diyguru.org" },
+  // Canonical DIYguru Company — kept here so seed.ts always
+  // re-establishes the row at slug `u-diyguru`. Variants (e.g.
+  // "DIYguru Academy", "DIYguru Foundation") are blocked at create
+  // time by lib/protected-brands.ts and migrated into this row by
+  // scripts/dedupe-diyguru.ts.
+  { slug: "u-diyguru",         name: "DIYguru",           description: "India's flagship EV academy and operator of emobility.careers. Single canonical Company entry for any DIYguru employment / internship / contract relationship.", companyType: CompanyType.CONSULTING, hqLocation: "New Delhi",   emailDomains: ["diyguru.org", "campus.diyguru.com"],     evDomains: ["policy-research", "battery-tech", "charging-infra"], techStack: ["MATLAB/Simulink", "Battery Testing", "Cell Chemistry"], teamSize: "50-200", website: "https://diyguru.org" },
 
   // ─── Wave 2 — 20 more representative India EV companies ───
   // Wider coverage of: e-bus / e-truck OEMs, mid-stage 2W startups,
@@ -2768,7 +2773,8 @@ const COMPANIES: Array<{
   { slug: "atul-auto-training",   name: "Atul Auto Training Centre", description: "Atul Auto's Rajkot + Ahmedabad-based 3W technician training — Atul Greentech EV programmes.",                                                                        companyType: CompanyType.CONSULTING, hqLocation: "Rajkot",     emailDomains: ["atulauto.co.in"], evDomains: ["after-sales"], techStack: ["EV Diagnostics", "Service Network"], teamSize: "200-500", website: "https://www.atulauto.co.in" },
   { slug: "piaggio-india-training", name: "Piaggio India Training Academy", description: "Piaggio Vehicles' Aprilia + Vespa technician training across India.",                                                                                  companyType: CompanyType.CONSULTING, hqLocation: "Pune",       emailDomains: ["piaggio.com"], evDomains: ["after-sales"], techStack: ["Service Network", "EV Diagnostics"], teamSize: "200-500", website: "https://www.piaggio.com" },
   { slug: "kavi-skill-mobility",  name: "Kavi Skill Mobility",      description: "South-India auto-tech vocational training — Tier-2/3 city centres; Hyundai + Ashok Leyland feeder.",                                                                companyType: CompanyType.CONSULTING, hqLocation: "Madurai",    emailDomains: ["kavi-mobility.in"], evDomains: ["after-sales"], techStack: ["Service Network", "EV Diagnostics"], teamSize: "200-500", website: "https://kavi-mobility.in" },
-  { slug: "diyguru-foundation",   name: "DIYguru Foundation",       description: "DIYguru's NGO-arm offering free EV-mech + auto-tech courses to underprivileged youth across India.",                                                                companyType: CompanyType.CONSULTING, hqLocation: "New Delhi",  emailDomains: ["diyguru.org"], evDomains: ["after-sales", "policy-research"], techStack: ["EV Diagnostics", "Battery Servicing"], teamSize: "200-500", website: "https://diyguru.org" },
+  // DIYguru Foundation (NGO arm) removed — merged into the canonical
+  // u-diyguru row. See lib/protected-brands.ts + scripts/dedupe-diyguru.ts.
   { slug: "auto-skills-india",    name: "AutoSkills India",         description: "Pan-India auto + EV technician network — partnered with 50+ ITIs + private training centres.",                                                                      companyType: CompanyType.CONSULTING, hqLocation: "Bengaluru",  emailDomains: ["autoskillsindia.com"], evDomains: ["after-sales"], techStack: ["EV Diagnostics", "Service Network"], teamSize: "500-1000", website: "https://autoskillsindia.com" },
   { slug: "kia-training-india",   name: "Kia India Technical Training Academy", description: "Kia Motors India's authorised technician academy — Anantapur + Chennai + Delhi.",                                                                        companyType: CompanyType.CONSULTING, hqLocation: "Anantapur",  emailDomains: ["kia.com"], evDomains: ["after-sales", "vehicle-engineering"], techStack: ["EV Diagnostics", "Service Network"], teamSize: "500-1000", website: "https://www.kia.com/in" },
   { slug: "hyundai-academy",      name: "Hyundai Motor India Training Academy", description: "HMI's pan-India technician academy — Sriperumbudur + 200+ dealer-affiliated training centres.",                                                          companyType: CompanyType.CONSULTING, hqLocation: "Chennai",    emailDomains: ["hyundai.com"], evDomains: ["after-sales", "manufacturing"], techStack: ["EV Diagnostics", "Service Network"], teamSize: "5000-10000", website: "https://www.hyundai.com/in" },
@@ -4898,19 +4904,10 @@ const INSTITUTIONS: Array<{
   },
 
   // ── Training centres / EV-skilling players ────────────────
-  {
-    slug: "diyguru-network",
-    name: "DIYguru EV Lab Network",
-    type: InstitutionType.TRAINING_CENTER,
-    shortName: "DIYguru",
-    city: "New Delhi",
-    state: "Delhi",
-    website: "https://diyguru.org",
-    about:
-      "Network of 200+ EV labs across Indian engineering colleges and ITIs — ASDC-certified courses on EV powertrain, BMS and charging-infra. Anchors the largest EV-trained graduate pool in India.",
-    foundedYear: 2017,
-    affiliation: "ASDC / NSDC",
-  },
+  // Canonical DIYguru Institution lives in scripts/seed-institution-rankings.ts
+  // (slug `emobility-academy-by-diyguru`, name "DIYguru eMobility Academy").
+  // The older "DIYguru EV Lab Network" / "diyguru-network" rows are merged
+  // into the canonical by scripts/dedupe-diyguru.ts.
   {
     slug: "skill-lync",
     name: "Skill-Lync",

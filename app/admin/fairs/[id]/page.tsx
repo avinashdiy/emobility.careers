@@ -95,10 +95,10 @@ export default async function AdminFairDetail({
   // production you'd want server-side search. We pre-build the
   // "already on" set so the picker filters cleanly.
   const onIds = new Set(drive.participatingCompanies.map((p) => p.companyId));
-  // Pull invite-eligible companies + per-fair analytics in
-  // parallel so the admin page doesn't add a serial round-trip
-  // for analytics on top of the existing query.
-  const [candidates, analytics] = await Promise.all([
+  // Pull invite-eligible companies + per-fair analytics + currently-
+  // enrolled candidates in parallel so the admin page doesn't add
+  // a serial round-trip on top of the existing query.
+  const [candidates, analytics, enrolledCandidates, enrolledCount] = await Promise.all([
     db.company.findMany({
       where: { verificationStatus: "VERIFIED" },
       orderBy: { name: "asc" },
@@ -106,6 +106,27 @@ export default async function AdminFairDetail({
       select: { id: true, name: true, slug: true, logoUrl: true },
     }),
     getFairAnalytics(drive.id),
+    // Pull enrolled candidates — most recent first, capped at 200
+    // for the in-page table; pagination ships when we cross that.
+    db.recruitmentDriveRegistration.findMany({
+      where: { driveId: drive.id },
+      orderBy: { createdAt: "desc" },
+      take: 200,
+      include: {
+        candidate: {
+          select: {
+            id: true,
+            slug: true,
+            firstName: true,
+            lastName: true,
+            headline: true,
+            profilePhotoUrl: true,
+            user: { select: { email: true } },
+          },
+        },
+      },
+    }),
+    db.recruitmentDriveRegistration.count({ where: { driveId: drive.id } }),
   ]);
   const eligibleCandidates = candidates.filter((c) => !onIds.has(c.id));
 
@@ -358,6 +379,79 @@ export default async function AdminFairDetail({
         {/* Detailed analytics — funnel, daily applies sparkline,
             top roles by applications. */}
         <FairAnalyticsWidget data={analytics} />
+
+        {/* Enrolled candidates — the per-drive list of who has
+            registered, with check-in status. Top 200 newest by
+            default; the per-candidate row links into the public
+            profile so admins can browse before the fair. */}
+        <Card>
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-section text-emce-text">
+              Enrolled candidates ({enrolledCount.toLocaleString("en-IN")})
+            </h2>
+            <span className="text-hint text-emce-text-sec">
+              {enrolledCount > 200 && (
+                <>Showing the most-recent 200. Use the roster CSV exporter (coming soon) for the full list.</>
+              )}
+            </span>
+          </div>
+          {enrolledCandidates.length === 0 ? (
+            <p className="mt-3 text-hint text-emce-text-muted">
+              No candidate registrations yet. As soon as candidates click
+              &ldquo;Register for this fair&rdquo; on the public page, they&apos;ll
+              show up here.
+            </p>
+          ) : (
+            <ul className="mt-3 divide-y divide-emce-border">
+              {enrolledCandidates.map((r) => {
+                const name = [r.candidate.firstName, r.candidate.lastName]
+                  .filter(Boolean)
+                  .join(" ");
+                return (
+                  <li key={r.id} className="flex flex-wrap items-center gap-3 py-3">
+                    <Avatar
+                      src={r.candidate.profilePhotoUrl}
+                      name={name}
+                      size="sm"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <Link
+                        href={`/${r.candidate.slug}`}
+                        className="font-bold text-emce-text hover:underline"
+                      >
+                        {name || "Unnamed candidate"}
+                      </Link>
+                      {r.candidate.headline && (
+                        <p className="line-clamp-1 text-hint text-emce-text-sec">
+                          {r.candidate.headline}
+                        </p>
+                      )}
+                      <p className="text-hint text-emce-text-muted">
+                        {r.candidate.user?.email ?? "no email"} · code{" "}
+                        <code className="font-mono">{r.checkInCode}</code> ·{" "}
+                        {r.source} · registered {relativeTime(r.createdAt)}
+                      </p>
+                    </div>
+                    <Badge
+                      variant={
+                        r.status === "CHECKED_IN"
+                          ? "success"
+                          : r.status === "NO_SHOW"
+                            ? "warning"
+                            : r.status === "CANCELLED"
+                              ? "outline"
+                              : "default"
+                      }
+                      size="sm"
+                    >
+                      {r.status.replace("_", " ").toLowerCase()}
+                    </Badge>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </Card>
       </div>
     </AdminShell>
   );

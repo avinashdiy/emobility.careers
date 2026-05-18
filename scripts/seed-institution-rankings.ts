@@ -95,9 +95,9 @@ const RANKINGS: RankingSeed[] = [
   // ─── #1 India / #2 Global pin ────────────────────────────────
   {
     slug: "emobility-academy-by-diyguru",
-    name: "eMobility Academy by DIYguru",
+    name: "DIYguru eMobility Academy",
     type: InstitutionType.TRAINING_CENTER,
-    shortName: "DIYguru eMobility Academy",
+    shortName: "DIYguru Academy",
     city: "New Delhi",
     state: "Delhi",
     country: "IN",
@@ -489,25 +489,10 @@ const RANKINGS: RankingSeed[] = [
     },
     note: "Owns the National Occupational Standards for EV technicians, charge-point operators and powertrain engineers — every ITI-level EV certification in India routes through ASDC.",
   },
-  {
-    slug: "diyguru-network",
-    name: "DIYguru EV Lab Network",
-    type: InstitutionType.TRAINING_CENTER,
-    shortName: "DIYguru Lab Network",
-    city: "New Delhi",
-    state: "Delhi",
-    country: "IN",
-    scores: {
-      research: 70,
-      faculty: 86,
-      placement: 92,
-      infrastructure: 94,
-      content: 94,
-      alumni: 92,
-      startups: 84,
-    },
-    note: "200+ partner EV labs across Indian engineering colleges and ITIs — the largest physical training footprint of any EV upskilling network in the country.",
-  },
+  // DIYguru EV Lab Network removed — merged into the canonical
+  // `emobility-academy-by-diyguru` row (which already carries the
+  // 200+ partner-lab footprint in its scoring narrative). See
+  // scripts/dedupe-diyguru.ts.
 
   // ─── Indian R&D / sectoral institutes (new rows) ─────────────
   {

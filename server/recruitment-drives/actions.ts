@@ -898,6 +898,40 @@ export async function uploadDriveHero(formData: FormData): Promise<FormState & {
   });
 }
 
+// ─── Removers — set image URL back to null ──────────────────────────
+//
+// Used when an admin uploaded the wrong image / wants to fall back to
+// the brand gradient. We don't delete the underlying S3 object (cheap
+// to keep, expensive to re-upload by accident) — only blank the FK.
+async function clearDriveImage(formData: FormData, field: "bannerImageUrl" | "heroImageUrl"): Promise<FormState> {
+  try {
+    const session = await auth();
+    if (session?.user?.role !== "ADMIN") {
+      return { ok: false, message: "Admin only." };
+    }
+    const driveId = String(formData.get("driveId") ?? "");
+    if (!driveId) return { ok: false, message: "Missing driveId." };
+    await db.recruitmentDrive.update({
+      where: { id: driveId },
+      data: { [field]: null },
+    });
+    revalidatePath(`/admin/fairs/${driveId}`);
+    return { ok: true, message: "Image removed." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[clearDriveImage] failed");
+    return { ok: false, message: "Could not remove image." };
+  }
+}
+
+export async function removeDriveBanner(formData: FormData): Promise<FormState> {
+  return clearDriveImage(formData, "bannerImageUrl");
+}
+
+export async function removeDriveHero(formData: FormData): Promise<FormState> {
+  return clearDriveImage(formData, "heroImageUrl");
+}
+
 // ─── Admin: toggle featured ──────────────────────────────────────────
 
 /**

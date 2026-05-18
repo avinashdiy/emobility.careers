@@ -33,6 +33,8 @@
     "db:seed-jd-templates": "tsx scripts/seed-jd-templates.ts",
     "db:seed-articles": "tsx scripts/seed-articles.ts",
     "db:seed-ev-innovation-challenge": "tsx scripts/seed-ev-innovation-challenge.ts",
+    "db:dedupe-diyguru": "tsx scripts/dedupe-diyguru.ts",
+    "db:seed-institution-enrichment": "tsx scripts/seed-institution-enrichment.ts",
     "wp:import": "tsx scripts/import-wordpress.ts",
     "wp:claim-emails": "tsx scripts/send-claim-emails.ts",
     "worker": "tsx workers/index.ts",

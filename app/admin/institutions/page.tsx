@@ -17,6 +17,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import {
   setInstitutionVerification,
   adminEditInstitution,
+  deleteInstitution,
 } from "@/server/admin/institution-actions";
 import { relativeTime } from "@/lib/utils";
 import type { InstitutionVerification } from "@prisma/client";
@@ -68,13 +69,14 @@ export default async function AdminInstitutionsPage({
   if (session?.user?.role !== "ADMIN") redirect("/403");
   const sp = await searchParams;
 
-  // Default to PENDING — admin's primary job at this page is
-  // clearing the user-submitted queue. ALL is one click away.
+  // Default to ALL — admins want the full list in front of them by
+  // default (matches /admin/employers behaviour). PENDING tab is one
+  // click away and the sidebar badge surfaces the actionable count.
   const activeStatus: StatusFilter = (STATUS_FILTERS as readonly string[]).includes(
     (sp.status ?? "").toUpperCase(),
   )
-    ? ((sp.status ?? "PENDING").toUpperCase() as StatusFilter)
-    : "PENDING";
+    ? ((sp.status ?? "ALL").toUpperCase() as StatusFilter)
+    : "ALL";
 
   const q = sp.q?.trim() ?? "";
 
@@ -374,6 +376,27 @@ export default async function AdminInstitutionsPage({
                             </Button>
                           </form>
                         )}
+                        {/* Permanent delete — refused when candidates
+                            have linked their Education to this row (the
+                            server action returns an error redirect with
+                            the conflict count). For deduping a row with
+                            attached candidates, use the dedupe-diyguru
+                            pattern to migrate FKs first. */}
+                        <form action={deleteInstitution}>
+                          <input type="hidden" name="institutionId" value={inst.id} />
+                          <ConfirmSubmit
+                            confirm={`Permanently delete "${inst.name}"? This cannot be undone.${
+                              linkCount > 0
+                                ? ` Note: ${linkCount} candidate Education link${linkCount === 1 ? "" : "s"} attached — deletion will be blocked.`
+                                : ""
+                            }`}
+                            size="sm"
+                            variant="ghost"
+                            className="text-emce-orange-deep"
+                          >
+                            Delete
+                          </ConfirmSubmit>
+                        </form>
                       </div>
                     </div>
 

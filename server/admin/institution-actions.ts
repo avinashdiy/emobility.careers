@@ -181,3 +181,75 @@ export async function adminEditInstitution(formData: FormData): Promise<void> {
     redirect("/admin/institutions?error=" + encodeURIComponent("Edit failed."));
   }
 }
+
+const DeleteSchema = z.object({
+  institutionId: z.string().min(1),
+});
+
+/**
+ * Permanently delete an Institution. Used by admin to clean up
+ * spam / duplicate / mistaken submissions.
+ *
+ * Refuses to delete if the institution has candidate Education rows
+ * attached — those would be force-orphaned (institutionId set to
+ * NULL by Prisma's cascade rule). The admin should reject the
+ * institution instead, or use the dedupe-diyguru pattern to migrate
+ * the Education FKs to a canonical row first.
+ */
+export async function deleteInstitution(formData: FormData): Promise<void> {
+  try {
+    const session = await requireAdmin();
+    const parsed = DeleteSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      redirect("/admin/institutions?error=" + encodeURIComponent("Invalid delete request"));
+    }
+    const { institutionId } = parsed.data;
+
+    const inst = await db.institution.findUnique({
+      where: { id: institutionId },
+      select: {
+        id: true,
+        slug: true,
+        name: true,
+        _count: { select: { educationLinks: true } },
+      },
+    });
+    if (!inst) {
+      redirect("/admin/institutions?error=" + encodeURIComponent("Institution not found"));
+    }
+
+    // Soft-guard: if candidates have linked their Education to this
+    // row, force the admin to use REJECT (which keeps the row but
+    // hides it from search) or to migrate the FK first.
+    if (inst!._count.educationLinks > 0) {
+      redirect(
+        "/admin/institutions?error=" +
+          encodeURIComponent(
+            `${inst!.name} has ${inst!._count.educationLinks} candidate Education link(s). Reject it instead of deleting, or merge it into another institution first to avoid orphaning the link.`,
+          ),
+      );
+    }
+
+    await db.institution.delete({ where: { id: institutionId } });
+
+    try {
+      await audit({
+        actorId: session.user.id,
+        action: "institution.delete",
+        entity: "Institution",
+        entityId: institutionId,
+        meta: { slug: inst!.slug, name: inst!.name },
+      });
+    } catch {/* best-effort */}
+
+    revalidatePath("/admin/institutions");
+    revalidatePath("/institutions");
+    redirect(
+      "/admin/institutions?notice=" + encodeURIComponent(`${inst!.name} permanently deleted.`),
+    );
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[deleteInstitution] failed");
+    redirect("/admin/institutions?error=" + encodeURIComponent("Delete failed. Try again."));
+  }
+}

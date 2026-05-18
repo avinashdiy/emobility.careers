@@ -5,10 +5,11 @@ import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { setCompanyVerification, deleteCompany, bulkDeleteRejectedCompanies } from "@/server/admin/actions";
-import type { CompanyVerification } from "@prisma/client";
+import type { CompanyVerification, Prisma } from "@prisma/client";
 import { adminResetEmployerPassword } from "@/server/admin/recruiting-actions";
 
 export const metadata = { title: "Employer KYC queue" };
@@ -30,6 +31,7 @@ export default async function AdminEmployersPage({
     error?: string;
     notice?: string;
     status?: string;
+    q?: string;
   }>;
 }) {
   const session = await auth();
@@ -40,6 +42,7 @@ export default async function AdminEmployersPage({
   )
     ? ((sp.status ?? "ALL").toUpperCase() as StatusFilter)
     : "ALL";
+  const q = (sp.q ?? "").trim();
 
   let creds: ProvisionedCreds | null = null;
   if (sp.provisioned) {
@@ -50,16 +53,33 @@ export default async function AdminEmployersPage({
     }
   }
 
+  // Build the where clause. Status filter + optional text search across
+  // name / slug / website / owner email. Owner email reaches across the
+  // `owner` relation so admins can find a company by the HR they
+  // provisioned for it.
+  const where: Prisma.CompanyWhereInput = {
+    ...(activeStatus === "ALL"
+      ? {}
+      : { verificationStatus: activeStatus as CompanyVerification }),
+    ...(q
+      ? {
+          OR: [
+            { name: { contains: q, mode: "insensitive" as const } },
+            { slug: { contains: q, mode: "insensitive" as const } },
+            { website: { contains: q, mode: "insensitive" as const } },
+            { owner: { email: { contains: q, mode: "insensitive" as const } } },
+          ],
+        }
+      : {}),
+  };
+
   const [companies, employers, statusCounts] = await Promise.all([
     db.company.findMany({
-      where:
-        activeStatus === "ALL"
-          ? {}
-          : { verificationStatus: activeStatus as CompanyVerification },
+      where,
       // When viewing a single status, sort by name. For ALL keep
       // status-grouped so admin attention items (UNVERIFIED) lead.
       orderBy:
-        activeStatus === "ALL"
+        activeStatus === "ALL" && !q
           ? [{ verificationStatus: "asc" }, { createdAt: "desc" }]
           : [{ name: "asc" }],
       take: 200,
@@ -139,17 +159,58 @@ export default async function AdminEmployersPage({
 
         <h2 className="mt-8 text-section text-emce-text">Companies</h2>
 
+        {/* Search — name, slug, website or owner email. Preserves the
+            active status filter via the hidden input so admins can
+            search inside Pending / Verified / Rejected without losing
+            context. */}
+        <Card className="mt-3 p-3">
+          <form
+            method="get"
+            action="/admin/employers"
+            className="flex flex-wrap items-center gap-2"
+          >
+            <input type="hidden" name="status" value={activeStatus} />
+            <Input
+              name="q"
+              defaultValue={q}
+              placeholder="Search by name, slug, website or owner email…"
+              className="flex-1 min-w-[220px]"
+              maxLength={120}
+            />
+            <Button type="submit" size="sm" variant="outline">
+              Search
+            </Button>
+            {q && (
+              <Link
+                href={
+                  activeStatus === "ALL"
+                    ? "/admin/employers"
+                    : `/admin/employers?status=${activeStatus}`
+                }
+                className="text-hint font-bold text-emce-text-sec hover:text-emce-dark"
+              >
+                Clear
+              </Link>
+            )}
+          </form>
+        </Card>
+
         {/* Status filter — paginates by status so REJECTED / PENDING
-            rows can't get clipped past the take limit. */}
+            rows can't get clipped past the take limit. Preserves the
+            search query when switching tabs. */}
         <nav className="mt-3 flex flex-wrap gap-1 rounded-md border border-emce-border p-1">
           {STATUS_FILTERS.map((s) => {
             const count =
               s === "ALL" ? totalCount : countByStatus[s as CompanyVerification] ?? 0;
             const active = s === activeStatus;
+            const params = new URLSearchParams();
+            if (s !== "ALL") params.set("status", s);
+            if (q) params.set("q", q);
+            const href = `/admin/employers${params.toString() ? `?${params}` : ""}`;
             return (
               <Link
                 key={s}
-                href={s === "ALL" ? "/admin/employers" : `/admin/employers?status=${s}`}
+                href={href}
                 className={`whitespace-nowrap rounded px-3 py-1.5 text-xs font-semibold ${
                   active
                     ? "bg-emce-light-soft text-emce-darkest"
@@ -164,6 +225,13 @@ export default async function AdminEmployersPage({
             );
           })}
         </nav>
+
+        {q && (
+          <p className="mt-2 text-hint text-emce-text-sec">
+            {companies.length} result{companies.length === 1 ? "" : "s"} for &ldquo;{q}&rdquo;
+            {activeStatus !== "ALL" && ` in ${activeStatus.toLowerCase()}`}
+          </p>
+        )}
 
         {/* Bulk-delete CTA, only when filtered to REJECTED. Skips
             companies whose jobs have applications attached so we never
