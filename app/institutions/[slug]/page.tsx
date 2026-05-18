@@ -289,51 +289,77 @@ export default async function InstitutionDetailPage({
 
       <ToastFromSearchParams />
 
-      {/* Hero — banner + logo + name (mirrors /company/[slug] visual) */}
-      <div className="relative">
-        {inst.bannerUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={inst.bannerUrl}
-            alt=""
-            className="h-48 w-full object-cover md:h-64"
+      <main className="container max-w-5xl py-4 sm:py-6">
+        {/* LinkedIn-style institution header card — mirrors the
+            /company/[slug] visual pattern exactly. Banner slab
+            inside an overflow-hidden Card; large square logo tile
+            absolutely positioned to float over the banner edge so
+            the page reads like a company / school profile rather
+            than the old loose "Avatar + sidebar" arrangement. */}
+        <Card className="overflow-hidden p-0 shadow-sm">
+          <div
+            className={`h-32 sm:h-44 ${inst.bannerUrl ? "" : "emce-hero-gradient"}`}
+            style={
+              inst.bannerUrl
+                ? { backgroundImage: `url(${inst.bannerUrl})`, backgroundSize: "cover", backgroundPosition: "center" }
+                : undefined
+            }
           />
-        ) : (
-          <div className="emce-hero-gradient h-48 w-full md:h-64" />
-        )}
-      </div>
+          <div className="relative px-4 pb-5 sm:px-6 sm:pb-6">
+            {/* Floating logo tile — same dimensions as the company
+                page (24×24 on mobile, 32×32 on desktop). Falls back
+                to the first letter on a coloured tile when no
+                logoUrl is set, matching the company-page placeholder. */}
+            <div className="absolute left-4 top-0 -translate-y-1/2 sm:left-6">
+              <div className="grid h-24 w-24 place-items-center overflow-hidden rounded-lg border border-emce-border bg-white text-2xl font-extrabold text-emce-dark shadow-sm sm:h-32 sm:w-32">
+                {inst.logoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={inst.logoUrl}
+                    alt={inst.name}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  display[0]?.toUpperCase()
+                )}
+              </div>
+            </div>
+            {/* Spacer below the floating logo. Avatar centre sits
+                on the banner edge, so we need ~80px / 96px before
+                the name to clear the bottom half of the tile.
+                `h-18` is silently 0 in Tailwind — use `h-20` /
+                `h-24`. */}
+            <div className="h-20 sm:h-24" />
 
-      <main className="container max-w-5xl pb-10">
-        <Card className="-mt-16 p-6 shadow-emce-lg">
-          <div className="flex flex-wrap items-start gap-4">
-            <Avatar src={inst.logoUrl} name={display} size="lg" />
-            <div className="min-w-0 flex-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <h1 className="text-2xl font-extrabold tracking-tight text-emce-text md:text-3xl">
+            <div className="space-y-1.5">
+              <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <h1 className="text-2xl font-bold leading-tight text-emce-text sm:text-[28px]">
                   {inst.name}
                 </h1>
                 {inst.verificationStatus === "VERIFIED" && (
-                  <Badge variant="verified">Verified</Badge>
+                  <Badge variant="verified" className="text-[10px]">Verified</Badge>
                 )}
                 {inst.verificationStatus === "PENDING" && (
-                  <Badge variant="warning">Pending review</Badge>
+                  <Badge variant="warning" className="text-[10px]">Pending review</Badge>
                 )}
               </div>
-              <p className="mt-1 text-sm uppercase tracking-wide text-emce-text-sec">
-                {inst.type.replace("_", " ")}
-                {inst.shortName && ` · ${inst.shortName}`}
-              </p>
-              <div className="mt-2 flex flex-wrap items-center gap-3 text-hint text-emce-text-sec">
+              {inst.about && (
+                <p className="line-clamp-2 text-[15px] text-emce-text">
+                  {inst.about}
+                </p>
+              )}
+              {/* Meta row — type · location · founded · website · alumni
+                  All on one wrapping line so the card stays dense. */}
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-emce-text-sec">
+                <span>{inst.type.replace("_", " ").toLowerCase()}</span>
                 {locationLine && (
                   <span className="inline-flex items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5" />
-                    {locationLine}, {inst.country}
+                    <MapPin className="h-3.5 w-3.5" /> {locationLine}, {inst.country}
                   </span>
                 )}
                 {inst.foundedYear && (
                   <span className="inline-flex items-center gap-1">
-                    <Calendar className="h-3.5 w-3.5" />
-                    Founded {inst.foundedYear}
+                    <Calendar className="h-3.5 w-3.5" /> Founded {inst.foundedYear}
                   </span>
                 )}
                 {inst.website && (
@@ -341,10 +367,9 @@ export default async function InstitutionDetailPage({
                     href={inst.website}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 font-bold text-emce-dark hover:underline"
+                    className="inline-flex items-center gap-1 hover:text-emce-dark"
                   >
-                    <Globe className="h-3.5 w-3.5" />
-                    Website
+                    <Globe className="h-3.5 w-3.5" /> Website
                   </a>
                 )}
                 <span className="inline-flex items-center gap-1">
@@ -353,12 +378,12 @@ export default async function InstitutionDetailPage({
                 </span>
               </div>
               {inst.affiliation && (
-                <p className="mt-1 text-hint text-emce-text-muted">
+                <p className="text-hint text-emce-text-muted">
                   Affiliated with {inst.affiliation}
                 </p>
               )}
               {inst.accreditations.length > 0 && (
-                <div className="mt-2 flex flex-wrap gap-1.5">
+                <div className="flex flex-wrap gap-1.5 pt-1">
                   {inst.accreditations.map((a) => (
                     <Badge key={a} variant="default" size="sm" className="text-[10px]">
                       {a}
@@ -366,24 +391,22 @@ export default async function InstitutionDetailPage({
                   ))}
                 </div>
               )}
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Button asChild size="sm">
-                  <Link href={`${baseHref}/review`}>✍️ Write a review</Link>
+            </div>
+
+            {/* Action buttons row — matches the company page button
+                layout (compact, inline, with Visit Website + Share
+                at the right edge). */}
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <Button asChild size="sm">
+                <Link href={`${baseHref}/review`}>✍️ Write a review</Link>
+              </Button>
+              {inst.website && (
+                <Button asChild variant="outline" size="sm">
+                  <a href={inst.website} target="_blank" rel="noopener noreferrer">
+                    Visit website ↗
+                  </a>
                 </Button>
-                <ShareDropdown
-                  url={`${baseUrl}${baseHref}`}
-                  title={inst.name}
-                  description={inst.about ?? undefined}
-                  label="Share"
-                />
-                {inst.website && (
-                  <Button asChild size="sm" variant="outline">
-                    <a href={inst.website} target="_blank" rel="noopener noreferrer">
-                      Visit website ↗
-                    </a>
-                  </Button>
-                )}
-              </div>
+              )}
             </div>
           </div>
         </Card>
