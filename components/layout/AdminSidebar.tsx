@@ -57,6 +57,12 @@ function buildGroups(counts: Counts): Group[] {
         // which is across all roles.
         { href: "/admin/candidates", label: "Candidates", icon: Users },
         { href: "/admin/employers", label: "Employers", icon: Briefcase, badge: counts.companies },
+        // Web-fetched logo + Wikipedia proposals awaiting admin
+        // approval (powered by scripts/queue-top-100-enrichment.ts +
+        // the enrichment orchestrator). Badge-less for now — count
+        // would require an extra groupBy in the layout that runs on
+        // every admin page.
+        { href: "/admin/companies/enrichment-queue", label: "Enrichment queue", icon: Briefcase },
         // Candidate-submitted Institution rows awaiting admin
         // verification. Mirrors the Employers KYC queue but for the
         // Institution entity (the page at /institutions/<slug>).

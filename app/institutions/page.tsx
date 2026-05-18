@@ -3,7 +3,6 @@ import type { Metadata } from "next";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
 import { Card } from "@/components/ui/card";
-import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -67,11 +66,28 @@ export default async function InstitutionsPage({
   if (sp.type) where.type = sp.type;
   if (sp.city) where.city = { contains: sp.city, mode: "insensitive" };
 
+  // No take cap — render the full list (≈970 rows). Matches the
+  // /companies hub which also renders all verified rows in a grid.
+  //
+  // We previously capped at 60 which, given alphabetical sort,
+  // accidentally trimmed the page to "everything starting with A or
+  // early B" — the page felt like a letter-A directory. The A–Z chip
+  // nav below + the faceted form above keep the rendered list
+  // navigable when the user wants to drill in.
   const list = await db.institution.findMany({
     where,
-    take: 60,
     orderBy: [{ verificationStatus: "desc" }, { name: "asc" }],
-    include: { _count: { select: { educationLinks: true } } },
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      logoUrl: true,
+      type: true,
+      city: true,
+      state: true,
+      verificationStatus: true,
+      _count: { select: { educationLinks: true } },
+    },
   });
 
   return (
@@ -82,31 +98,42 @@ export default async function InstitutionsPage({
           <div>
             <h1 className="text-dashboard text-emce-text md:text-3xl">Schools & colleges</h1>
             <p className="mt-1 max-w-2xl text-sm text-emce-text-sec">
-              Universities, polytechnics, ITIs, and training centres represented on eMobility Careers.
-              Add yours from the education section of your profile.
+              Universities, polytechnics, ITIs, research institutes and training centres on
+              emobility.careers — the engine room of India&apos;s EV-industry workforce. Add yours
+              from the education section of your profile.
             </p>
           </div>
         </div>
 
-        {/* Prominent secondary nav to the editorial rankings page —
-            mirrors the /companies → /companies/a-z affordance. Surfaced
-            up here so first-time visitors see the curated leaderboard
-            before scrolling into the faceted listing. */}
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emce-border bg-emce-light-soft p-4">
-          <p className="text-body text-emce-text">
-            Want the curated leaderboard?{" "}
-            <span className="text-emce-text-sec">
-              See the top EV universities, colleges and training centres
-              ranked across research, faculty, placement, infrastructure,
-              content quality, alumni and startups.
-            </span>
-          </p>
-          <Link
-            href="/institutions/rankings"
-            className="inline-flex h-10 items-center justify-center rounded-md bg-emce-dark px-5 text-sm font-bold text-white hover:bg-emce-darkest"
-          >
-            🏆 EV institution rankings →
-          </Link>
+        {/* Two-up secondary nav: rankings (curated leaderboard) + A-Z
+            (alphabetical directory). Mirrors the dual-nav pattern on
+            /companies → /companies/a-z so users learn the rhythm once
+            and reuse it across both directories. */}
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emce-border bg-emce-light-soft p-4">
+            <p className="text-body text-emce-text">
+              Curated leaderboard{" "}
+              <span className="text-emce-text-sec">— top EV institutions by score.</span>
+            </p>
+            <Link
+              href="/institutions/rankings"
+              className="inline-flex h-10 items-center justify-center rounded-md bg-emce-dark px-5 text-sm font-bold text-white hover:bg-emce-darkest"
+            >
+              🏆 Rankings →
+            </Link>
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-emce-border bg-emce-light-soft p-4">
+            <p className="text-body text-emce-text">
+              Browse alphabetically{" "}
+              <span className="text-emce-text-sec">— every institution, A to Z.</span>
+            </p>
+            <Link
+              href="/institutions/a-z"
+              className="inline-flex h-10 items-center justify-center rounded-md bg-emce-dark px-5 text-sm font-bold text-white hover:bg-emce-darkest"
+            >
+              📒 A–Z directory →
+            </Link>
+          </div>
         </div>
 
         <Card className="mt-6">
@@ -130,7 +157,10 @@ export default async function InstitutionsPage({
           </form>
         </Card>
 
-        <p className="mt-4 text-sm text-emce-text-sec">{list.length} institutions</p>
+        <p className="mt-4 text-sm text-emce-text-sec">
+          {list.length.toLocaleString("en-IN")} institution{list.length === 1 ? "" : "s"}
+          {(sp.q || sp.type || sp.city) ? " matching your filters" : ""}
+        </p>
 
         {list.length === 0 ? (
           <EmptyState
@@ -143,25 +173,44 @@ export default async function InstitutionsPage({
           <ul className="emce-stagger mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {list.map((i) => (
               <li key={i.id}>
-                <Card className="h-full p-4">
-                  <Link href={`/institutions/${i.slug}`} className="flex items-start gap-3">
-                    <Avatar src={i.logoUrl} name={i.name} size="md" />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate font-bold text-emce-text hover:underline">{i.name}</span>
-                        {i.verificationStatus === "VERIFIED" && (
-                          <Badge variant="verified" className="text-[10px]">Verified</Badge>
+                <Link href={`/institutions/${i.slug}`}>
+                  <Card variant="interactive" className="h-full">
+                    <div className="flex items-center gap-3">
+                      <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-md bg-emce-light-soft text-base font-extrabold text-emce-dark">
+                        {i.logoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={i.logoUrl}
+                            alt={i.name}
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          i.name[0]?.toUpperCase()
                         )}
                       </div>
-                      <p className="text-hint text-emce-text-sec">
-                        {i.type.replace("_", " ")}{i.city ? ` · ${i.city}` : ""}
-                      </p>
-                      <p className="mt-1 text-hint text-emce-text-sec">
-                        {i._count.educationLinks} alumni on platform
-                      </p>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5">
+                          <h3 className="line-clamp-1 font-bold text-emce-text">{i.name}</h3>
+                          {i.verificationStatus === "VERIFIED" && (
+                            <Badge variant="verified" className="text-[10px]">Verified</Badge>
+                          )}
+                        </div>
+                        <p className="line-clamp-1 text-hint text-emce-text-sec">
+                          {i.type.replace("_", " ").toLowerCase()}
+                          {i.city && ` · ${i.city}`}
+                          {i.state && i.state !== i.city && `, ${i.state}`}
+                        </p>
+                      </div>
                     </div>
-                  </Link>
-                </Card>
+                    {i._count.educationLinks > 0 && (
+                      <div className="mt-3">
+                        <Badge variant="default">
+                          {i._count.educationLinks.toLocaleString("en-IN")} alumni on platform
+                        </Badge>
+                      </div>
+                    )}
+                  </Card>
+                </Link>
               </li>
             ))}
           </ul>

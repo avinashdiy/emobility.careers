@@ -118,6 +118,14 @@ const envSchema = z.object({
   EXOTEL_TOKEN: z.string().optional(),
   EXOTEL_CALLER_ID: z.string().optional(),    // outbound number shown to candidate
   EXOTEL_WEBHOOK_BASE: z.string().url().optional(), // public URL Exotel posts to
+
+  // ─── Logo.dev — company logo fetcher ─────────────────────────
+  // Public token from logo.dev (free tier, requires attribution per
+  // ToS). The token shapes the URL into:
+  //   https://img.logo.dev/<domain>?token=<token>&size=400&format=png
+  // Used by the company-enrichment worker. Without it, the worker
+  // skips the logo fetch and the proposal is descriptions-only.
+  LOGO_DEV_TOKEN: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

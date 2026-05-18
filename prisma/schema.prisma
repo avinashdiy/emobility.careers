@@ -209,12 +209,12 @@ model User {
   wpClaimedAt DateTime? // null until the user signs in for the first time post-import
 
   // Competitions
-  competitionsHosted          Competition[]             @relation("CompetitionPostedBy")
-  competitionRegistrations    CompetitionRegistration[] @relation("CompetitionLeader")
-  competitionTeamMemberships  CompetitionTeamMember[]   @relation("CompetitionMember")
-  competitionJudgeAssignments CompetitionJudge[]        @relation("CompetitionJudge")
-  competitionTeamsVerified    CompetitionRegistration[] @relation("CompetitionTeamVerifier")
-  recruitmentDrivesCreated    RecruitmentDrive[]        @relation("RecruitmentDriveCreator")
+  competitionsHosted          Competition[]                  @relation("CompetitionPostedBy")
+  competitionRegistrations    CompetitionRegistration[]      @relation("CompetitionLeader")
+  competitionTeamMemberships  CompetitionTeamMember[]        @relation("CompetitionMember")
+  competitionJudgeAssignments CompetitionJudge[]             @relation("CompetitionJudge")
+  competitionTeamsVerified    CompetitionRegistration[]      @relation("CompetitionTeamVerifier")
+  recruitmentDrivesCreated    RecruitmentDrive[]             @relation("RecruitmentDriveCreator")
   /// Back-relations for fair attendee management. `fairCheckInsConducted`
   /// is the audit trail of registrations this admin marked present
   /// at the venue. `fairRosterImports` is the audit trail of CSV
@@ -225,18 +225,18 @@ model User {
   /// per TPO) + the moderation audit trail for admins who reviewed.
   placementCellsCreated       CollegePlacementCell[]         @relation("PlacementCellCreator")
   placementCellsReviewed      CollegePlacementCell[]         @relation("PlacementCellReviewer")
-  companyClaimsFiled          CompanyClaim[]            @relation("CompanyClaimant")
-  companyClaimsReviewed       CompanyClaim[]            @relation("CompanyClaimReviewer")
-  articlesAuthored            Article[]                 @relation("ArticleAuthor")
+  companyClaimsFiled          CompanyClaim[]                 @relation("CompanyClaimant")
+  companyClaimsReviewed       CompanyClaim[]                 @relation("CompanyClaimReviewer")
+  articlesAuthored            Article[]                      @relation("ArticleAuthor")
   // SEO-targeted job-description templates this admin authored. See
   // `JobDescriptionTemplate` further down for the publishing flow.
-  jdTemplatesAuthored         JobDescriptionTemplate[]  @relation("JDTemplateAuthor")
-  hashtagSubscriptions        HashtagSubscription[]     @relation("HashtagSubscriber")
-  profileViewsReceived        ProfileView[]             @relation("ProfileViewed")
-  profileViewsMade            ProfileView[]             @relation("ProfileViewer")
-  wordpressImportBatches      WordPressImportBatch[]    @relation("WordPressImporter")
-  interviewSessions           InterviewSession[]        @relation("InterviewSessionUser")
-  cvEvaluations               CvEvaluation[]            @relation("CvEvaluationUser")
+  jdTemplatesAuthored         JobDescriptionTemplate[]       @relation("JDTemplateAuthor")
+  hashtagSubscriptions        HashtagSubscription[]          @relation("HashtagSubscriber")
+  profileViewsReceived        ProfileView[]                  @relation("ProfileViewed")
+  profileViewsMade            ProfileView[]                  @relation("ProfileViewer")
+  wordpressImportBatches      WordPressImportBatch[]         @relation("WordPressImporter")
+  interviewSessions           InterviewSession[]             @relation("InterviewSessionUser")
+  cvEvaluations               CvEvaluation[]                 @relation("CvEvaluationUser")
 
   // TPO / placement
   cohortsCreated Cohort[]
@@ -253,16 +253,16 @@ model User {
   featuredSlotsCurated FeaturedSlot[] @relation("FeaturedCurator")
 
   // Wave C back-relations
-  automationsCreated       PipelineAutomation[]    @relation("AutomationCreator")
-  hiringAssistantsOwned    HiringAssistantConfig[] @relation("HiringAssistantOwner")
-  callingSessionsTriggered CallingSession[]        @relation("CallingTriggerer")
-  companyReviewsAuthored   CompanyReview[]         @relation("CompanyReviewAuthor")
-  companyReviewsModerated  CompanyReview[]         @relation("CompanyReviewModerator")
-  institutionReviewsAuthored InstitutionReview[]   @relation("InstitutionReviewAuthor")
-  institutionReviewsModerated InstitutionReview[]  @relation("InstitutionReviewModerator")
-  discussionThreadsAuthored EntityDiscussionThread[] @relation("DiscussionThreadAuthor")
-  discussionRepliesAuthored EntityDiscussionReply[] @relation("DiscussionReplyAuthor")
-  careerExplorations       CareerExplorationLog[]  @relation("CareerExplorerUser")
+  automationsCreated          PipelineAutomation[]     @relation("AutomationCreator")
+  hiringAssistantsOwned       HiringAssistantConfig[]  @relation("HiringAssistantOwner")
+  callingSessionsTriggered    CallingSession[]         @relation("CallingTriggerer")
+  companyReviewsAuthored      CompanyReview[]          @relation("CompanyReviewAuthor")
+  companyReviewsModerated     CompanyReview[]          @relation("CompanyReviewModerator")
+  institutionReviewsAuthored  InstitutionReview[]      @relation("InstitutionReviewAuthor")
+  institutionReviewsModerated InstitutionReview[]      @relation("InstitutionReviewModerator")
+  discussionThreadsAuthored   EntityDiscussionThread[] @relation("DiscussionThreadAuthor")
+  discussionRepliesAuthored   EntityDiscussionReply[]  @relation("DiscussionReplyAuthor")
+  careerExplorations          CareerExplorationLog[]   @relation("CareerExplorerUser")
 
   // Wave A back-relations
   groupMemberships GroupMembership[] @relation("GroupMember")
@@ -278,6 +278,11 @@ model User {
   // Feature flag authoring + targeted enrolment.
   featureFlagsAuthored FeatureFlag[]       @relation("FeatureFlagAuthor")
   featureFlagTargets   FeatureFlagTarget[] @relation("FeatureFlagTargetUser")
+
+  /// Inverse of CompanyEnrichmentProposal.reviewedBy — proposals this
+  /// admin approved / rejected. Audit trail for "who applied X to
+  /// company Y".
+  companyEnrichmentProposalsReviewed CompanyEnrichmentProposal[] @relation("CompanyEnrichmentReviewed")
 
   @@index([role, status])
 }
@@ -978,6 +983,10 @@ model Company {
 
   // Wave B #21 — outreach cadences scoped to the company
   outreachCadences OutreachCadence[]
+
+  /// Admin-review queue for web-fetched data (logos / about /
+  /// LinkedIn / founded year etc.). See CompanyEnrichmentProposal.
+  enrichmentProposals CompanyEnrichmentProposal[] @relation("CompanyEnrichmentProposals")
 
   @@index([verificationStatus])
 }
@@ -1970,20 +1979,20 @@ model Institution {
   // /rankings page can sort + paginate without recomputing per
   // request. Recomputed by the seed script whenever pillar scores
   // change.
-  evScoreOverall        Int?
+  evScoreOverall Int?
 
   // Explicit ranks. Lower = better, 1-indexed, NULL for unranked.
   // Set by the seed script in two passes: provisional rank from
   // evScoreOverall, then hard overrides for editorial pins (eg.
   // eMobility Academy by DIYguru = #1 IN, #2 global). Persisting the
   // resolved rank avoids surfacing different orderings under churn.
-  evRankIndia           Int?
-  evRankGlobal          Int?
+  evRankIndia  Int?
+  evRankGlobal Int?
 
   // Short editorial blurb explaining why this institution earns its
   // rank — surfaced inline on the rankings page so the ordering reads
   // as deliberate, not opaque. Plain text, ≤500 chars.
-  evRankingNote         String? @db.Text
+  evRankingNote String? @db.Text
 
   // ─── Detailed enrichment data ────────────────────────────────
   //
@@ -1996,39 +2005,39 @@ model Institution {
   // shape without a schema change for every tweak.
 
   /// Array of { name, focus, established?, headFaculty?, website? }
-  researchCentres       Json?
+  researchCentres      Json?
   /// Array of { oem, type: "research"|"placement"|"curriculum"|"funding"|"internship", since?, projects? }
-  oemCollaborations     Json?
+  oemCollaborations    Json?
   /// Array of { title, area, lead?, funding?, status? }
-  ongoingResearch       Json?
+  ongoingResearch      Json?
   /// Array of { name, level: "UG"|"PG"|"PHD"|"CERTIFICATE"|"DIPLOMA", duration?, evFocus?, seats?, fees? }
-  programsOffered       Json?
+  programsOffered      Json?
   /// Array of { name, currentRole, currentCompany, batch?, linkedin? }.
   /// Capped at ~10 per institution; the public page renders a card grid.
-  notableAlumni         Json?
+  notableAlumni        Json?
   /// JSON shape: { medianCtcLakhs?, placementRate?, highestCtcLakhs?,
   /// recruiterCount?, year? }. Lives behind the "Placement report"
   /// tab on /institutions/<slug>.
-  placementStats        Json?
+  placementStats       Json?
   /// Free-text top recruiter list. Surfaces as chips on the placement
   /// tab and feeds the institution's recruiter-cluster signal.
-  topRecruiters         String[] @default([])
+  topRecruiters        String[] @default([])
   /// Standard accreditation labels — "NAAC A+", "NBA accredited",
   /// "UGC", "AICTE", "AACSB" etc. Rendered as chips on the hero.
-  accreditations        String[] @default([])
+  accreditations       String[] @default([])
   /// Major lab / equipment names — "Battery formation lab",
   /// "Dynamometer test cell", "Anechoic EMC chamber". Rendered as a
   /// bullet list on the Research tab.
-  facilities            String[] @default([])
+  facilities           String[] @default([])
   /// Broader non-OEM industry partnerships — utilities, government
   /// bodies, standards orgs, multilateral funders.
-  industryPartnerships  String[] @default([])
+  industryPartnerships String[] @default([])
   /// Free-form long-form text rendered on the Research tab.
-  researchOverview      String?  @db.Text
+  researchOverview     String?  @db.Text
   /// Free-form long-form text on the Placement tab — narrative
   /// around hiring story, common career paths, programme-to-recruiter
   /// mappings.
-  placementOverview     String?  @db.Text
+  placementOverview    String?  @db.Text
 
   educationLinks   Education[]
   competitionTeams CompetitionRegistration[] @relation("CompetitionTeamInstitution")
@@ -2073,42 +2082,42 @@ model Institution {
 // genuinely needed.
 
 enum CollegePlacementCellStatus {
-  PENDING   // Awaiting admin review
-  APPROVED  // /tpo unlocked + can bulk-invite students to fairs
-  REJECTED  // Application turned down (with optional reason)
-  REVOKED   // Admin pulled access after approval (kept for audit)
+  PENDING // Awaiting admin review
+  APPROVED // /tpo unlocked + can bulk-invite students to fairs
+  REJECTED // Application turned down (with optional reason)
+  REVOKED // Admin pulled access after approval (kept for audit)
 }
 
 model CollegePlacementCell {
-  id              String                       @id @default(cuid())
-  institutionId   String
-  institution     Institution                  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
-  createdById     String
-  createdBy       User                         @relation("PlacementCellCreator", fields: [createdById], references: [id], onDelete: Cascade)
-  status          CollegePlacementCellStatus   @default(PENDING)
+  id            String                     @id @default(cuid())
+  institutionId String
+  institution   Institution                @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  createdById   String
+  createdBy     User                       @relation("PlacementCellCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  status        CollegePlacementCellStatus @default(PENDING)
 
   /// Self-declared contact details — visible to admins reviewing
   /// the application + later to recruiters who want to coordinate
   /// directly with a college that's sending students to their booth.
-  contactName     String
-  contactEmail    String
-  contactPhone    String?
-  designation     String?  // "TPO Coordinator", "Director of Placement"
-  studentCount    Int?     // Self-declared cohort size (helps admin gauge)
+  contactName  String
+  contactEmail String
+  contactPhone String?
+  designation  String? // "TPO Coordinator", "Director of Placement"
+  studentCount Int? // Self-declared cohort size (helps admin gauge)
   /// Free-form note the TPO can include with their application —
   /// e.g. "We're aligned with the Pune edition + want to import 60
   /// of our B.Tech finals". Admin reads this when moderating.
-  notes           String?  @db.Text
+  notes        String? @db.Text
 
   reviewedAt      DateTime?
   reviewedById    String?
-  reviewedBy      User?    @relation("PlacementCellReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedBy      User?     @relation("PlacementCellReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
   /// Admin-entered reason for REJECTED status, surfaced back to
   /// the TPO so they know what to fix on a re-application.
   rejectionReason String?
 
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([institutionId, createdById])
   @@index([status, createdAt])
@@ -4282,8 +4291,8 @@ model RecruitmentDrive {
   tracks                 RecruitmentDriveTrack[]
   /// Denorm counter — kept in sync inside the registration server
   /// actions to save the public landing from COUNT(*) on every render.
-  registeredCount        Int @default(0)
-  checkedInCount         Int @default(0)
+  registeredCount        Int                            @default(0)
+  checkedInCount         Int                            @default(0)
 
   // ─── Hiring-partner contact + FAQ (#4 from the brochure) ────────
   /// Single named point-of-contact rendered prominently on the
@@ -4319,10 +4328,10 @@ model RecruitmentDrive {
   pitchForCandidates       Json?
 
   /// Speakers / leadership panel — see RecruitmentDriveSpeaker.
-  speakers                 RecruitmentDriveSpeaker[]
+  speakers      RecruitmentDriveSpeaker[]
   /// Event-level endorsement partners (IIT Jammu, AICTE, ASDC,
   /// industry endorsements) — distinct from booth recruiters.
-  eventPartners            RecruitmentDriveEventPartner[]
+  eventPartners RecruitmentDriveEventPartner[]
 
   @@index([status, startsAt])
   @@index([city, startsAt])
@@ -4361,7 +4370,7 @@ model RecruitmentDriveCompany {
   confirmedAt DateTime?
   withdrawnAt DateTime?
 
-  driveJobs RecruitmentDriveJob[]
+  driveJobs      RecruitmentDriveJob[]
   /// Booth-level interview slots — see RecruitmentDriveInterviewSlot.
   interviewSlots RecruitmentDriveInterviewSlot[]
 
@@ -4387,41 +4396,41 @@ model RecruitmentDriveCompany {
 // frees the slot back to AVAILABLE.
 
 enum InterviewSlotStatus {
-  AVAILABLE       // Open to bookings
-  BOOKED          // Candidate locked in
-  CANCELLED       // Recruiter killed the slot
-  COMPLETED       // Recruiter marked interview done
-  NO_SHOW         // Candidate booked but didn't turn up
+  AVAILABLE // Open to bookings
+  BOOKED // Candidate locked in
+  CANCELLED // Recruiter killed the slot
+  COMPLETED // Recruiter marked interview done
+  NO_SHOW // Candidate booked but didn't turn up
 }
 
 model RecruitmentDriveInterviewSlot {
-  id                 String                  @id @default(cuid())
-  driveCompanyId     String
-  driveCompany       RecruitmentDriveCompany @relation(fields: [driveCompanyId], references: [id], onDelete: Cascade)
+  id              String                  @id @default(cuid())
+  driveCompanyId  String
+  driveCompany    RecruitmentDriveCompany @relation(fields: [driveCompanyId], references: [id], onDelete: Cascade)
   /// Optional job pin — slot scoped to a specific JobPosting at
   /// this booth. Null = generic "talk to us" slot any candidate
   /// can book regardless of which role they're after. Recruiter
   /// chooses at create time; defaults to null.
-  jobId              String?
-  job                JobPosting?             @relation("InterviewSlotJob", fields: [jobId], references: [id], onDelete: SetNull)
-  startsAt           DateTime
+  jobId           String?
+  job             JobPosting?             @relation("InterviewSlotJob", fields: [jobId], references: [id], onDelete: SetNull)
+  startsAt        DateTime
   /// 30-minute default matches the brochure's "interview bay"
   /// cadence; recruiter can override per slot.
-  durationMinutes    Int                     @default(30)
-  status             InterviewSlotStatus     @default(AVAILABLE)
+  durationMinutes Int                     @default(30)
+  status          InterviewSlotStatus     @default(AVAILABLE)
   /// Booked-by candidate. Set on book, cleared on cancel. SetNull
   /// on candidate deletion so the audit trail ("slot was once
   /// booked, candidate later purged") survives.
-  candidateId        String?
-  candidate          CandidateProfile?       @relation("InterviewSlotCandidate", fields: [candidateId], references: [id], onDelete: SetNull)
-  bookedAt           DateTime?
-  cancelledAt        DateTime?
+  candidateId     String?
+  candidate       CandidateProfile?       @relation("InterviewSlotCandidate", fields: [candidateId], references: [id], onDelete: SetNull)
+  bookedAt        DateTime?
+  cancelledAt     DateTime?
   /// Recruiter-private note about this slot (e.g. "panel of 2
   /// interviewers", "bring portfolio"). Surfaced to the candidate
   /// once booked.
-  notes              String?                 @db.Text
-  createdAt          DateTime                @default(now())
-  updatedAt          DateTime                @updatedAt
+  notes           String?                 @db.Text
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
 
   @@index([driveCompanyId, startsAt])
   @@index([candidateId, startsAt])
@@ -4484,12 +4493,12 @@ model RecruitmentDriveJob {
 // + SPPU + Maharashtra ITI directorate.
 
 enum RecruitmentDrivePartnerType {
-  ACADEMIC      // IIT Jammu, IISc, NIT Trichy, college boards
-  GOVERNMENT    // NSDC, Ministry of Skill Dev, state ITI directorates
-  CERTIFIER     // AICTE, ASDC, NEAT, ISO bodies
-  INDUSTRY      // Bosch, Hyundai — name-recognised endorsements
-  ASSOCIATION   // SIAM, ACMA, FICCI
-  MEDIA         // Trade press
+  ACADEMIC // IIT Jammu, IISc, NIT Trichy, college boards
+  GOVERNMENT // NSDC, Ministry of Skill Dev, state ITI directorates
+  CERTIFIER // AICTE, ASDC, NEAT, ISO bodies
+  INDUSTRY // Bosch, Hyundai — name-recognised endorsements
+  ASSOCIATION // SIAM, ACMA, FICCI
+  MEDIA // Trade press
   OTHER
 }
 
@@ -4527,19 +4536,19 @@ model RecruitmentDriveEventPartner {
 // can index on the column.
 
 enum RecruitmentDriveSpeakerRole {
-  PATRON       // Honorary head — appears top of panel
-  CHAIR        // Event chair / organiser
-  KEYNOTE      // Headlining the opening or closing
-  PANELIST     // Part of a moderated panel
-  DIGNITARY    // Government / institutional rep
-  SPEAKER      // Generic — talks, workshop leads
-  COORDINATOR  // Operational POC (Corp Relations / Placement Executive)
+  PATRON // Honorary head — appears top of panel
+  CHAIR // Event chair / organiser
+  KEYNOTE // Headlining the opening or closing
+  PANELIST // Part of a moderated panel
+  DIGNITARY // Government / institutional rep
+  SPEAKER // Generic — talks, workshop leads
+  COORDINATOR // Operational POC (Corp Relations / Placement Executive)
 }
 
 model RecruitmentDriveSpeaker {
-  id          String                       @id @default(cuid())
+  id          String                      @id @default(cuid())
   driveId     String
-  drive       RecruitmentDrive             @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  drive       RecruitmentDrive            @relation(fields: [driveId], references: [id], onDelete: Cascade)
   name        String
   /// Short title — "CEO, DIYguru", "Head L&D", "Placement Executive".
   title       String?
@@ -4550,11 +4559,11 @@ model RecruitmentDriveSpeaker {
   /// Headshot URL. Null falls back to an initials-circle.
   photoUrl    String?
   /// Short bio for the hover-card / expanded view (1-2 sentences).
-  bio         String?                      @db.Text
-  role        RecruitmentDriveSpeakerRole  @default(SPEAKER)
+  bio         String?                     @db.Text
+  role        RecruitmentDriveSpeakerRole @default(SPEAKER)
   /// Display order within the speaker panel (admin-controlled).
-  sortOrder   Int                          @default(0)
-  createdAt   DateTime                     @default(now())
+  sortOrder   Int                         @default(0)
+  createdAt   DateTime                    @default(now())
 
   @@index([driveId, role, sortOrder])
 }
@@ -4591,7 +4600,7 @@ model RecruitmentDriveTrack {
   sortOrder   Int              @default(0)
   createdAt   DateTime         @default(now())
 
-  jobs        RecruitmentDriveJob[]
+  jobs RecruitmentDriveJob[]
 
   @@unique([driveId, slug])
   @@index([driveId, sortOrder])
@@ -4629,36 +4638,36 @@ enum RecruitmentDriveRegistrationStatus {
 }
 
 model RecruitmentDriveRegistration {
-  id          String           @id @default(cuid())
-  driveId     String
-  drive       RecruitmentDrive @relation(fields: [driveId], references: [id], onDelete: Cascade)
-  candidateId String
-  candidate   CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  id            String                             @id @default(cuid())
+  driveId       String
+  drive         RecruitmentDrive                   @relation(fields: [driveId], references: [id], onDelete: Cascade)
+  candidateId   String
+  candidate     CandidateProfile                   @relation(fields: [candidateId], references: [id], onDelete: Cascade)
   /// Short alphanumeric (6 chars, 32-char alphabet — no I/O/0/1 to
   /// avoid mis-reads at the check-in desk). Minted at create. Unique
   /// across all registrations to keep the admin scanner's input
   /// unambiguous — no per-fair-namespace ambiguity to resolve.
   /// Format: `[A-HJ-NP-Z2-9]{6}`.
-  checkInCode String           @unique
+  checkInCode   String                             @unique
   /// Optional one-line answer to "what brings you to this fair?".
   /// Surfaced to recruiters who view the registration list so they
   /// can pre-target conversations ("Hi — I saw you wrote you're
   /// looking for BMS roles, our booth is in Hall B").
-  intentNote  String?          @db.Text
-  status      RecruitmentDriveRegistrationStatus @default(REGISTERED)
+  intentNote    String?                            @db.Text
+  status        RecruitmentDriveRegistrationStatus @default(REGISTERED)
   /// How the candidate landed on the fair — DIRECT = browsed
   /// /fairs/[slug] and clicked Register. ROSTER_IMPORT = an admin
   /// uploaded their email via the CSV import flow.
-  source      String           @default("DIRECT")
+  source        String                             @default("DIRECT")
   /// Set when the admin checks the candidate in at the venue.
-  checkedInAt DateTime?
+  checkedInAt   DateTime?
   /// The admin user who scanned / entered the code. SetNull to
   /// preserve the check-in record if the admin account is later
   /// deleted (we still want "checked in by [removed user]").
   checkedInById String?
-  checkedInBy   User?          @relation("FairCheckInBy", fields: [checkedInById], references: [id], onDelete: SetNull)
-  createdAt   DateTime         @default(now())
-  cancelledAt DateTime?
+  checkedInBy   User?                              @relation("FairCheckInBy", fields: [checkedInById], references: [id], onDelete: SetNull)
+  createdAt     DateTime                           @default(now())
+  cancelledAt   DateTime?
 
   @@unique([driveId, candidateId])
   @@index([driveId, status])
@@ -5271,6 +5280,85 @@ enum CompanyTier {
   OTHER
 }
 
+// ─── Company enrichment proposals (admin-review queue) ────────────
+//
+// Background workers fetch web-verified data (logos from Logo.dev,
+// summaries from Wikipedia, etc.) and write a proposal here instead
+// of mutating the Company row directly. An admin reviews the diff
+// (current vs proposed) at /admin/companies/enrichment-queue and
+// chooses APPROVE / EDIT-AND-APPROVE / REJECT.
+//
+// Design notes:
+//   • One row per (companyId, source) pair — re-fetches replace the
+//     same row via upsert, so the queue stays clean.
+//   • `proposedFields` is a JSON blob — only the fields the source
+//     actually surfaced are present. The approve action merges them
+//     onto the Company; unset keys leave the existing column alone.
+//   • `appliedFields` records what was actually written after admin
+//     review (may differ from `proposedFields` if the admin edited
+//     before approving). Audit trail for "why is X showing on the
+//     company page".
+//   • `rawSources` keeps the unparsed payload from each fetcher for
+//     debugging — useful when admins flag "this looks wrong, what did
+//     the API actually return".
+
+enum EnrichmentProposalStatus {
+  PENDING // newly written by the worker, awaiting admin review
+  APPROVED // admin approved; fields applied to the Company row
+  REJECTED // admin rejected; no fields applied
+  ERROR // worker failed to fetch — see `errorMessage`
+}
+
+enum EnrichmentSource {
+  LOGO_DEV
+  WIKIPEDIA
+  COMPOSITE // multi-source merged proposal (default)
+}
+
+model CompanyEnrichmentProposal {
+  id        String                   @id @default(cuid())
+  companyId String
+  company   Company                  @relation("CompanyEnrichmentProposals", fields: [companyId], references: [id], onDelete: Cascade)
+  source    EnrichmentSource         @default(COMPOSITE)
+  status    EnrichmentProposalStatus @default(PENDING)
+
+  /// Proposed values keyed by Company column. Shape:
+  ///   { logoUrl?, description?, about?, foundedYear?, linkedinUrl?,
+  ///     twitterUrl?, facebookUrl?, website? }
+  /// Only keys the worker actually populated are present.
+  proposedFields Json
+
+  /// Raw fetched payloads keyed by source name. Stored verbatim for
+  /// admin debugging — never rendered on the company page.
+  rawSources Json?
+
+  /// Worker's self-assessment of confidence in the proposed values
+  /// (0–100). High = all sources agreed; low = sparse / conflicting.
+  /// Drives the badge colour in the admin queue.
+  confidence Int @default(50)
+
+  /// Set when an admin reviews. APPROVED → `reviewedAt` is filled +
+  /// `appliedFields` records what actually landed on Company. REJECTED
+  /// → `rejectionReason` is filled for the audit trail.
+  reviewedById    String?
+  reviewedBy      User?     @relation("CompanyEnrichmentReviewed", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt      DateTime?
+  appliedFields   Json?
+  rejectionReason String?   @db.Text
+
+  /// Populated only when status = ERROR. The worker writes the error
+  /// message here so admins can see why a row never reached PENDING.
+  errorMessage String? @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Newest-first paginated queue view sorts by createdAt within
+  // a status filter — covering index serves both filters.
+  @@index([status, createdAt])
+  @@index([companyId])
+}
+
 // ─── #28 Verified Skill Assessments ─────────────────────────────────
 //
 // `Assessment` already supports standalone library assessments via
@@ -5843,22 +5931,22 @@ model EntityDiscussionThread {
 }
 
 model EntityDiscussionReply {
-  id              String                 @id @default(cuid())
-  threadId        String
-  thread          EntityDiscussionThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  id            String                  @id @default(cuid())
+  threadId      String
+  thread        EntityDiscussionThread  @relation(fields: [threadId], references: [id], onDelete: Cascade)
   /// Optional parent reply for nested threading (Reddit-style).
   /// NULL = top-level reply directly under the thread.
-  parentReplyId   String?
-  parentReply     EntityDiscussionReply?  @relation("DiscussionReplyParent", fields: [parentReplyId], references: [id], onDelete: Cascade)
-  childReplies    EntityDiscussionReply[] @relation("DiscussionReplyParent")
-  body            String                  @db.Text
-  authorUserId    String
-  authorUser      User                    @relation("DiscussionReplyAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
-  status          EntityDiscussionStatus  @default(PUBLISHED)
-  upvoteCount     Int                     @default(0)
-  reportCount     Int                     @default(0)
-  createdAt       DateTime                @default(now())
-  updatedAt       DateTime                @updatedAt
+  parentReplyId String?
+  parentReply   EntityDiscussionReply?  @relation("DiscussionReplyParent", fields: [parentReplyId], references: [id], onDelete: Cascade)
+  childReplies  EntityDiscussionReply[] @relation("DiscussionReplyParent")
+  body          String                  @db.Text
+  authorUserId  String
+  authorUser    User                    @relation("DiscussionReplyAuthor", fields: [authorUserId], references: [id], onDelete: Cascade)
+  status        EntityDiscussionStatus  @default(PUBLISHED)
+  upvoteCount   Int                     @default(0)
+  reportCount   Int                     @default(0)
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
 
   @@index([threadId, createdAt])
   @@index([parentReplyId])
@@ -6307,28 +6395,28 @@ enum NotificationLogStatus {
 }
 
 model NotificationLog {
-  id          String                       @id @default(cuid())
-  userId      String
-  user        User                         @relation("NotificationLogUser", fields: [userId], references: [id], onDelete: Cascade)
+  id                String                      @id @default(cuid())
+  userId            String
+  user              User                        @relation("NotificationLogUser", fields: [userId], references: [id], onDelete: Cascade)
   /// Same `type` as `dispatchNotification` — links log rows back
   /// to the template / call site.
-  type        String
-  channel     NotificationTemplateChannel
+  type              String
+  channel           NotificationTemplateChannel
   /// Snapshot of what actually went out (post-template, post-
   /// interpolation). Stored so we can show admins the exact copy
   /// the user received, not the template version at audit time.
-  title       String?
-  body        String?                      @db.Text
+  title             String?
+  body              String?                     @db.Text
   /// Provider message id (Resend id, MSG91 id, Soketi message id).
   /// Useful for cross-referencing in the provider's own dashboard.
   providerMessageId String?
-  status      NotificationLogStatus        @default(QUEUED)
+  status            NotificationLogStatus       @default(QUEUED)
   /// Provider error message on FAILED / BOUNCED.
-  errorMessage String?
-  sentAt      DateTime                     @default(now())
+  errorMessage      String?
+  sentAt            DateTime                    @default(now())
   /// Stamped when status flips post-send (DELIVERED / BOUNCED via
   /// inbound webhook).
-  deliveredAt DateTime?
+  deliveredAt       DateTime?
 
   @@index([userId, sentAt])
   @@index([type, sentAt])
@@ -6479,18 +6567,18 @@ model SlugRedirect {
 // admin-curated, evergreen.
 
 enum JDCollarType {
-  BLUE  // Operators, helpers, technicians at the production / install end
-  GREY  // Skilled trades — service technicians, fitters, electricians
+  BLUE // Operators, helpers, technicians at the production / install end
+  GREY // Skilled trades — service technicians, fitters, electricians
   WHITE // Engineers, managers, software, business roles
-  CXO   // C-suite + Heads-of executive positions
+  CXO // C-suite + Heads-of executive positions
 }
 
 enum JDSeniority {
-  ENTRY     // 0-1 yr — apprentice / fresher
-  JUNIOR    // 1-3 yr
-  MID       // 3-6 yr
-  SENIOR    // 6-10 yr
-  LEAD      // 10-15 yr — managers / staff individual contributors
+  ENTRY // 0-1 yr — apprentice / fresher
+  JUNIOR // 1-3 yr
+  MID // 3-6 yr
+  SENIOR // 6-10 yr
+  LEAD // 10-15 yr — managers / staff individual contributors
   PRINCIPAL // 15+ yr — directors / VPs / principal engineers
   EXECUTIVE // CXO / Head-of, separate from the IC ladder
 }
@@ -6524,12 +6612,12 @@ enum JDStatus {
 }
 
 model JobDescriptionTemplate {
-  id   String @id @default(cuid())
+  id                String   @id @default(cuid())
   /// URL-safe identifier. Surfaced at /jd/<slug>. Stable — renaming
   /// is a 30x redirect, not a slug edit.
-  slug String @unique
+  slug              String   @unique
   /// Canonical role title (e.g. "Battery Cell Engineer").
-  title String
+  title             String
   /// Common synonyms the role is known by ("Lithium-ion Cell
   /// Engineer", "Cell Design Engineer"). Indexed into searchTsv so
   /// /jd?q= matches them; also shown as "Also known as: …" on the
@@ -6537,43 +6625,43 @@ model JobDescriptionTemplate {
   alternativeTitles String[] @default([])
   /// Single-line summary — used as the OG description, /jd card
   /// preview, and search-snippet meta. ≤160 chars.
-  summary String
+  summary           String
 
   // ─── Classification ───────────────────────────────────────
-  collarType     JDCollarType
-  seniority      JDSeniority
-  functionalArea JDFunctionalArea
+  collarType        JDCollarType
+  seniority         JDSeniority
+  functionalArea    JDFunctionalArea
   /// Optional FK into EVDomain (Battery / Charging / Motor / etc.) —
   /// drives the per-domain hub pages at /jd?domain=<slug>.
-  evDomainId     String?
-  evDomain       EVDomain?    @relation(fields: [evDomainId], references: [id], onDelete: SetNull)
+  evDomainId        String?
+  evDomain          EVDomain?        @relation(fields: [evDomainId], references: [id], onDelete: SetNull)
   /// Companies the role typically lives at — surfaced as suggestion
   /// chips on the public page and used to seed `/jd?company=` queries.
-  typicalCompanies  String[] @default([])
+  typicalCompanies  String[]         @default([])
   /// Industry verticals where the role appears (e.g. "EV OEM",
   /// "Tier-1 supplier", "Charging operator").
-  typicalIndustries String[] @default([])
+  typicalIndustries String[]         @default([])
 
   // ─── Body ─────────────────────────────────────────────────
   /// Long-form overview paragraph. Markdown allowed; rendered with
   /// the same pipeline as Article bodies. Visible to public.
-  overview String @db.Text
+  overview                String   @db.Text
   /// 6-12 bullet responsibilities. First 3 are visible to public;
   /// the rest are gated behind sign-up.
-  responsibilities       String[] @default([])
+  responsibilities        String[] @default([])
   /// Mandatory qualifications. First 3 visible to public; rest gated.
-  requirements           String[] @default([])
+  requirements            String[] @default([])
   /// Nice-to-haves — fully gated.
   preferredQualifications String[] @default([])
   /// Skills/keywords — fully visible (drives the SEO keyword
   /// density). Aim for 8-15 entries.
-  keySkills              String[] @default([])
+  keySkills               String[] @default([])
   /// Tools / software / hardware the role uses (e.g. "MATLAB",
   /// "Altium", "AVL CRUISE"). Fully visible.
-  tools                  String[] @default([])
+  tools                   String[] @default([])
   /// Industry certifications relevant to the role (e.g. "ASDC Level
   /// 4", "SAE J2954"). Gated.
-  certifications         String[] @default([])
+  certifications          String[] @default([])
 
   // ─── Salary insights (India-default) ──────────────────────
   experienceMinYears Int          @default(0)

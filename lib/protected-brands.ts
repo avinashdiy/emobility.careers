@@ -48,6 +48,39 @@ const PROTECTED_COMPANIES: ProtectedBrand[] = [
     message:
       "DIYguru is a recognised company. Pick the existing DIYguru entry from the dropdown — duplicate rows are not allowed.",
   },
+  // Six additional companies deduped in May 2026 — see
+  // scripts/dedupe-companies.ts. The regex catches the brand name +
+  // common variants (E-mobility suffix, "Charging" descriptor, etc.).
+  {
+    match: /\babb\s+india\b|\babb\s+e\s*-?\s*mobility\b/i,
+    canonicalSlug: "abb-india",
+    message: "ABB India has a canonical entry — pick the existing row.",
+  },
+  {
+    match: /adani\s+totalenergies/i,
+    canonicalSlug: "adani-totalenergies-emobility",
+    message: "Adani TotalEnergies E-Mobility has a canonical entry — pick the existing row.",
+  },
+  {
+    match: /\bhpcl\s+(ev|e\s*-?\s*mobility|charging)/i,
+    canonicalSlug: "hpcl-ev-charging",
+    message: "HPCL EV Charging has a canonical entry — pick the existing row.",
+  },
+  {
+    match: /^\s*lime\s*$|lime\s+(mobility|electric|scoot|bike)/i,
+    canonicalSlug: "lime-mobility",
+    message: "Lime has a canonical entry — pick the existing row.",
+  },
+  {
+    match: /servotech\s+(power|systems?)/i,
+    canonicalSlug: "servotech",
+    message: "Servotech Power Systems has a canonical entry — pick the existing row.",
+  },
+  {
+    match: /\btritium\b/i,
+    canonicalSlug: "tritium-charging",
+    message: "Tritium DCFC has a canonical entry — pick the existing row.",
+  },
 ];
 
 const PROTECTED_INSTITUTIONS: ProtectedBrand[] = [
@@ -64,6 +97,45 @@ const PROTECTED_INSTITUTIONS: ProtectedBrand[] = [
     canonicalSlug: "emobility-academy-by-diyguru",
     message:
       "DIYguru eMobility Academy is the canonical entry. Pick the existing row from the dropdown.",
+  },
+  // Seven additional brands deduplicated in May 2026 — pin them to
+  // their canonical slugs so candidates / TPOs can't recreate variants
+  // by typing different name forms into the picker. See
+  // scripts/dedupe-institutions.ts for the full pair list + rationale.
+  {
+    match: /automotive\s+skill(s?)\s+development\s+council|^\s*asdc\s*$/i,
+    canonicalSlug: "asdc-india",
+    message: "ASDC has a canonical entry — pick the existing row.",
+  },
+  {
+    match: /carnegie\s+mellon/i,
+    canonicalSlug: "cmu-pittsburgh",
+    message: "Carnegie Mellon University has a canonical entry — pick the existing row.",
+  },
+  {
+    match: /delft\s+university\s+of\s+technology|^\s*tu\s*delft\s*$/i,
+    canonicalSlug: "tu-delft",
+    message: "TU Delft has a canonical entry — pick the existing row.",
+  },
+  {
+    match: /politecnico\s+di\s+milano|^\s*polimi\s*$/i,
+    canonicalSlug: "polimi",
+    message: "Politecnico di Milano has a canonical entry — pick the existing row.",
+  },
+  {
+    match: /^\s*srm\s+(institute|ist)|srm\s+university/i,
+    canonicalSlug: "srmist-chennai",
+    message: "SRMIST has a canonical entry — pick the existing row.",
+  },
+  {
+    match: /technical\s+university\s+of\s+munich|^\s*tum\s*$/i,
+    canonicalSlug: "tum-munich",
+    message: "TU München has a canonical entry — pick the existing row.",
+  },
+  {
+    match: /vishwakarma\s+institute\s+of\s+technology|^\s*vit\s+pune\s*$/i,
+    canonicalSlug: "vit-pune",
+    message: "VIT Pune has a canonical entry — pick the existing row.",
   },
 ];
 
