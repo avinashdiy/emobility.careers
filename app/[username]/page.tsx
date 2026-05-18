@@ -11,7 +11,7 @@ import { SiteHeader } from "@/components/layout/site-header";
 // Profile pages render no footer at all — keeps the LinkedIn-style focus
 // on the profile content with no visual interruption at the bottom.
 import { saveCandidate } from "@/server/employer/actions";
-import { startDirectThread } from "@/server/messaging/actions";
+import { startConnectionThread, startDirectThread } from "@/server/messaging/actions";
 import { toggleSkillEndorsement } from "@/server/candidates/actions";
 import { ShareButton } from "@/components/profile/ShareButton";
 import { CountryFlag } from "@/components/profile/CountryFlag";
@@ -553,7 +553,21 @@ export default async function PublicCandidateProfile({
   // column value would 404 in production.
   const resumeDownloadHref = `/api/resume/${profile.slug}`;
 
-  const [connectionStatus, isFollowing, postsCount, recentPosts, mentorProfile, competitionWins, matchingJobs] = await Promise.all([
+  // Today-anchored cutoff for the three "upcoming" sidebar widgets.
+  // Captured once so all three queries see the same instant.
+  const now = new Date();
+  const [
+    connectionStatus,
+    isFollowing,
+    postsCount,
+    recentPosts,
+    mentorProfile,
+    competitionWins,
+    matchingJobs,
+    upcomingFairs,
+    upcomingCompetitions,
+    upcomingEvents,
+  ] = await Promise.all([
     session?.user
       ? getConnectionStatus(session.user.id, profile.user.id)
       : Promise.resolve({ status: "NONE" as const, connectionId: undefined as string | undefined }),
@@ -643,6 +657,54 @@ export default async function PublicCandidateProfile({
       select: {
         id: true, slug: true, title: true, locations: true, workMode: true, publishedAt: true,
         company: { select: { name: true, logoUrl: true, slug: true } },
+      },
+    }),
+    // Upcoming recruitment fairs — OPEN or IN_PROGRESS, end date in
+    // the future so we don't surface yesterday's fair as "upcoming".
+    // Sorted by start date asc → soonest first. Cheap query: tiny take +
+    // status index covers it.
+    db.recruitmentDrive.findMany({
+      where: {
+        status: { in: ["OPEN", "IN_PROGRESS"] },
+        endsAt: { gte: now },
+      },
+      orderBy: { startsAt: "asc" },
+      take: 3,
+      select: {
+        id: true, slug: true, title: true, city: true, state: true,
+        startsAt: true, endsAt: true, bannerImageUrl: true,
+      },
+    }),
+    // Upcoming competitions / challenges — LIVE or APPROVED-but-not-
+    // yet-LIVE, ends in the future. Same shape as fairs.
+    db.competition.findMany({
+      where: {
+        status: { in: ["LIVE", "APPROVED"] },
+        endsAt: { gte: now },
+      },
+      orderBy: { startsAt: "asc" },
+      take: 3,
+      select: {
+        id: true, slug: true, title: true, type: true,
+        startsAt: true, endsAt: true, registrationClosesAt: true,
+        totalPrizePoolMinor: true, prizeCurrency: true,
+        bannerImageUrl: true,
+        hostCompany: { select: { name: true, logoUrl: true } },
+      },
+    }),
+    // Upcoming events — webinars, meetups, demo days hosted by
+    // companies on the platform. OPEN status + future start.
+    db.event.findMany({
+      where: {
+        status: "OPEN",
+        startsAt: { gte: now },
+      },
+      orderBy: { startsAt: "asc" },
+      take: 3,
+      select: {
+        id: true, slug: true, title: true, eventType: true, startsAt: true,
+        location: true, coverImageUrl: true,
+        company: { select: { name: true, logoUrl: true } },
       },
     }),
   ]);
@@ -1033,6 +1095,21 @@ export default async function PublicCandidateProfile({
                   <Button asChild size="sm" variant="outline" className="border-emce-mid text-emce-darkest hover:bg-emce-light-soft">
                     <Link href={`/${profile.slug}/compass`}>⚡ View Compass</Link>
                   </Button>
+                  {/* Peer DM — visible to any signed-in viewer who is
+                      already mutually connected (regardless of role).
+                      Previously the Message button only rendered for
+                      employers, so two connected candidates had no way
+                      to start a conversation from each other's profile
+                      even though the connection itself was accepted.
+                      Uses startConnectionThread (canonical-pair scheme,
+                      same one as sharePostViaMessage) so it lands in
+                      the same thread row as any post-share DM. */}
+                  {ctaStatus === "ACCEPTED" && !isEmployer && (
+                    <form action={startConnectionThread}>
+                      <input type="hidden" name="peerUserId" value={profile.user.id} />
+                      <Button type="submit" size="sm">💬 Message</Button>
+                    </form>
+                  )}
                   {isEmployer && (
                     <>
                       {/* Cold-outreach DM — opens (or reuses) a thread
@@ -1932,6 +2009,168 @@ export default async function PublicCandidateProfile({
                   <Link href="/me/profile">Customize URL</Link>
                 </Button>
               )}
+            </Card>
+
+            {/* ─── Upcoming recruitment fairs ─────────────────────
+                Surfaces the next 3 OPEN / IN_PROGRESS fairs so the
+                profile reader can register / share with a candidate.
+                Hidden when nothing is upcoming — avoids an empty card
+                that just says "No fairs". */}
+            {upcomingFairs.length > 0 && (
+              <Card>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[16px] font-semibold text-emce-text">Upcoming job fairs</h2>
+                  <Link href="/fairs" className="text-xs font-bold text-emce-dark hover:underline">All</Link>
+                </div>
+                <ul className="mt-3 space-y-2">
+                  {upcomingFairs.map((f) => {
+                    const when = new Date(f.startsAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+                    const place = [f.city, f.state].filter(Boolean).join(", ");
+                    return (
+                      <li key={f.id}>
+                        <Link
+                          href={`/fairs/${f.slug}`}
+                          className="flex items-start gap-2 rounded-md p-2 hover:bg-emce-light-soft"
+                        >
+                          <span className="text-base leading-none">📅</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="line-clamp-2 text-sm font-bold text-emce-text">{f.title}</p>
+                            <p className="text-hint text-emce-text-sec">{when} · {place}</p>
+                          </div>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <Link href="/fairs" className="mt-3 block text-center text-xs font-bold text-emce-dark hover:underline">
+                  Browse all fairs →
+                </Link>
+              </Card>
+            )}
+
+            {/* ─── Upcoming challenges & competitions ─────────────
+                Shows live / approved-pending-launch competitions with
+                deadline-still-ahead. Prize pool when set — a strong
+                conversion signal. Hidden when empty. */}
+            {upcomingCompetitions.length > 0 && (
+              <Card>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[16px] font-semibold text-emce-text">Challenges &amp; competitions</h2>
+                  <Link href="/competitions" className="text-xs font-bold text-emce-dark hover:underline">All</Link>
+                </div>
+                <ul className="mt-3 space-y-2">
+                  {upcomingCompetitions.map((c) => {
+                    const deadline = c.registrationClosesAt ?? c.endsAt;
+                    const closes = new Date(deadline).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+                    const prize = c.totalPrizePoolMinor > 0
+                      ? new Intl.NumberFormat("en-IN", { style: "currency", currency: c.prizeCurrency, maximumFractionDigits: 0, notation: "compact" }).format(c.totalPrizePoolMinor / 100)
+                      : null;
+                    return (
+                      <li key={c.id}>
+                        <Link
+                          href={`/competitions/${c.slug}`}
+                          className="flex items-start gap-2 rounded-md p-2 hover:bg-emce-light-soft"
+                        >
+                          <span className="text-base leading-none">🏆</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="line-clamp-2 text-sm font-bold text-emce-text">{c.title}</p>
+                            <p className="text-hint text-emce-text-sec">
+                              {c.hostCompany?.name ?? "Competition"} · closes {closes}
+                              {prize && ` · ${prize} pool`}
+                            </p>
+                          </div>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <Link href="/competitions" className="mt-3 block text-center text-xs font-bold text-emce-dark hover:underline">
+                  Browse all competitions →
+                </Link>
+              </Card>
+            )}
+
+            {/* ─── Upcoming events ─────────────────────────────────
+                Webinars, meetups, demo days, AMAs. Distinct from fairs
+                + competitions — these are shorter, often-online and
+                hosted by a single company. */}
+            {upcomingEvents.length > 0 && (
+              <Card>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-[16px] font-semibold text-emce-text">Upcoming events</h2>
+                  <Link href="/events" className="text-xs font-bold text-emce-dark hover:underline">All</Link>
+                </div>
+                <ul className="mt-3 space-y-2">
+                  {upcomingEvents.map((e) => {
+                    const when = new Date(e.startsAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true });
+                    const kindEmoji =
+                      e.eventType === "WEBINAR" ? "💻"
+                      : e.eventType === "HYBRID" ? "🔀"
+                      : "📍"; // IN_PERSON
+                    return (
+                      <li key={e.id}>
+                        <Link
+                          href={`/events/${e.slug}`}
+                          className="flex items-start gap-2 rounded-md p-2 hover:bg-emce-light-soft"
+                        >
+                          <span className="text-base leading-none">{kindEmoji}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="line-clamp-2 text-sm font-bold text-emce-text">{e.title}</p>
+                            <p className="text-hint text-emce-text-sec">
+                              {e.company.name} · {when}
+                            </p>
+                          </div>
+                        </Link>
+                      </li>
+                    );
+                  })}
+                </ul>
+                <Link href="/events" className="mt-3 block text-center text-xs font-bold text-emce-dark hover:underline">
+                  Browse all events →
+                </Link>
+              </Card>
+            )}
+
+            {/* ─── AI tools rail ──────────────────────────────────
+                Static curated subset of the /ai-tools catalogue. The
+                full hub at app/ai-tools/page.tsx has ~14 tools; here
+                we surface the 6 highest-intent freebies so visitors
+                discover them from any profile.
+
+                Kept inline (not extracted into a shared module) since
+                this is a static list of href/emoji/label triples —
+                not worth a refactor of the AI tools page which holds
+                richer metadata (blurbs, badges, status). If a tool's
+                URL changes, update both places. */}
+            <Card>
+              <div className="flex items-center justify-between">
+                <h2 className="text-[16px] font-semibold text-emce-text">AI tools</h2>
+                <Link href="/ai-tools" className="text-xs font-bold text-emce-dark hover:underline">All</Link>
+              </div>
+              <p className="mt-1 text-hint text-emce-text-sec">Free EV-industry AI tools</p>
+              <ul className="mt-3 space-y-1">
+                {[
+                  { href: "/career-explorer", emoji: "🧭", label: "EV Career Explorer" },
+                  { href: "/ai-tools/mock-interview", emoji: "🎤", label: "Mock Interview" },
+                  { href: "/ai-tools/interview-simulator", emoji: "🏭", label: "Company Interview Simulator" },
+                  { href: "/ai-tools/cv-evaluation", emoji: "📊", label: "Resume Score" },
+                  { href: "/ai-tools/cover-letter", emoji: "✉️", label: "Cover Letter Writer" },
+                  { href: "/ai-tools/skills-analyzer", emoji: "🧪", label: "Skills Gap Analyzer" },
+                ].map((t) => (
+                  <li key={t.href}>
+                    <Link
+                      href={t.href}
+                      className="flex items-center gap-2 rounded-md p-2 text-sm hover:bg-emce-light-soft"
+                    >
+                      <span className="text-base leading-none">{t.emoji}</span>
+                      <span className="font-bold text-emce-text">{t.label}</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+              <Link href="/ai-tools" className="mt-3 block text-center text-xs font-bold text-emce-dark hover:underline">
+                Explore all tools →
+              </Link>
             </Card>
           </aside>
         </div>

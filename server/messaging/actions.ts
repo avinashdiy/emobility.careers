@@ -94,6 +94,86 @@ export async function startDirectThread(formData: FormData) {
   redirect(`/employer/messages/${thread.id}`);
 }
 
+/**
+ * Member-to-member DM from a public profile when both sides are
+ * already mutually connected (Connection.status === "ACCEPTED").
+ *
+ * Distinct from `startDirectThread` (which is recruiter-only cold
+ * outreach to a candidate): this works for ANY pair of signed-in
+ * users — candidate↔candidate, employer↔candidate-as-peer, etc. —
+ * as long as they've accepted a connection request between them.
+ *
+ * Uses the canonical-pair (low/high) scheme already established by
+ * `sharePostViaMessage`: the lexicographically smaller userId goes
+ * into `MessageThread.candidateUserId`, the larger into
+ * `employerUserId`. That guarantees both peers land in the same
+ * thread regardless of who clicks Message first.
+ *
+ * Redirect lands the viewer in their own inbox surface (`/me/messages`
+ * for candidates, `/employer/messages` for recruiters); the inbox +
+ * thread pages were patched to recognise both slots of a peer thread.
+ */
+export async function startConnectionThread(formData: FormData) {
+  const session = await auth();
+  if (!session?.user) redirect("/signin");
+
+  const peerUserId = z.string().min(1).parse(formData.get("peerUserId"));
+  if (peerUserId === session.user.id) {
+    redirect(session.user.role === "CANDIDATE" ? "/me/messages" : "/employer/messages");
+  }
+
+  // Anti-spam: unverified accounts can't DM. Same gate as sendMessage.
+  try {
+    await requireEmailVerified(session.user.id);
+  } catch (e) {
+    if (e instanceof EmailNotVerifiedError) redirect("/verify-email?required=1");
+    throw e;
+  }
+
+  // Authorization: both sides must have an ACCEPTED connection.
+  // Without this, anyone could DM-bomb arbitrary users by stuffing
+  // a userId into the form action.
+  const connection = await db.connection.findFirst({
+    where: {
+      status: "ACCEPTED",
+      OR: [
+        { requesterId: session.user.id, recipientId: peerUserId },
+        { recipientId: session.user.id, requesterId: peerUserId },
+      ],
+    },
+    select: { id: true },
+  });
+  if (!connection) {
+    // Soft-redirect back to the peer's profile rather than 403'ing —
+    // the most common cause is a stale Message button (button rendered
+    // when the viewer was still connected; connection got removed in
+    // another tab). Sending them to /403 here would feel broken.
+    redirect("/");
+  }
+
+  // Canonical-pair scheme — matches sharePostViaMessage so peer DMs
+  // initiated from anywhere (post-share or this profile button) land
+  // in the same thread row.
+  const [low, high] = [session.user.id, peerUserId].sort();
+
+  let thread = await db.messageThread.findFirst({
+    where: { applicationId: null, candidateUserId: low, employerUserId: high },
+    select: { id: true },
+  });
+  if (!thread) {
+    thread = await db.messageThread.create({
+      data: { candidateUserId: low, employerUserId: high },
+      select: { id: true },
+    });
+  }
+
+  redirect(
+    session.user.role === "CANDIDATE" || session.user.role === "ADMIN"
+      ? `/me/messages/${thread.id}`
+      : `/employer/messages/${thread.id}`,
+  );
+}
+
 export async function startThreadFromApplication(formData: FormData) {
   const session = await auth();
   if (!session?.user) redirect("/signin");

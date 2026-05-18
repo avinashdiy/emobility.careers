@@ -13,11 +13,19 @@ export default async function MessagesInbox() {
   const session = await auth();
   if (!session?.user) redirect(await signinNextUrl());
 
+  // Peer (member-to-member) threads use the canonical-pair scheme:
+  // smaller userId → candidateUserId, larger → employerUserId. Without
+  // the third OR branch below, a candidate on the "high" side of a
+  // peer thread would never see their own conversation in the inbox.
+  // applicationId === null narrows the branch to peer threads only,
+  // so we don't accidentally surface recruiter-job threads to the
+  // wrong side.
   const threads = await db.messageThread.findMany({
     where: {
       OR: [
         { candidateUserId: session.user.id },
         { application: { candidate: { userId: session.user.id } } },
+        { applicationId: null, employerUserId: session.user.id },
       ],
     },
     orderBy: { lastMessageAt: "desc" },
@@ -28,6 +36,31 @@ export default async function MessagesInbox() {
       messages: { orderBy: { createdAt: "desc" }, take: 1 },
     },
   });
+
+  // Resolve peer-thread display names. For application threads the
+  // job + company already give the row a title; for peer threads we
+  // need to look up the other party's name so the inbox shows
+  // something more useful than "Conversation". One batched query.
+  const peerUserIds = Array.from(
+    new Set(
+      threads
+        .filter((t) => t.applicationId === null)
+        .map((t) => (t.candidateUserId === session.user.id ? t.employerUserId : t.candidateUserId))
+        .filter((id): id is string => !!id),
+    ),
+  );
+  const peerUsers = peerUserIds.length
+    ? await db.user.findMany({
+        where: { id: { in: peerUserIds } },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          candidateProfile: { select: { slug: true, headline: true } },
+        },
+      })
+    : [];
+  const peerById = new Map(peerUsers.map((u) => [u.id, u]));
 
   return (
     <div className="container max-w-3xl py-10">
@@ -49,17 +82,27 @@ export default async function MessagesInbox() {
         />
       ) : (
         <ul className="emce-stagger mt-6 space-y-2">
-          {threads.map((t) => (
+          {threads.map((t) => {
+            const peerUserId =
+              t.applicationId === null
+                ? t.candidateUserId === session.user.id
+                  ? t.employerUserId
+                  : t.candidateUserId
+                : null;
+            const peer = peerUserId ? peerById.get(peerUserId) : null;
+            const title = t.application?.job.title ?? peer?.name ?? peer?.email ?? "Conversation";
+            const subtitle = t.application?.job.company.name ?? peer?.candidateProfile?.headline ?? "Direct message";
+            return (
             <li key={t.id}>
               <Link href={`/me/messages/${t.id}`}>
                 <Card className="p-4">
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="font-bold text-emce-text">
-                        {t.application?.job.title ?? "Conversation"}
+                        {title}
                       </div>
                       <div className="text-hint text-emce-text-sec">
-                        {t.application?.job.company.name}
+                        {subtitle}
                       </div>
                       {t.messages[0] && (
                         <p className="mt-2 line-clamp-1 text-body text-emce-text-sec">
@@ -76,7 +119,8 @@ export default async function MessagesInbox() {
                 </Card>
               </Link>
             </li>
-          ))}
+            );
+          })}
         </ul>
       )}
     </div>

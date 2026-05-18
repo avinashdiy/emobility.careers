@@ -68,6 +68,8 @@ export default async function FeedPage({
     liveCompetitions,
     upcomingMentorshipSession,
     latestJobs,
+    upcomingFairs,
+    upcomingEvents,
   ] = await Promise.all([
     activeTab === "for-you"
       ? getForYouFeed({ viewerId: session.user.id, limit: 20 })
@@ -113,6 +115,35 @@ export default async function FeedPage({
         id: true, slug: true, title: true, locations: true, workMode: true,
         publishedAt: true,
         company: { select: { name: true, logoUrl: true, slug: true } },
+      },
+    }),
+    // Upcoming recruitment fairs — mirrors the profile-page sidebar.
+    // OPEN or IN_PROGRESS, end date in the future so a fair that
+    // wrapped yesterday doesn't keep surfacing as "upcoming".
+    db.recruitmentDrive.findMany({
+      where: {
+        status: { in: ["OPEN", "IN_PROGRESS"] },
+        endsAt: { gte: new Date() },
+      },
+      orderBy: { startsAt: "asc" },
+      take: 3,
+      select: {
+        id: true, slug: true, title: true, city: true, state: true,
+        startsAt: true, endsAt: true,
+      },
+    }),
+    // Upcoming events — webinars / hybrid / in-person, status OPEN,
+    // start time still ahead. Hosted by a company on the platform.
+    db.event.findMany({
+      where: {
+        status: "OPEN",
+        startsAt: { gte: new Date() },
+      },
+      orderBy: { startsAt: "asc" },
+      take: 3,
+      select: {
+        id: true, slug: true, title: true, eventType: true, startsAt: true,
+        company: { select: { name: true, logoUrl: true } },
       },
     }),
   ]);
@@ -498,6 +529,115 @@ export default async function FeedPage({
               </Link>
             </Card>
           )}
+
+          {/* Upcoming job fairs — mirrors profile-page sidebar. Hidden
+              when nothing is upcoming so the rail doesn't get cluttered
+              with empty placeholder cards. */}
+          {upcomingFairs.length > 0 && (
+            <Card>
+              <div className="flex items-center justify-between">
+                <h2 className="text-section text-emce-text">Upcoming job fairs</h2>
+                <Link href="/fairs" className="text-xs font-bold text-emce-dark hover:underline">All</Link>
+              </div>
+              <ul className="mt-3 space-y-2">
+                {upcomingFairs.map((f) => {
+                  const when = new Date(f.startsAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+                  const place = [f.city, f.state].filter(Boolean).join(", ");
+                  return (
+                    <li key={f.id}>
+                      <Link
+                        href={`/fairs/${f.slug}`}
+                        className="flex items-start gap-2 rounded-md p-2 hover:bg-emce-light-soft"
+                      >
+                        <span className="text-base leading-none">📅</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 text-sm font-bold text-emce-text">{f.title}</p>
+                          <p className="text-hint text-emce-text-sec">{when} · {place}</p>
+                        </div>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+              <Link href="/fairs" className="mt-3 block text-center text-xs font-bold text-emce-dark hover:underline">
+                Browse all fairs →
+              </Link>
+            </Card>
+          )}
+
+          {/* Upcoming events — webinars / meetups / demo days hosted
+              by companies on the platform. Distinct from competitions
+              (Live competitions card above already covers those) and
+              from job fairs (multi-company hiring events). */}
+          {upcomingEvents.length > 0 && (
+            <Card>
+              <div className="flex items-center justify-between">
+                <h2 className="text-section text-emce-text">Upcoming events</h2>
+                <Link href="/events" className="text-xs font-bold text-emce-dark hover:underline">All</Link>
+              </div>
+              <ul className="mt-3 space-y-2">
+                {upcomingEvents.map((e) => {
+                  const when = new Date(e.startsAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true });
+                  const kindEmoji =
+                    e.eventType === "WEBINAR" ? "💻"
+                    : e.eventType === "HYBRID" ? "🔀"
+                    : "📍"; // IN_PERSON
+                  return (
+                    <li key={e.id}>
+                      <Link
+                        href={`/events/${e.slug}`}
+                        className="flex items-start gap-2 rounded-md p-2 hover:bg-emce-light-soft"
+                      >
+                        <span className="text-base leading-none">{kindEmoji}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="line-clamp-2 text-sm font-bold text-emce-text">{e.title}</p>
+                          <p className="text-hint text-emce-text-sec">{e.company.name} · {when}</p>
+                        </div>
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+              <Link href="/events" className="mt-3 block text-center text-xs font-bold text-emce-dark hover:underline">
+                Browse all events →
+              </Link>
+            </Card>
+          )}
+
+          {/* AI tools rail — static curated subset of /ai-tools. Same
+              six picks as the profile-page sidebar (keep both in sync
+              if a tool URL changes). Always renders — discovery surface
+              that should be visible to every feed viewer. */}
+          <Card>
+            <div className="flex items-center justify-between">
+              <h2 className="text-section text-emce-text">AI tools</h2>
+              <Link href="/ai-tools" className="text-xs font-bold text-emce-dark hover:underline">All</Link>
+            </div>
+            <p className="mt-1 text-hint text-emce-text-sec">Free EV-industry AI tools</p>
+            <ul className="mt-3 space-y-1">
+              {[
+                { href: "/career-explorer", emoji: "🧭", label: "EV Career Explorer" },
+                { href: "/ai-tools/mock-interview", emoji: "🎤", label: "Mock Interview" },
+                { href: "/ai-tools/interview-simulator", emoji: "🏭", label: "Company Interview Simulator" },
+                { href: "/ai-tools/cv-evaluation", emoji: "📊", label: "Resume Score" },
+                { href: "/ai-tools/cover-letter", emoji: "✉️", label: "Cover Letter Writer" },
+                { href: "/ai-tools/skills-analyzer", emoji: "🧪", label: "Skills Gap Analyzer" },
+              ].map((t) => (
+                <li key={t.href}>
+                  <Link
+                    href={t.href}
+                    className="flex items-center gap-2 rounded-md p-2 text-sm hover:bg-emce-light-soft"
+                  >
+                    <span className="text-base leading-none">{t.emoji}</span>
+                    <span className="font-bold text-emce-text">{t.label}</span>
+                  </Link>
+                </li>
+              ))}
+            </ul>
+            <Link href="/ai-tools" className="mt-3 block text-center text-xs font-bold text-emce-dark hover:underline">
+              Explore all tools →
+            </Link>
+          </Card>
 
           {/* Footer mini — LinkedIn's bottom-right About / Help block */}
           <div className="px-2 text-center text-[10px] text-emce-text-sec">

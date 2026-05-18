@@ -28,10 +28,17 @@ export default async function MessageThreadPage({
     },
   });
   if (!thread) notFound();
-  // Authorization
+  // Authorization. Peer threads use the canonical-pair scheme
+  // (smaller userId → candidateUserId, larger → employerUserId), so
+  // for a peer thread (applicationId === null) the viewer can legitimately
+  // be on EITHER slot. Without the third branch below, the high-side
+  // peer would 403 on their own conversation.
+  const isPeerHighSide =
+    thread.applicationId === null && thread.employerUserId === session.user.id;
   if (
     thread.candidateUserId !== session.user.id &&
     thread.application?.candidate.userId !== session.user.id &&
+    !isPeerHighSide &&
     session.user.role !== "ADMIN"
   ) {
     redirect("/403");
