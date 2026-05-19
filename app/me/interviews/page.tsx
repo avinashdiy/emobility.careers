@@ -42,9 +42,9 @@ export default async function MyInterviews() {
             {upcoming.map((i) => (
               <li key={i.id}>
                 <Card>
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="font-bold text-emce-text">{i.application.job.title}</div>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="font-semibold text-emce-text">{i.application.job.title}</div>
                       <div className="text-hint text-emce-text-sec">{i.application.job.company.name}</div>
                       <div className="mt-2 text-body text-emce-text">
                         🗓 {formatDateTime(i.scheduledAt)} · {i.durationMins} min · {i.mode}
@@ -54,7 +54,7 @@ export default async function MyInterviews() {
                           href={i.meetingUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="mt-1 inline-block text-hint font-bold text-emce-dark hover:underline"
+                          className="mt-1 inline-block text-hint font-semibold text-emce-dark hover:underline"
                         >
                           Join meeting →
                         </a>
@@ -62,8 +62,15 @@ export default async function MyInterviews() {
                       {i.location && (
                         <div className="text-hint text-emce-text-sec">📍 {i.location}</div>
                       )}
+                      {/* ICS download — drops the interview onto the
+                          candidate's personal calendar. Uses the
+                          stable `Interview.icsUid` so re-importing
+                          updates vs. duplicates the event. */}
+                      <Button asChild size="xs" variant="outline" className="mt-3">
+                        <a href={`/me/interviews/${i.id}.ics`}>📅 Add to calendar</a>
+                      </Button>
                     </div>
-                    <Badge variant="success">Scheduled</Badge>
+                    <Badge variant="success" className="shrink-0">Scheduled</Badge>
                   </div>
                 </Card>
               </li>

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Bookmark, Briefcase, Users, Trophy, GraduationCap, Eye, TrendingUp, Calendar } from "lucide-react";
+import { Bookmark, Briefcase, Users, Trophy, GraduationCap, Eye, TrendingUp, Calendar, Compass } from "lucide-react";
+import { DISCOVER_ITEMS } from "@/components/layout/discover-items";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
@@ -272,6 +273,33 @@ export default async function FeedPage({
               <ShortcutRow href="/me/sessions" icon={<GraduationCap className="h-3.5 w-3.5" />} label="Mentor sessions" />
               <ShortcutRow href="/me/competitions" icon={<Trophy className="h-3.5 w-3.5" />} label="My competitions" />
               <ShortcutRow href="/people" icon={<Users className="h-3.5 w-3.5" />} label="Discover people" />
+            </ul>
+          </Card>
+
+          {/* Discover pillar links — same list as the header
+              "Discover" megamenu, mirrored here for one-click reach
+              while a candidate is scrolling the feed. Single source
+              of truth lives in `components/layout/discover-items.ts`
+              so both surfaces stay in sync automatically. */}
+          <Card className="p-0">
+            <div className="flex items-center gap-2 border-b border-emce-border px-4 py-2.5">
+              <Compass className="h-3.5 w-3.5 text-emce-text-sec" />
+              <p className="text-xs font-bold uppercase tracking-wide text-emce-text-sec">
+                Discover
+              </p>
+            </div>
+            <ul className="py-1 text-sm">
+              {DISCOVER_ITEMS.map((it) => {
+                const Icon = it.icon;
+                return (
+                  <ShortcutRow
+                    key={it.href}
+                    href={it.href}
+                    icon={<Icon className="h-3.5 w-3.5" />}
+                    label={it.label}
+                  />
+                );
+              })}
             </ul>
           </Card>
         </aside>

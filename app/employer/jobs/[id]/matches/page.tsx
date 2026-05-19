@@ -128,18 +128,3 @@ export default async function MatchesPage({
     </EmployerShell>
   );
 }
-
-function ScoreBar({ label, value }: { label: string; value: number }) {
-  const pct = Math.round(Math.max(0, Math.min(1, value)) * 100);
-  return (
-    <div>
-      <div className="flex items-center justify-between text-emce-text-muted">
-        <span>{label}</span>
-        <span>{pct}</span>
-      </div>
-      <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-emce-border">
-        <div className="h-full bg-emce-mid" style={{ width: `${pct}%` }} />
-      </div>
-    </div>
-  );
-}

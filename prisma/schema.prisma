@@ -613,6 +613,7 @@ model CandidateProfile {
   assessmentAttempts     AssessmentAttempt[]
   featuredSlots          FeaturedSlot[]
   jobMatchCache          JobMatchCache[]
+  whyCandidateExplanations WhyCandidateExplanation[]
   jobChangeAnnouncements JobChangeAnnouncement[]
 
   /// Whether the platform should write a public JobChangeAnnouncement
@@ -1149,6 +1150,7 @@ model JobPosting {
   campusDrives         CampusDriveJob[]
   reports              JobReport[]
   matchCache           JobMatchCache[]
+  whyCandidateExplanations WhyCandidateExplanation[]
   recruitmentDriveJobs RecruitmentDriveJob[]
   // Posts that attach this job to the social feed
   feedPosts            Post[]
@@ -4131,6 +4133,49 @@ model JobMatchCache {
   @@unique([candidateId, jobId])
   @@index([candidateId, expiresAt])
   @@index([jobId, score])
+}
+
+// ─── "Why this candidate" GPT explanation cache ───────────────
+//
+// Per-(job, candidate) cache of the GPT-4o-generated "why this
+// candidate fits this job" explanation surfaced on the application
+// detail page (and, in future, the matches page pre-application).
+//
+// Why a separate table from `Application.aiSummary`:
+//   • `Application.aiSummary` is a *balanced triage verdict* — the
+//     prompt calls out gaps and concerns alongside strengths so the
+//     recruiter has a neutral read for the move/pass decision.
+//   • This is a focused *make-the-case* explanation — what to tell
+//     the hiring manager about why this person is worth the
+//     interview slot. Different audience, different prompt, no
+//     "concerns" surface.
+//
+// Keyed on `(jobId, candidateId)` not `applicationId` so the same
+// row works on the matches page (where no Application exists yet —
+// the recruiter is browsing pre-invite) and on the application
+// detail page (after they've applied).
+//
+// Cache invalidation strategy: none automatic in v1. Recruiter can
+// click "Refresh" to force a regenerate, which upserts the row. If
+// we later want time-based staleness, add `expiresAt` like
+// `JobMatchCache` and check it in the cache-read path.
+model WhyCandidateExplanation {
+  id                String           @id @default(cuid())
+  jobId             String
+  job               JobPosting       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidateId       String
+  candidate         CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  /// 3-4 sentence explanation. Plain text, ~400-600 chars typical.
+  explanation       String           @db.Text
+  /// Model name that produced this (e.g. "gpt-4o"). Lets us bump
+  /// the cache on a model upgrade when reasoning quality jumps.
+  model             String
+  promptTokens      Int              @default(0)
+  completionTokens  Int              @default(0)
+  generatedAt       DateTime         @default(now())
+
+  @@unique([jobId, candidateId])
+  @@index([candidateId])
 }
 
 // ─── EV Industry Pulse aggregates ─────────────────────────────

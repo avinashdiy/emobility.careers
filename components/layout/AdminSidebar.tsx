@@ -121,6 +121,16 @@ function buildGroups(counts: Counts): Group[] {
       ],
     },
     {
+      title: "Events",
+      items: [
+        // Webinars, demo days, meetups, workshops — posted by
+        // companies via /employer/events/new. This is the central
+        // moderation surface so admin can spot a misleading title /
+        // spammy series before user reports come in.
+        { href: "/admin/events", label: "Moderation", icon: CalendarDays },
+      ],
+    },
+    {
       title: "Content & Taxonomy",
       items: [
         // CMS pages — hand-authored or WP-imported HTML, surfaced

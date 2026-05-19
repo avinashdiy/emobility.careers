@@ -2,41 +2,19 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import {
-  ChevronDown,
-  Briefcase,
-  Trophy,
-  GraduationCap,
-  Users,
-  Building2,
-  BookOpen,
-  Calendar,
-  Compass,
-  Award,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react";
+import { ChevronDown } from "lucide-react";
+import { DISCOVER_ITEMS } from "./discover-items";
 
 /**
  * "Discover" megamenu collapses the secondary nav into one slot —
  * frees the header for the primary social actions while keeping
  * every pillar one click away. Mirrors the LinkedIn "Work" app
  * launcher pattern but tuned for our pillars.
+ *
+ * The item list lives in `./discover-items` so the `/feed` sidebar
+ * widget (and any future surface) renders the same set without
+ * duplicating the array.
  */
-const ITEMS = [
-  { href: "/jobs", label: "Jobs", desc: "EV roles across India", icon: Briefcase },
-  { href: "/ai-tools", label: "AI Tools", desc: "Resume, interview prep, cover letter, and more", icon: Sparkles },
-  { href: "/career-explorer", label: "Career Explorer", desc: "AI-mapped next moves with skill gaps", icon: Compass },
-  { href: "/me/skill-swap", label: "Skill Swap", desc: "Pair with someone who knows what you're learning", icon: Users },
-  { href: "/skills", label: "Verified skill badges", desc: "MCQ tests recruiters can filter on", icon: ShieldCheck },
-  { href: "/awards", label: "Best EV Employers", desc: "Annual rankings from real reviews", icon: Award },
-  { href: "/articles", label: "Knowledge", desc: "Explainers, deep dives, career guides", icon: BookOpen },
-  { href: "/fairs", label: "Job fairs", desc: "Multi-company recruitment drives", icon: Calendar },
-  { href: "/competitions", label: "Competitions", desc: "Hackathons, case studies, ideathons", icon: Trophy },
-  { href: "/mentors", label: "Mentors", desc: "Book 1:1 sessions with EV experts", icon: GraduationCap },
-  { href: "/people", label: "People", desc: "Engineers, students, faculty, leaders", icon: Users },
-  { href: "/companies", label: "Companies", desc: "Browse EV companies hiring", icon: Building2 },
-] as const;
 
 export function DiscoverMenu({ label }: { label: string }) {
   const [open, setOpen] = useState(false);
@@ -75,7 +53,7 @@ export function DiscoverMenu({ label }: { label: string }) {
       {open && (
         <div role="menu" className="absolute left-0 top-full z-50 mt-1 w-80 overflow-hidden rounded-md border border-emce-border bg-white shadow-emce-lg">
           <ul className="p-2">
-            {ITEMS.map((it) => {
+            {DISCOVER_ITEMS.map((it) => {
               const Icon = it.icon;
               return (
                 <li key={it.href}>

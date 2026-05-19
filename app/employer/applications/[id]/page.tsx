@@ -15,6 +15,10 @@ import {
 import { Badge } from "@/components/ui/badge";
 // Wave B #17 — AI applicant summary
 import { ensureApplicationSummary, refreshApplicationSummary } from "@/server/ai-summary/actions";
+// "Why this candidate" — focused make-the-case explanation (separate
+// from the balanced AI summary above). Opt-in via button click so we
+// don't double-bill OpenAI on every ATS open.
+import { getWhyExplanation, generateWhyExplanationAction } from "@/server/why-candidate/actions";
 import { Avatar } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/select";
@@ -131,6 +135,20 @@ export default async function ApplicationDetail({
       aiSummaryAt = new Date();
     }
   }
+
+  // "Why this candidate" — cache-only read. We deliberately DON'T
+  // auto-generate here because:
+  //   (a) Doubles the per-open OpenAI bill when the recruiter only
+  //       wanted the AI summary above.
+  //   (b) The make-the-case framing is most useful when the recruiter
+  //       has already decided this candidate is interesting and wants
+  //       a pitch — clicking the button is the signal.
+  // The row is keyed on (jobId, candidateId), not applicationId, so
+  // it'd survive a withdraw → re-apply cycle.
+  const whyExplanation = await getWhyExplanation(
+    application.job.id,
+    application.candidate.id,
+  );
 
   const jobAssessments = await db.assessment.findMany({
     where: { jobId: application.job.id },
@@ -367,6 +385,53 @@ export default async function ApplicationDetail({
               <p className="mt-2 text-body text-emce-text">{aiSummary}</p>
             </div>
           )}
+
+          {/* "Why this candidate" panel — focused make-the-case
+              explanation. Sits directly below the AI summary because
+              the two complement each other: summary = balanced
+              triage verdict, this = pitch-to-hiring-manager copy.
+              Opt-in via button to avoid double-billing OpenAI. */}
+          <div
+            className="mt-3 rounded-md border border-emce-dark/30 bg-gradient-to-br from-emce-light-bg to-white p-3"
+            role="region"
+            aria-label="Why this candidate fits the job"
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-emce-dark">
+                ✨ Why this candidate
+                {whyExplanation && (
+                  <span className="ml-2 font-normal normal-case text-emce-text-muted">
+                    {relativeTime(whyExplanation.generatedAt)}
+                  </span>
+                )}
+              </p>
+              <form action={generateWhyExplanationAction} className="flex flex-col items-end gap-2">
+                <input type="hidden" name="jobId" value={application.job.id} />
+                <input type="hidden" name="candidateId" value={application.candidate.id} />
+                <input type="hidden" name="applicationId" value={application.id} />
+                <SubmitButton
+                  variant={whyExplanation ? "ghost" : "default"}
+                  size="sm"
+                  pendingLabel={whyExplanation ? "…" : "Generating…"}
+                >
+                  {whyExplanation ? "Refresh" : "✨ Generate explanation"}
+                </SubmitButton>
+                <AIProgress
+                  steps={["Reading profile", "Mapping to JD", "Drafting pitch"]}
+                  stepMs={1500}
+                />
+              </form>
+            </div>
+            {whyExplanation ? (
+              <p className="mt-2 text-body text-emce-text">{whyExplanation.explanation}</p>
+            ) : (
+              <p className="mt-2 text-hint italic text-emce-text-sec">
+                Click the button to generate a 3-4 sentence pitch the recruiter can paste into Slack or an
+                email when championing this candidate to the hiring manager. Different from the AI summary above —
+                this is the pro side only, focused on making the case.
+              </p>
+            )}
+          </div>
 
           {/*
             Contact row — unconditional. The candidate has applied to
