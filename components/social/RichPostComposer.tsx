@@ -243,7 +243,7 @@ export function RichPostComposer({ user, companies }: Props) {
         <Avatar src={user.profilePhotoUrl} name={user.name} size="md" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-emce-text">{user.name}</span>
+            <span className="font-semibold text-emce-text">{user.name}</span>
             {companies.length > 0 && (
               <NativeSelect value={asCompanyId} onChange={(e) => setAsCompanyId(e.target.value)} className="h-7 text-xs">
                 <option value="">Posting as me</option>
@@ -497,8 +497,11 @@ function ModeTab({ active, onClick, label, icon }: { active: boolean; onClick: (
     <button
       type="button"
       onClick={onClick}
-      className={`flex items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-bold ${
-        active ? "bg-emce-light-soft text-emce-darkest" : "text-emce-text-sec hover:text-emce-text"
+      // Pill-shape + semibold to match the platform Button standard.
+      // Active tab uses the same soft tint as the LinkedIn composer's
+      // selected state (subtle bg, no border-shift to avoid jumping).
+      className={`flex items-center justify-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors ${
+        active ? "bg-emce-light-soft text-emce-darkest" : "text-emce-text-sec hover:bg-emce-light-soft/60 hover:text-emce-text"
       }`}
     >
       {icon}

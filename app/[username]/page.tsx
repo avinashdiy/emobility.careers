@@ -966,7 +966,7 @@ export default async function PublicCandidateProfile({
             {/* Identity block: name, headline, location row, stats row, badges */}
             <div className="space-y-1.5">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <h1 className="text-[22px] font-bold leading-tight tracking-tight text-emce-text sm:text-2xl">
+                <h1 className="text-[22px] font-semibold leading-tight tracking-tight text-emce-text sm:text-2xl">
                   {fullName}
                 </h1>
                 {/* Twitter-style platform-issued blue checkmark — only
@@ -1936,8 +1936,8 @@ export default async function PublicCandidateProfile({
                                 {pName}
                               </p>
                               {p.isDIYguruVerified && (
-                                <Badge variant="verified" size="sm" className="shrink-0 text-[8px]">
-                                  ⭐
+                                <Badge variant="verified" size="sm" className="shrink-0 px-1 text-[8px]" aria-label="DIYguru verified">
+                                  <GraduationCap className="h-2.5 w-2.5" aria-hidden />
                                 </Badge>
                               )}
                             </div>

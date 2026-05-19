@@ -310,7 +310,7 @@ export function PostCard({
             <FileText className="h-5 w-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="line-clamp-1 text-sm font-bold text-emce-text">{d.fileName}</p>
+            <p className="line-clamp-1 text-sm font-semibold text-emce-text">{d.fileName}</p>
             <p className="text-hint text-emce-text-sec">
               {formatFileSize(d.byteSize)} · {extLabel(d.mime, d.fileName)}
             </p>
@@ -364,7 +364,7 @@ export function PostCard({
               <Link
                 key={t}
                 href={`/tag/${t}`}
-                className="text-hint font-bold text-emce-dark hover:underline"
+                className="text-hint font-semibold text-emce-dark hover:underline"
               >
                 #{t}
               </Link>
@@ -386,7 +386,7 @@ export function PostCard({
                 />
                 <Link
                   href={`/${post.repostOf.author.candidateProfile.slug}`}
-                  className="font-bold text-emce-text hover:underline"
+                  className="font-semibold text-emce-text hover:underline"
                 >
                   {post.repostOf.author.candidateProfile.firstName} {post.repostOf.author.candidateProfile.lastName ?? ""}
                 </Link>
@@ -397,7 +397,7 @@ export function PostCard({
           <p className="mt-2 line-clamp-3 text-body text-emce-text-sec">{post.repostOf.body}</p>
           <Link
             href={`/posts/${post.repostOf.id}`}
-            className="mt-1 inline-block text-hint font-bold text-emce-dark hover:underline"
+            className="mt-1 inline-block text-hint font-semibold text-emce-dark hover:underline"
           >
             View original →
           </Link>
@@ -423,7 +423,7 @@ export function PostCard({
               <div className="flex items-center gap-1.5 text-hint text-emce-mid-muted">
                 <Briefcase className="h-3.5 w-3.5" /> Open role
               </div>
-              <div className="font-bold text-emce-text">{post.attachedJob.title}</div>
+              <div className="font-semibold text-emce-text">{post.attachedJob.title}</div>
               <div className="text-hint text-emce-text-sec">
                 {post.attachedJob.company.name} · {post.attachedJob.locations[0] ?? "Remote"} · {post.attachedJob.workMode.toLowerCase()}
               </div>
@@ -452,13 +452,20 @@ export function PostCard({
         const shown = named.slice(0, 2);
         const others = Math.max(0, post.reactionsCount - shown.length);
         return (
-          <p className="mt-3 text-hint text-emce-text-sec">
-            <span>👍 Liked by </span>
+          <p className="mt-3 flex flex-wrap items-baseline gap-x-1 text-hint text-emce-text-sec">
+            {/* LinkedIn-style mini reaction stack: a single blue thumb
+                circle (16px) sits inline before the names. Was the
+                `👍 ` text emoji — read as low-fi vs. LinkedIn's
+                always-blue circle treatment. */}
+            <span className="inline-grid h-4 w-4 shrink-0 place-items-center rounded-full bg-blue-600 text-[9px] leading-none text-white" aria-hidden>
+              👍
+            </span>
+            <span>Liked by </span>
             {shown.map((n, i) => (
               <span key={n.slug}>
                 <Link
                   href={`/${n.slug}`}
-                  className="font-bold text-emce-text hover:underline"
+                  className="font-semibold text-emce-text hover:underline"
                 >
                   {n.name}
                 </Link>
@@ -485,7 +492,7 @@ export function PostCard({
             {post.kind === "QUESTION" && (post.answerCount ?? 0) > 0 && (
               <Link
                 href={`/posts/${post.id}`}
-                className="font-bold text-emce-dark hover:underline"
+                className="font-semibold text-emce-dark hover:underline"
               >
                 {post.answerCount} {post.answerCount === 1 ? "answer" : "answers"}
               </Link>
@@ -551,7 +558,7 @@ function renderBodyWithLinks(body: string): React.ReactNode[] {
     if (tok.startsWith("#")) {
       const tag = tok.slice(1).toLowerCase();
       parts.push(
-        <Link key={i++} href={`/tag/${tag}`} className="font-bold text-emce-dark hover:underline">
+        <Link key={i++} href={`/tag/${tag}`} className="font-semibold text-emce-dark hover:underline">
           {tok}
         </Link>,
       );
@@ -723,7 +730,7 @@ function EmbedRenderer({
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="mt-1 inline-block text-[11px] font-bold text-emce-dark hover:underline"
+          className="mt-1 inline-block text-[11px] font-semibold text-emce-dark hover:underline"
         >
           View on LinkedIn →
         </a>
@@ -765,10 +772,10 @@ function EmbedRenderer({
         </div>
       )}
       <div className="min-w-0 flex-1">
-        <p className="text-hint font-bold uppercase tracking-wide text-emce-text-sec">
+        <p className="text-hint font-semibold uppercase tracking-wide text-emce-text-sec">
           {PROVIDER_LABEL[provider]}
         </p>
-        <p className="line-clamp-2 text-sm font-bold text-emce-text">
+        <p className="line-clamp-2 text-sm font-semibold text-emce-text">
           {title ?? url.replace(/^https?:\/\//, "")}
         </p>
         <p className="line-clamp-1 text-hint text-emce-text-sec">View on {PROVIDER_LABEL[provider]} →</p>

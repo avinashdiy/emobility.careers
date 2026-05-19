@@ -159,7 +159,7 @@ function CommentItem({
       </Link>
       <div className="flex-1">
         <div className="rounded-2xl bg-emce-light-soft px-3 py-2">
-          <Link href={c ? `/${c.slug}` : "#"} className="font-bold text-emce-text hover:underline">
+          <Link href={c ? `/${c.slug}` : "#"} className="font-semibold text-emce-text hover:underline">
             {fullName}
           </Link>
           {c?.headline && <p className="text-hint text-emce-text-muted line-clamp-1">{c.headline}</p>}
@@ -189,7 +189,7 @@ function CommentItem({
 function ReplyForm({ postId, parentId }: { postId: string; parentId: string }) {
   return (
     <details className="ml-10 mt-1">
-      <summary className="cursor-pointer text-hint font-bold text-emce-dark hover:underline">
+      <summary className="cursor-pointer text-hint font-semibold text-emce-dark hover:underline">
         Reply
       </summary>
       <form action={addComment} className="mt-2 flex items-start gap-2">

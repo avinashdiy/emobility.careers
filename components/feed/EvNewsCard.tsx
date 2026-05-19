@@ -22,14 +22,20 @@ export async function EvNewsCard() {
 
   return (
     <Card>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Newspaper className="h-4 w-4 text-emce-darkest" aria-hidden="true" />
-          <h2 className="text-section text-emce-text">What&apos;s happening in EV</h2>
+      {/* Header — title on its own line so it never wraps + clashes
+          with the attribution tag at the right. The attribution sits
+          below as a small subtitle next to the section icon. Same
+          pattern LinkedIn uses on its "LinkedIn News" widget. The
+          underline divider gives the header a defined box feel
+          without nesting another Card. */}
+      <div className="flex items-start gap-2 border-b border-emce-border pb-2.5">
+        <Newspaper className="mt-0.5 h-4 w-4 shrink-0 text-emce-darkest" aria-hidden="true" />
+        <div className="min-w-0 flex-1">
+          <h2 className="text-section text-emce-text">EV industry news</h2>
+          <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-wider text-emce-mid-muted">
+            via Google News · updated every 15 min
+          </p>
         </div>
-        <span className="text-[10px] font-bold uppercase tracking-wider text-emce-mid-muted">
-          via Google News
-        </span>
       </div>
       <ul className="mt-3 space-y-2.5">
         {items.map((item) => (
@@ -40,7 +46,7 @@ export async function EvNewsCard() {
               rel="noopener noreferrer"
               className="block rounded-md p-2 -mx-2 transition hover:bg-emce-light-soft"
             >
-              <p className="line-clamp-2 text-sm font-bold leading-snug text-emce-text group-hover:underline">
+              <p className="line-clamp-2 text-sm font-semibold leading-snug text-emce-text group-hover:underline">
                 {item.title}
               </p>
               <p className="mt-0.5 line-clamp-1 text-hint text-emce-text-muted">
@@ -56,7 +62,7 @@ export async function EvNewsCard() {
         href="https://news.google.com/search?q=electric+vehicle+EV+India"
         target="_blank"
         rel="noopener noreferrer"
-        className="mt-3 block text-center text-xs font-bold text-emce-dark hover:underline"
+        className="mt-3 block text-center text-xs font-semibold text-emce-dark hover:underline"
       >
         More on Google News →
       </a>

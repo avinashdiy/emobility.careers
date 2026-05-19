@@ -179,7 +179,7 @@ export default async function FeedPage({
               />
               <Link
                 href={`/${me.slug}`}
-                className="mt-1.5 block text-sm font-bold text-emce-text hover:underline"
+                className="mt-1.5 block text-sm font-semibold text-emce-text hover:underline"
               >
                 {fullName}
               </Link>
@@ -297,7 +297,7 @@ export default async function FeedPage({
                 href="/feed"
                 role="tab"
                 aria-selected={activeTab === "following"}
-                className={`-mb-px border-b-2 px-3 py-2 text-sm font-bold transition ${
+                className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold transition ${
                   activeTab === "following"
                     ? "border-emce-dark text-emce-text"
                     : "border-transparent text-emce-text-sec hover:text-emce-text"
@@ -309,7 +309,7 @@ export default async function FeedPage({
                 href="/feed?tab=for-you"
                 role="tab"
                 aria-selected={activeTab === "for-you"}
-                className={`-mb-px border-b-2 px-3 py-2 text-sm font-bold transition ${
+                className={`-mb-px border-b-2 px-3 py-2 text-sm font-semibold transition ${
                   activeTab === "for-you"
                     ? "border-emce-dark text-emce-text"
                     : "border-transparent text-emce-text-sec hover:text-emce-text"
@@ -322,7 +322,7 @@ export default async function FeedPage({
               <span className="hidden sm:inline">Sort by:</span>
               <button
                 type="button"
-                className="ml-1 inline-flex items-center gap-0.5 font-bold text-emce-text hover:text-emce-dark"
+                className="ml-1 inline-flex items-center gap-0.5 font-semibold text-emce-text hover:text-emce-dark"
               >
                 Top <span aria-hidden>▾</span>
               </button>
@@ -419,13 +419,13 @@ export default async function FeedPage({
                   No matches yet — try one of these to fill your feed:
                 </p>
                 <div className="flex flex-col gap-1.5">
-                  <Link href="/people" className="rounded-md border border-emce-border px-2.5 py-1.5 text-xs font-semibold text-emce-text hover:border-emce-mid hover:bg-emce-light-soft">
+                  <Link href="/people" className="rounded-full border border-emce-border px-3 py-1.5 text-xs font-semibold text-emce-text hover:border-emce-mid hover:bg-emce-light-soft">
                     🔍 Browse people
                   </Link>
-                  <Link href="/companies" className="rounded-md border border-emce-border px-2.5 py-1.5 text-xs font-semibold text-emce-text hover:border-emce-mid hover:bg-emce-light-soft">
+                  <Link href="/companies" className="rounded-full border border-emce-border px-3 py-1.5 text-xs font-semibold text-emce-text hover:border-emce-mid hover:bg-emce-light-soft">
                     🏢 Follow companies
                   </Link>
-                  <Link href="/mentors" className="rounded-md border border-emce-border px-2.5 py-1.5 text-xs font-semibold text-emce-text hover:border-emce-mid hover:bg-emce-light-soft">
+                  <Link href="/mentors" className="rounded-full border border-emce-border px-3 py-1.5 text-xs font-semibold text-emce-text hover:border-emce-mid hover:bg-emce-light-soft">
                     🎓 Find a mentor
                   </Link>
                 </div>
@@ -444,20 +444,19 @@ export default async function FeedPage({
                         <div className="min-w-0 flex-1">
                           <Link
                             href={`/${s.slug}`}
-                            className="block truncate text-sm font-bold text-emce-text hover:underline"
+                            className="block truncate text-sm font-semibold text-emce-text hover:underline"
                           >
                             {sname}
                           </Link>
                           {s.headline && (
                             <p className="line-clamp-2 text-hint text-emce-text-sec">{s.headline}</p>
                           )}
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {s.evDomains.slice(0, 2).map((d) => (
-                              <Badge key={d.evDomain.name} variant="outline" className="text-[10px]">
-                                {d.evDomain.name}
-                              </Badge>
-                            ))}
-                          </div>
+                          {/* EV-domain badges intentionally suppressed
+                              here — they doubled up visual weight on a
+                              card that's primarily about the person +
+                              the Connect CTA. The matching context
+                              ("Same EV domain as you") already lives
+                              in the card subtitle above the list. */}
                           <div className="mt-2">
                             <ConnectButton
                               targetUserId={s.user.id}
