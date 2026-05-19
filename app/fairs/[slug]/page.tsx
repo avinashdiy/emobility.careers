@@ -386,101 +386,138 @@ export default async function FairLandingPage({
           </div>
         )}
 
-        {/* Hero — stronger gradient over banner so titles + meta
-            strip stay legible on busy / light banners. The single
-            `bg-black/40` overlay was insufficient on day-time event
-            photos with bright skies. We layer:
-              1. a darker base (bg-black/55) so the floor contrast
-                 is always above WCAG AA for white text
-              2. a vertical gradient pinning extra darkness at the
-                 bottom where the title + meta row sit
-              3. a left-side gradient on wide screens that keeps the
-                 right-half of the banner imagery breathing while
-                 the text-heavy left side stays high-contrast. */}
-        <section className="relative">
-          {drive.bannerImageUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={drive.bannerImageUrl}
-              alt=""
-              className="absolute inset-0 h-full w-full object-cover"
-            />
-          ) : (
-            <div className="emce-hero-gradient absolute inset-0" />
+        {/* ─── Hero ────────────────────────────────────────────
+            Premium, enterprise-credible. Layered backdrop:
+              1. `bg-emce-mesh` base — multi-stop green radial-on-
+                 linear gradient anchoring depth in the brand greens
+                 (emce-darkest → emce-dark → emce-dark-deep with
+                 emce-mid + emce-light highlight halos)
+              2. Banner image (when uploaded) drops over the mesh at
+                 25% opacity with `mix-blend-soft-light` so it adds
+                 texture but the green still owns the page
+              3. Left-side dark gradient on banner mode keeps the
+                 text-heavy left column high-contrast on light
+                 banners; bottom vignette eases the transition into
+                 the next section's lighter surface.
+            Headline uses the `text-hero` token (clamp 32-42px / 800
+            / -0.02em tracking) — enterprise hero scale. */}
+        <section className="relative overflow-hidden">
+          {/* Base — always present green-mesh gradient */}
+          <div aria-hidden className="absolute inset-0 bg-emce-mesh" />
+          {/* Banner overlay (texture, not content) — when a banner
+              is uploaded we drop a uniform 25% darkest-green wash
+              ON TOP of the banner BEFORE the left gradient so even
+              the rightmost edge (where the left gradient ends) is
+              never raw banner. This is the WCAG hardening pass:
+              CTAs on the right of the hero row sit on a backdrop
+              that mixes (75% green mesh × 25% banner) × +25% green
+              wash, keeping the white-text contrast above ~5.5:1 on
+              any banner brightness. */}
+          {drive.bannerImageUrl && (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={drive.bannerImageUrl}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover opacity-25 mix-blend-soft-light"
+              />
+              {/* Uniform baseline tint — guards the right column on
+                  bright banners. ~25% emce-darkest never disappears,
+                  regardless of where the visitor's eye lands. */}
+              <div aria-hidden className="absolute inset-0 bg-emce-darkest/25" />
+              {/* Left-side dark wash + sustained right-edge tint
+                  (`to-emce-darkest/20` instead of `to-transparent`)
+                  so the rightmost CTAs / hiring-partner anchor /
+                  share trigger keep ~5.5:1 contrast on any banner. */}
+              <div aria-hidden className="absolute inset-0 bg-gradient-to-r from-emce-darkest/80 via-emce-darkest/50 to-emce-darkest/20" />
+            </>
           )}
-          <div className="absolute inset-0 bg-black/55" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-black/30" />
-          <div className="container relative max-w-5xl py-10 text-white md:py-14 [text-shadow:_0_1px_2px_rgba(0,0,0,0.5)]">
+          {/* Bottom vignette — deepened from /40 h-32 to /55 h-40
+              so the CTA row (which wraps to multiple lines on mobile
+              and sits at the bottom of the hero) always has a darker
+              ground beneath. White CTAs on white backdrops with a
+              translucent fill need this floor; without it mobile
+              looked marginal on bright banners. */}
+          <div aria-hidden className="absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-emce-darkest/55 to-transparent" />
+
+          <div className="container relative max-w-5xl py-16 text-white md:py-24">
+            {/* Status + date chip row — subtle backdrop-blur pills so
+                they read as ambient meta, not loud CTAs. */}
             <div className="flex flex-wrap items-center gap-2">
-              {isLive && <Badge variant="warning">🔴 Live now</Badge>}
-              {isClosed && <Badge variant="outline">Closed</Badge>}
-              {drive.status === "OPEN" && drive.startsAt > new Date() && (
-                <Badge variant="default">Upcoming</Badge>
+              {isLive && (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-emce-light px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-emce-darkest shadow-emce">
+                  <span aria-hidden className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-emce-darkest" />
+                  Live now
+                </span>
               )}
-              <span className="text-hint">
-                📅 {formatDateRange(drive.startsAt, drive.endsAt)}
+              {isClosed && (
+                <span className="inline-flex items-center rounded-full border border-white/30 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/80">
+                  Closed
+                </span>
+              )}
+              {drive.status === "OPEN" && drive.startsAt > new Date() && (
+                <span className="inline-flex items-center rounded-full border border-white/30 bg-white/5 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-white/90 backdrop-blur-sm">
+                  Upcoming
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-[11px] font-medium text-white/90 backdrop-blur-sm">
+                <span aria-hidden>📅</span> {formatDateRange(drive.startsAt, drive.endsAt)}
               </span>
             </div>
-            <h1 className="mt-3 text-2xl font-extrabold leading-tight tracking-tight md:text-4xl">
+
+            {/* Headline — text-hero token, max-w to prevent ultra-wide
+                line-lengths on long event titles. */}
+            <h1 className="mt-6 max-w-3xl text-hero text-white">
               {drive.title}
             </h1>
             {drive.tagline && (
-              <p className="mt-2 max-w-2xl text-white/85 md:text-lg">{drive.tagline}</p>
+              <p className="mt-4 max-w-2xl text-base leading-relaxed text-white/85 md:text-lg">
+                {drive.tagline}
+              </p>
             )}
-            <div className="mt-4 flex flex-wrap gap-x-4 gap-y-2 text-sm">
-              {drive.venueName && <span>🏟️ {drive.venueName}</span>}
-              <span>
-                📍 {drive.city}
+
+            {/* Compact meta strip — venue + location only. The
+                candidate / company / role counts move OUT of the
+                hero and into the dedicated stat band below where
+                they get the oversized-numeral treatment. */}
+            <div className="mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-white/75">
+              {drive.venueName && (
+                <span className="inline-flex items-center gap-1.5">
+                  <span aria-hidden>🏟️</span> {drive.venueName}
+                </span>
+              )}
+              <span className="inline-flex items-center gap-1.5">
+                <span aria-hidden>📍</span> {drive.city}
                 {drive.state ? `, ${drive.state}` : ""}
               </span>
-              {/* Marketing hero stat strip. `+` suffix appears only
-                  while we're rendering the aspirational target (live
-                  count hasn't overtaken it yet) — once the real
-                  number passes the target, the suffix drops. */}
-              <span>
-                👥 {displayCandidatesCount.toLocaleString("en-IN")}
-                {candidatesIsTarget ? "+" : ""} candidates
-              </span>
-              <span>
-                🏢 {displayCompaniesCount.toLocaleString("en-IN")}
-                {companiesIsTarget ? "+" : ""} companies
-              </span>
-              <span>
-                💼 {displayPositionsCount.toLocaleString("en-IN")}
-                {positionsIsTarget ? "+" : ""} roles
-              </span>
             </div>
-            <div className="mt-5 flex flex-wrap items-center gap-2">
-              {/* #2 Attendee registration CTA — separate from
-                  applying to any specific job. Three states the user
-                  can be in: not signed in / no registration yet /
-                  already registered. Closed fairs hide the CTA
-                  entirely. */}
-              {/* Signed-out: route to the inline-signup form rather
-                  than /signin → the user doesn't have an account yet
-                  in the common Recruitathon traffic case (social
-                  share, placement-team email, etc.). The form creates
-                  the account + the registration in one shot. Three
-                  audiences = three CTAs side-by-side. */}
+
+            {/* CTAs — pill shape, semibold weight, layered shadow.
+                Primary candidate path uses the emce-light fill for
+                pop against the dark hero; secondary employer + TPO
+                paths use a translucent backdrop-blur chip so they
+                read as supportive options without competing for the
+                primary visual weight. */}
+            <div className="mt-8 flex flex-wrap items-center gap-2">
               {registrationOpen && !session?.user && (
                 <>
                   <Link
                     href={`/fairs/${drive.slug}/register?as=candidate`}
-                    className="inline-flex h-10 items-center rounded-md bg-emce-light px-5 text-sm font-bold text-emce-darkest hover:bg-emce-mid"
+                    className="inline-flex h-11 items-center rounded-full bg-emce-light px-6 text-sm font-semibold text-emce-darkest shadow-emce-lg transition hover:bg-emce-mid hover:shadow-emce-hover"
                   >
                     🎓 Register as candidate
                   </Link>
                   <Link
                     href={`/fairs/${drive.slug}/register?as=employer`}
-                    className="inline-flex h-10 items-center rounded-md border border-emce-mid bg-white px-5 text-sm font-bold text-emce-darkest hover:bg-emce-light-soft"
+                    className="inline-flex h-11 items-center rounded-full border border-white/25 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
                   >
                     🏢 Register company
                   </Link>
                   <Link
                     href={`/fairs/${drive.slug}/register?as=tpo`}
-                    className="inline-flex h-10 items-center rounded-md border border-emce-mid bg-white px-5 text-sm font-bold text-emce-darkest hover:bg-emce-light-soft"
+                    className="inline-flex h-11 items-center rounded-full border border-white/25 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
                   >
-                    📋 Register as TPO / College
+                    📋 Register as TPO
                   </Link>
                 </>
               )}
@@ -490,20 +527,15 @@ export default async function FairLandingPage({
                     <input type="hidden" name="driveId" value={drive.id} />
                     <button
                       type="submit"
-                      className="inline-flex h-10 items-center rounded-md bg-emce-light px-5 text-sm font-bold text-emce-darkest hover:bg-emce-mid"
+                      className="inline-flex h-11 items-center rounded-full bg-emce-light px-6 text-sm font-semibold text-emce-darkest shadow-emce-lg transition hover:bg-emce-mid hover:shadow-emce-hover"
                     >
                       Register to attend
                     </button>
                   </form>
                 ) : (
-                  // Not-eligible state — render a deep-link to the
-                  // profile editor instead of the register button.
-                  // The actual eligibility CARD with per-gap fixes
-                  // sits in the body below the hero; this button is
-                  // just the quick affordance to get there.
                   <Link
                     href={`/me/profile?incomplete=fair&fairSlug=${drive.slug}`}
-                    className="inline-flex h-10 items-center rounded-md bg-emce-light px-5 text-sm font-bold text-emce-darkest hover:bg-emce-mid"
+                    className="inline-flex h-11 items-center rounded-full bg-emce-light px-6 text-sm font-semibold text-emce-darkest shadow-emce-lg transition hover:bg-emce-mid hover:shadow-emce-hover"
                   >
                     Finish profile to register
                   </Link>
@@ -512,22 +544,15 @@ export default async function FairLandingPage({
               {myRegistration && myRegistration.status !== "CANCELLED" && (
                 <Link
                   href={`/me/fairs/${drive.slug}/pass`}
-                  className="inline-flex h-10 items-center rounded-md bg-emce-light px-5 text-sm font-bold text-emce-darkest hover:bg-emce-mid"
+                  className="inline-flex h-11 items-center rounded-full bg-emce-light px-6 text-sm font-semibold text-emce-darkest shadow-emce-lg transition hover:bg-emce-mid hover:shadow-emce-hover"
                 >
                   {myRegistration.status === "CHECKED_IN" ? "✓ Checked in — view pass" : "View your fair pass"}
                 </Link>
               )}
-              {/* Company-side CTA — anchors down to the
-                  hiring-partner pitch block + contact card. Always
-                  visible (not gated on auth) because the audience
-                  reading "I want to hire here" is typically a
-                  recruiter who isn't logged in to a candidate
-                  account. Visual weight kept secondary to the
-                  primary candidate CTA via a transparent border. */}
               {!isClosed && (
                 <a
                   href="#hiring-partner-cta"
-                  className="inline-flex h-10 items-center rounded-md border-2 border-white/80 px-5 text-sm font-bold text-white hover:bg-white/10"
+                  className="inline-flex h-11 items-center rounded-full border border-white/25 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
                 >
                   Participate as a hiring partner
                 </a>
@@ -536,7 +561,7 @@ export default async function FairLandingPage({
                 url={`${env.NEXT_PUBLIC_APP_URL}/fairs/${drive.slug}`}
                 title={drive.title}
                 description={drive.tagline ?? `EV recruitment drive in ${drive.city}`}
-                label="Share this fair"
+                label="Share"
               />
             </div>
           </div>
@@ -610,37 +635,80 @@ export default async function FairLandingPage({
               </p>
             )}
 
-          {/* Marketing hero stat tiles. Distinct from the hero
-              header's inline stats — these are the brochure's
-              boxed "1,000+ / 50+ / 500+" panel. They appear at the
-              top of the body so the eye lands on them after the
-              hero. Render only when there's something to show
-              (either a target is set OR real counts > 0). */}
+          {/* ─── Stat band ─────────────────────────────────────
+              Single cohesive centerpiece — NOT four equal grey
+              boxes. Hierarchy:
+                • PRIMARY headline metric (candidates) — oversized
+                  numeral in emce-dark, centered, the "this is what
+                  this fair brings" anchor commitment
+                • SECONDARY trio (companies / positions / tracks) —
+                  medium numerals on a single horizontal row beneath,
+                  separated by hairline dividers (no card boxes)
+              FULL-BLEED white section — uses the
+              `relative left-1/2 -translate-x-1/2 w-screen` escape
+              trick to break out of the body container's max-w-5xl
+              centering and span the viewport edge-to-edge. Without
+              this the band only bleeds 16px past container padding
+              and reads as a misaligned card rather than a section
+              break. py-16/md:py-20 gives the centerpiece breathing
+              room. */}
           {(displayCandidatesCount > 0 ||
             displayCompaniesCount > 0 ||
             displayPositionsCount > 0 ||
             drive.tracks.length > 0) && (
-            <section className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <HeroStat
-                value={displayCandidatesCount}
-                suffix={candidatesIsTarget ? "+" : ""}
-                label="Pre-screened candidates"
-              />
-              <HeroStat
-                value={displayCompaniesCount}
-                suffix={companiesIsTarget ? "+" : ""}
-                label="Hiring companies"
-              />
-              <HeroStat
-                value={displayPositionsCount}
-                suffix={positionsIsTarget ? "+" : ""}
-                label="Open positions"
-              />
-              <HeroStat
-                value={drive.tracks.length}
-                suffix=""
-                label={drive.tracks.length === 1 ? "Industry track" : "Industry tracks"}
-              />
+            <section className="relative left-1/2 w-screen -translate-x-1/2 bg-white py-16 md:py-20">
+              <div className="container mx-auto max-w-4xl text-center">
+                {/* Section eyebrow — gives the band a frame without
+                    a card border */}
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+                  What to expect
+                </p>
+
+                {/* PRIMARY metric — oversized */}
+                {displayCandidatesCount > 0 && (
+                  <div className="mt-4">
+                    <p className="text-[64px] font-extrabold leading-none tracking-tight text-emce-dark md:text-[88px]">
+                      {displayCandidatesCount.toLocaleString("en-IN")}
+                      {candidatesIsTarget ? "+" : ""}
+                    </p>
+                    <p className="mt-2 text-sm font-semibold uppercase tracking-wider text-emce-text-sec md:text-base">
+                      Pre-screened candidates
+                    </p>
+                  </div>
+                )}
+
+                {/* SECONDARY trio — divider-separated row, no boxes.
+                    On mobile each cell stacks (no dividers shown via
+                    `sm:divide-x` only). On sm+ they share width via
+                    `flex-1` and divide via hairlines. */}
+                {(displayCompaniesCount > 0 ||
+                  displayPositionsCount > 0 ||
+                  drive.tracks.length > 0) && (
+                  <div className="mt-10 flex flex-wrap items-stretch justify-center divide-emce-border sm:mt-12 sm:flex-nowrap sm:divide-x">
+                    {displayCompaniesCount > 0 && (
+                      <SecondaryStat
+                        value={displayCompaniesCount}
+                        suffix={companiesIsTarget ? "+" : ""}
+                        label="Hiring companies"
+                      />
+                    )}
+                    {displayPositionsCount > 0 && (
+                      <SecondaryStat
+                        value={displayPositionsCount}
+                        suffix={positionsIsTarget ? "+" : ""}
+                        label="Open positions"
+                      />
+                    )}
+                    {drive.tracks.length > 0 && (
+                      <SecondaryStat
+                        value={drive.tracks.length}
+                        suffix=""
+                        label={drive.tracks.length === 1 ? "Industry track" : "Industry tracks"}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
             </section>
           )}
 
@@ -1428,7 +1496,15 @@ function formatDateRange(start: Date, end: Date): string {
  * `+` is owned by the caller (only set when we're rendering an
  * aspirational target, not a precise live count).
  */
-function HeroStat({
+/**
+ * Secondary stat cell — used in the stat band trio below the primary
+ * (candidates) headline metric. Hairline-divider-separated, no box.
+ * `flex-1` so the three cells share width equally; vertical padding
+ * matches the divider rhythm. Numeral weight is emce-dark / 700 to
+ * sit one tier below the primary's emce-dark / 800 + oversize without
+ * competing for first attention.
+ */
+function SecondaryStat({
   value,
   suffix,
   label,
@@ -1438,12 +1514,14 @@ function HeroStat({
   label: string;
 }) {
   return (
-    <div className="rounded-md border border-emce-border bg-white p-4 text-center">
-      <p className="text-2xl font-extrabold tracking-tight text-emce-darkest md:text-3xl">
+    <div className="flex flex-1 flex-col items-center justify-center px-6 py-4 sm:py-2">
+      <p className="text-3xl font-bold tracking-tight text-emce-dark md:text-4xl">
         {value.toLocaleString("en-IN")}
         {suffix}
       </p>
-      <p className="mt-1 text-hint text-emce-text-sec">{label}</p>
+      <p className="mt-1 text-[11px] font-semibold uppercase tracking-wider text-emce-text-sec">
+        {label}
+      </p>
     </div>
   );
 }
