@@ -119,14 +119,25 @@ const config: Config = {
         sans: ["var(--font-dm-sans)", "system-ui", "sans-serif"],
       },
       fontSize: {
-        // From plugin: hero 42px, dashboard 20px, section 17px, body 14px,
-        // secondary 13px, hint 12px, badge 11px.
+        // LinkedIn parity pass:
+        //   • dashboard (page title) bumped to 22-26px from 18-24px
+        //     and weight dropped to 600 — LinkedIn's "Feed" / "My
+        //     Network" page titles render at ~26/600.
+        //   • section (card title) bumped down to 16px from 17px and
+        //     weight dropped to 600 — LinkedIn's card titles are
+        //     16/600 ("People you may know", "News", etc.). The
+        //     prior 17/700 read as shouty when stacked across 6+
+        //     rail widgets.
+        //   • badge weight dropped to 600 — LinkedIn's small pills
+        //     (skill chips, status badges) use 600 not 700.
+        //   • hero / body / hint unchanged — already on the right
+        //     side of the LinkedIn benchmark.
         hero: ["clamp(2rem, 5.5vw, 2.625rem)", { lineHeight: "1.1", letterSpacing: "-0.02em", fontWeight: "800" }],
-        dashboard: ["clamp(1.125rem, 3.5vw, 1.5rem)", { lineHeight: "1.3", fontWeight: "700" }],
-        section: ["1.0625rem", { lineHeight: "1.4", fontWeight: "700" }],
+        dashboard: ["clamp(1.375rem, 4vw, 1.625rem)", { lineHeight: "1.25", fontWeight: "600" }],
+        section: ["1rem", { lineHeight: "1.4", fontWeight: "600" }],
         body: ["0.875rem", { lineHeight: "1.6" }],
         hint: ["0.75rem", { lineHeight: "1.5" }],
-        badge: ["0.6875rem", { lineHeight: "1.2", fontWeight: "700" }],
+        badge: ["0.6875rem", { lineHeight: "1.2", fontWeight: "600" }],
       },
       borderRadius: {
         lg: "var(--radius)",
@@ -134,11 +145,17 @@ const config: Config = {
         sm: "calc(var(--radius) - 8px)",
       },
       boxShadow: {
-        // LinkedIn-style "1px ring + tiny lift" — what makes their cards look
-        // weightless. The first layer is a hairline border simulated as a
-        // shadow (sharper than a real border at 1× DPR), the second is the
-        // 2px diffused lift. Was a heavier 12px blur which read as "sticker".
-        emce: "0 0 0 1px rgba(0, 0, 0, 0.04), 0 1px 2px rgba(0, 0, 0, 0.04)",
+        // LinkedIn parity pass:
+        //   • emce: drop the 1px ring at rest (Card already paints a
+        //     `border border-emce-border` — the prior ring was
+        //     painting a SECOND hairline on top of that real border,
+        //     so cards had a doubled edge that read heavier than
+        //     LinkedIn's cards. Now: pure 2px diffused lift, very
+        //     subtle, plus the real border carries the edge.
+        //   • emce-hover keeps the ring + bigger lift — the doubled
+        //     edge reads as deliberate elevation on hover, not
+        //     accidental weight at rest.
+        emce: "0 1px 2px rgba(0, 0, 0, 0.04)",
         "emce-hover": "0 0 0 1px rgba(0, 0, 0, 0.08), 0 4px 8px rgba(0, 0, 0, 0.06)",
         "emce-lg": "0 0 0 1px rgba(0, 0, 0, 0.05), 0 8px 24px rgba(0, 0, 0, 0.08)",
         "emce-modal": "0 24px 80px rgba(0, 0, 0, 0.2)",

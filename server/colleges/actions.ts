@@ -12,6 +12,22 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { withUniqueSlug } from "@/lib/slug";
 import { dispatchNotification } from "@/lib/notifications/dispatch";
+import crypto from "node:crypto";
+
+/**
+ * URL-safe invite-token minter. 24 chars from a 64-char alphabet
+ * gives ~143 bits of entropy — vastly larger than the global candidate
+ * population for the foreseeable future. Stable across re-approval
+ * so previously-shared links don't break.
+ */
+const TOKEN_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+function mintInviteToken(): string {
+  let out = "";
+  for (let i = 0; i < 24; i++) {
+    out += TOKEN_ALPHABET[crypto.randomInt(0, TOKEN_ALPHABET.length)];
+  }
+  return out;
+}
 
 /**
  * College placement-cell self-serve flow. See schema.prisma comment
@@ -206,6 +222,16 @@ export async function approveCollegePlacementCell(formData: FormData): Promise<v
       redirect("/admin/colleges?notice=" + encodeURIComponent("Already approved"));
     }
 
+    // Mint a stable invite token if this cell doesn't already have
+    // one (re-approved cells preserve their old token so previously-
+    // shared links keep working). 24 chars from a URL-safe alphabet
+    // → ~143 bits of entropy, comfortably unguessable.
+    const existingToken = await db.collegePlacementCell.findUnique({
+      where: { id },
+      select: { inviteToken: true },
+    });
+    const inviteToken = existingToken?.inviteToken ?? mintInviteToken();
+
     await db.$transaction([
       db.collegePlacementCell.update({
         where: { id },
@@ -214,6 +240,7 @@ export async function approveCollegePlacementCell(formData: FormData): Promise<v
           reviewedAt: new Date(),
           reviewedById: session.user.id,
           rejectionReason: null,
+          inviteToken,
         },
       }),
       // The whole point of approval: open up /tpo for them. Bulk-

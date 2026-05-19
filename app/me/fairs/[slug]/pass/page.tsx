@@ -1,6 +1,7 @@
 import { redirect, notFound } from "next/navigation";
 import Link from "next/link";
 import type { Metadata } from "next";
+import QRCode from "qrcode";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
@@ -167,23 +168,34 @@ export default async function FairPassPage({
               )}
             </div>
 
-            {/* The big check-in code. Monospaced + spaced-letters so
-                fair staff can read it off a screen at arm's length.
-                ~36px on desktop, ~28px on mobile — big enough that
-                fair attendees don't need to enlarge to read in poor
-                lighting. */}
+            {/* The big check-in code + QR. Two ways to check in:
+                1. Fair staff scans the QR (fast path — preferred at
+                   the venue). QR encodes just the check-in code (not
+                   a URL) so the scanner can match what it gets back
+                   against RecruitmentDriveRegistration.checkInCode
+                   without any URL parsing.
+                2. If the QR is unreadable (printed pass faded, etc.)
+                   staff type the 6-char code instead.
+                Server-side SVG keeps the page zero-JS for printing /
+                offline use — works even when the venue WiFi is
+                flakey. */}
             <div className="mt-6 rounded-lg border-2 border-dashed border-emce-mid/50 bg-emce-light-soft p-6 text-center">
               <p className="text-[10px] font-bold uppercase tracking-wider text-emce-mid-muted">
-                Show this code at the check-in desk
+                Show this at the check-in desk
               </p>
+              <div
+                className="mx-auto mt-3 inline-block rounded-md bg-white p-2"
+                aria-hidden="true"
+                dangerouslySetInnerHTML={{ __html: await QRCode.toString(reg.checkInCode, { type: "svg", margin: 1, width: 192, color: { dark: "#0f1e2e", light: "#ffffff" } }) }}
+              />
               <p
-                className="mt-2 font-mono text-[28px] font-extrabold tracking-[0.3em] text-emce-darkest md:text-[36px]"
+                className="mt-3 font-mono text-[28px] font-extrabold tracking-[0.3em] text-emce-darkest md:text-[36px]"
                 aria-label={`Check-in code: ${reg.checkInCode.split("").join(" ")}`}
               >
                 {reg.checkInCode}
               </p>
               <p className="mt-2 text-hint text-emce-text-muted">
-                Fair staff will type this into their scanner to mark
+                Fair staff will scan the QR (or type the code) to mark
                 you present. Keep this page open on your phone.
               </p>
             </div>
@@ -213,8 +225,18 @@ export default async function FairPassPage({
             </div>
 
             <div className="mt-6 flex flex-wrap gap-2">
+              {/* Two-event ICS surface:
+                  • Fair-day "you're attending" reminder — single
+                    VEVENT covering the whole fair window.
+                  • Booked interview slots — separate ICS that emits
+                    one VEVENT per booked booth slot, so they appear
+                    individually on the candidate's calendar with
+                    the recruiter name + booth label. */}
               <Button asChild variant="outline" size="sm">
-                <a href={icsHref}>📆 Add to calendar</a>
+                <a href={icsHref}>📆 Save fair date</a>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <a href={`/me/fairs/${drive.slug}/slots.ics`}>📅 Interview slots → calendar</a>
               </Button>
               {reg.status === "REGISTERED" && drive.status !== "CLOSED" && (
                 <form action={cancelDriveRegistration}>

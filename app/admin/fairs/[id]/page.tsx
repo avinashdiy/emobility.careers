@@ -11,6 +11,8 @@ import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { AdminShell } from "@/components/layout/admin-shell";
 import { InviteCompaniesPanel } from "@/components/recruitment-drives/InviteCompaniesPanel";
 import { FairImageUploader } from "@/components/recruitment-drives/FairImageUploader";
+import { FairBrochureUploader } from "@/components/recruitment-drives/FairBrochureUploader";
+import { FairFloorMapUploader } from "@/components/recruitment-drives/FairFloorMapUploader";
 import { FairAnalyticsWidget } from "@/components/recruitment-drives/FairAnalyticsWidget";
 import { TracksEditor } from "@/components/recruitment-drives/TracksEditor";
 import { ContactAndFaqEditor } from "@/components/recruitment-drives/ContactAndFaqEditor";
@@ -209,6 +211,49 @@ export default async function AdminFairDetail({
               driveId={drive.id}
               bannerUrl={drive.bannerImageUrl}
               heroUrl={drive.heroImageUrl}
+            />
+          </div>
+        </Card>
+
+        {/* Downloadable brochures — two PDF slots surfaced on the
+            public fair page as "📥 Download PDF" cards. Audience-
+            specific: one for hiring partners (sponsor / booth pitch),
+            one for colleges / TPOs (cohort onboarding pitch). Both
+            auto-hide on the public page when null, so unsetting a
+            brochure cleanly takes the download CTA off the public
+            landing. */}
+        <Card className="p-4">
+          <h2 className="text-section text-emce-text">Brochures</h2>
+          <p className="mt-1 text-hint text-emce-text-sec">
+            PDF marketing collateral linked from the public fair page&apos;s
+            Downloads section. Replace anytime — the public URL stays
+            stable, content updates take effect on next load (cache-
+            busted automatically).
+          </p>
+          <div className="mt-3">
+            <FairBrochureUploader
+              driveId={drive.id}
+              hiringPartnerBrochureUrl={drive.hiringPartnerBrochureUrl}
+              collegeBrochureUrl={drive.collegeBrochureUrl}
+            />
+          </div>
+        </Card>
+
+        {/* Venue floor map — single image rendered on the public
+            fair page (under "What's at the venue") so candidates can
+            find target booths before walking the floor. Skip when no
+            map is uploaded; the public page auto-hides its section. */}
+        <Card className="p-4">
+          <h2 className="text-section text-emce-text">Floor map</h2>
+          <p className="mt-1 text-hint text-emce-text-sec">
+            Marked-up venue layout. Booth labels come from each
+            company&apos;s &quot;Booth label&quot; field — pre-annotate them on
+            the map image before upload so candidates can match.
+          </p>
+          <div className="mt-3">
+            <FairFloorMapUploader
+              driveId={drive.id}
+              floorMapUrl={drive.floorMapUrl}
             />
           </div>
         </Card>

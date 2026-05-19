@@ -22,11 +22,25 @@ const broadcastSchema = z.object({
   body: z.string().min(2).max(2000),
   link: optionalUrl,
   target: z.nativeEnum(BroadcastTarget),
+  /// Required when target is one of the FAIR_* values; null otherwise.
+  /// Empty string ("") is coerced to null at action level since the
+  /// form select defaults to "" when no fair is picked.
+  targetDriveId: z.string().optional().or(z.literal("")),
   email: z.coerce.boolean().optional(),
   sms: z.coerce.boolean().optional(),
   whatsapp: z.coerce.boolean().optional(),
   sendNow: z.coerce.boolean().optional(),
 });
+
+// Targets that NEED a targetDriveId to make sense. If admin picks one
+// of these without selecting a fair, the audience would resolve to
+// "everyone" — we reject up-front instead.
+const FAIR_SCOPED_TARGETS = new Set<BroadcastTarget>([
+  BroadcastTarget.FAIR_REGISTERED_CANDIDATES,
+  BroadcastTarget.FAIR_REGISTERED_EMPLOYERS,
+  BroadcastTarget.FAIR_REGISTERED_TPOS,
+  BroadcastTarget.FAIR_ALL_REGISTRANTS,
+]);
 
 export async function createBroadcast(formData: FormData) {
   const session = await requireAdmin();
@@ -39,12 +53,23 @@ export async function createBroadcast(formData: FormData) {
   if (parsed.data.sms) channels.push(NotificationChannel.SMS);
   if (parsed.data.whatsapp) channels.push(NotificationChannel.WHATSAPP);
 
+  // Validate fair-scoped target carries a drive id. Refusing here
+  // beats letting the worker resolve to "everyone" by accident.
+  const targetDriveId =
+    parsed.data.targetDriveId && parsed.data.targetDriveId.length > 0
+      ? parsed.data.targetDriveId
+      : null;
+  if (FAIR_SCOPED_TARGETS.has(parsed.data.target) && !targetDriveId) {
+    redirect("/admin/broadcasts?error=" + encodeURIComponent("Pick a fair when targeting fair registrants."));
+  }
+
   const broadcast = await db.broadcast.create({
     data: {
       title: parsed.data.title,
       body: parsed.data.body,
       link: parsed.data.link || null,
       target: parsed.data.target,
+      targetDriveId,
       channels,
       createdById: session.user.id,
       status: parsed.data.sendNow ? "SENDING" : "DRAFT",

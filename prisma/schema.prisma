@@ -2116,12 +2116,29 @@ model CollegePlacementCell {
   /// the TPO so they know what to fix on a re-application.
   rejectionReason String?
 
+  /// Stable, cryptographically-random token (24 chars) used as the
+  /// suffix of the TPO's shareable student-invite URL:
+  /// `/fairs/[slug]/register?as=candidate&tpo=<inviteToken>`.
+  /// Generated when the placement cell is APPROVED. Persists across
+  /// re-approval cycles so a previously-shared link keeps working
+  /// even after a brief REVOKED → re-approved hop. Null while
+  /// PENDING / REJECTED. Admin can rotate via a separate action if
+  /// the link leaks.
+  inviteToken String? @unique
+
+  /// Candidates who self-registered via this TPO's invite link.
+  /// Each registration carries the `viaTpoUserId` of the placement
+  /// cell's `createdById`; the relation here is convenience for the
+  /// TPO dashboard's "students from my link" query.
+  referredRegistrations RecruitmentDriveRegistration[] @relation("RegistrationViaTpo")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@unique([institutionId, createdById])
   @@index([status, createdAt])
   @@index([createdById])
+  @@index([inviteToken])
 }
 
 // ─── Campus drives (DIYguru / college hiring) ───────────────
@@ -2817,6 +2834,14 @@ enum BroadcastTarget {
   DIYGURU_VERIFIED
   OPEN_TO_WORK
   EMPLOYERS_VERIFIED
+  // Fair-scoped audiences. Used by the placement team to reach
+  // everyone tied to a specific recruitment drive (candidates,
+  // employers, TPOs, or all three) without spamming the platform
+  // at large. Requires `targetDriveId` to be set on the Broadcast row.
+  FAIR_REGISTERED_CANDIDATES
+  FAIR_REGISTERED_EMPLOYERS
+  FAIR_REGISTERED_TPOS
+  FAIR_ALL_REGISTRANTS
 }
 
 model Broadcast {
@@ -2825,6 +2850,12 @@ model Broadcast {
   body           String                @db.Text
   link           String?
   target         BroadcastTarget       @default(ALL_USERS)
+  /// Required when `target` is one of the FAIR_* values. Scopes the
+  /// audience query to the relevant RecruitmentDrive. Null for
+  /// platform-wide broadcasts. SetNull on drive delete so a sent
+  /// broadcast's audit trail survives the drive being archived.
+  targetDriveId  String?
+  targetDrive    RecruitmentDrive?     @relation("BroadcastTargetDrive", fields: [targetDriveId], references: [id], onDelete: SetNull)
   channels       NotificationChannel[]
   status         BroadcastStatus       @default(DRAFT)
   recipientCount Int                   @default(0)
@@ -2836,6 +2867,7 @@ model Broadcast {
   completedAt    DateTime?
 
   @@index([status, createdAt])
+  @@index([targetDriveId])
 }
 
 // ─── Job reports / moderation ──────────────────────────────
@@ -4233,6 +4265,26 @@ model RecruitmentDrive {
   /// year's fair. Falls back to the brand gradient when null.
   heroImageUrl   String?
 
+  // ─── Downloadable brochures ────────────────────────────────
+  // PDF brochures linked from the public fair page. Two audience
+  // variants so the right pitch (sponsor opportunities vs. cohort
+  // partnerships) lands with the right reader. Both are public —
+  // stored in the `logos` bucket with public-read ACL so the
+  // download links work without a presign round-trip.
+  /// Brochure aimed at hiring partners / employers. Covers booth
+  /// packages, sponsor tiers, footfall stats, ROI from past editions.
+  hiringPartnerBrochureUrl String?
+  /// Brochure aimed at TPOs / colleges. Covers cohort onboarding,
+  /// roster CSV import, expected outcomes, fair-day logistics.
+  collegeBrochureUrl       String?
+
+  /// Floor map image (PNG/JPEG/WEBP). Rendered on the public fair
+  /// page so candidates can find their target booths before walking
+  /// the venue. Booth labels live on RecruitmentDriveCompany.boothLabel;
+  /// for v1 we don't model coordinates — admin uploads a marked-up
+  /// image directly. v2 candidate: interactive booth-pin overlay.
+  floorMapUrl              String?
+
   // ─── Venue ─────────────────────────────────────────────────
   city         String
   state        String?
@@ -4285,6 +4337,10 @@ model RecruitmentDrive {
   registrations          RecruitmentDriveRegistration[]
   /// CSV bulk-invite batches an admin uploaded for this fair.
   rosterImports          RecruitmentDriveRosterImport[]
+  /// Broadcasts that target this fair's audience (candidates / employers /
+  /// TPOs registered for this drive). Powers the admin "blast a message
+  /// to everyone registered" flow.
+  broadcasts             Broadcast[]                    @relation("BroadcastTargetDrive")
   /// Per-fair industry tracks (#1 from the brochure additions).
   /// Defined by the admin at config time; surfaced as filter chips
   /// on the public fair page.
@@ -4370,12 +4426,50 @@ model RecruitmentDriveCompany {
   confirmedAt DateTime?
   withdrawnAt DateTime?
 
+  // ─── Recruitathon inline-signup fields ─────────────────────
+  // Captured when an employer self-registers for the fair via
+  // /fairs/[slug]/register (vs being admin-invited). Nullable so
+  // existing admin-invited rows don't need a backfill.
+  /// Participation mode the employer is available for.
+  fairMode             RecruitathonAvailability?
+  /// Whether the employer is open to fresher candidates (vs lateral
+  /// only). Used as a filter for candidates browsing employers AND
+  /// for the admin's CSV export to placement team.
+  hiresFreshers        Boolean?
+  /// Whether the employer provides on-the-job training / structured
+  /// onboarding programmes. Useful for candidates with no prior EV
+  /// exposure looking for ramp-up support.
+  providesTraining     Boolean?
+  /// Free-text on growth opportunities ("Fast-track to Tech Lead in 2
+  /// years; international exposure via Sweden + Germany office swaps").
+  /// 2000 char cap enforced server-side.
+  growthOpportunities  String?  @db.Text
+  /// POC phone for fair-day coordination. POC name + email come from
+  /// the linked User row; designation from EmployerProfile.
+  pocPhone             String?
+  /// Catch-all JSON for any additional self-registration form answers
+  /// that don't have a structured column yet. Lets us iterate on the
+  /// Recruitathon form without a migration per field add.
+  formAnswers          Json?
+
   driveJobs      RecruitmentDriveJob[]
   /// Booth-level interview slots — see RecruitmentDriveInterviewSlot.
   interviewSlots RecruitmentDriveInterviewSlot[]
 
   @@unique([driveId, companyId])
   @@index([companyId, status])
+}
+
+// ─── Recruitathon availability mode ─────────────────────────────
+// Tracks whether a fair participant (candidate OR employer) is
+// available in-person at the venue, online via the virtual fair
+// platform, or both. Drives the admin's CSV export to the placement
+// team + the future routing logic that pairs offline candidates
+// only with offline-available booths.
+enum RecruitathonAvailability {
+  OFFLINE
+  ONLINE
+  HYBRID
 }
 
 // ─── Booth interview slot booking (#3 in the brochure pack) ──────
@@ -4658,7 +4752,47 @@ model RecruitmentDriveRegistration {
   /// How the candidate landed on the fair — DIRECT = browsed
   /// /fairs/[slug] and clicked Register. ROSTER_IMPORT = an admin
   /// uploaded their email via the CSV import flow.
+  /// RECRUITATHON_INLINE = registered via the public Recruitathon
+  /// inline-signup form (creates the account + the registration in
+  /// one shot — see /fairs/[slug]/register).
   source        String                             @default("DIRECT")
+  // ─── Recruitathon inline-signup fields ─────────────────────
+  // Captured at registration time via the public form. The candidate's
+  // platform profile (CandidateProfile + Education + CandidateSkill +
+  // Experience) holds the canonical data; these columns are a
+  // fair-day snapshot so the admin CSV exports cleanly even before
+  // the candidate completes their full profile.
+  /// Participation mode the candidate is available for.
+  fairMode      RecruitathonAvailability?
+  /// Roles the candidate is targeting at this fair ("Battery Engineer,
+  /// BMS Firmware, Vehicle Integration"). Free text — denormalised
+  /// for the placement team's export.
+  intendedRoles String?
+  /// Cities the candidate is willing to relocate / commute to for the
+  /// roles they're seeing at this fair. Free text — same shape as
+  /// intendedRoles, easier to export than a relation.
+  willingLocations String?
+  /// Catch-all JSON for additional self-registration form answers
+  /// (year of study, internship summary, EV-domain experience flag,
+  /// etc). Lets us iterate without per-field migrations.
+  formAnswers   Json?
+
+  // ─── Pre-event reminder markers ────────────────────────────
+  // Per-registration timestamps so the reminder worker (see
+  // workers/processors/fair-reminders.ts) can fire each window
+  // exactly once. Idempotent — re-run the worker as often as you
+  // like; only un-stamped rows in the time window get pinged.
+  reminderWeekBeforeSentAt DateTime?
+  reminder3DaysSentAt      DateTime?
+  reminderDayBeforeSentAt  DateTime?
+  reminderHourBeforeSentAt DateTime?
+  /// FK to the CollegePlacementCell whose invite link the candidate
+  /// followed when they registered. Null when the candidate found
+  /// the fair directly (no TPO referral). Powers the TPO dashboard's
+  /// "candidates from my college" view. SetNull on cell delete so
+  /// purging a TPO account doesn't cascade-wipe registration history.
+  viaTpoCellId  String?
+  viaTpoCell    CollegePlacementCell? @relation("RegistrationViaTpo", fields: [viaTpoCellId], references: [id], onDelete: SetNull)
   /// Set when the admin checks the candidate in at the venue.
   checkedInAt   DateTime?
   /// The admin user who scanned / entered the code. SetNull to
@@ -4672,6 +4806,7 @@ model RecruitmentDriveRegistration {
   @@unique([driveId, candidateId])
   @@index([driveId, status])
   @@index([candidateId])
+  @@index([viaTpoCellId])
 }
 
 // ─── Roster CSV import — "Bulk-invite a college's batch" ──────────

@@ -13,7 +13,10 @@ import {
 interface BaseProps {
   initialFollowing: boolean;
   signedIn: boolean;
-  size?: "sm" | "default";
+  // Includes "xs" for dense action rows (profile page) where the
+  // button sits among 6+ siblings at h-8. Existing call sites that
+  // pass "sm" / "default" keep working.
+  size?: "xs" | "sm" | "default";
 }
 
 export function FollowUserButton({

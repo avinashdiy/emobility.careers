@@ -13,7 +13,13 @@ import { cn } from "@/lib/utils";
  *     in-card actions; the glow is meant to be scarce.
  */
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 emce-press",
+  // LinkedIn parity sweep: pill-shape (rounded-full) + semibold weight
+  // are THE two micro-decisions that make a button read as LinkedIn
+  // vs Stripe/Material. `font-bold` (700) read as shouty on dense
+  // action rows; `font-semibold` (600) is what LinkedIn uses on every
+  // CTA except the rare destructive button. Pill shape (rounded-full)
+  // replaces the prior rounded-md (6px) which felt Material.
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-full text-sm font-semibold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 emce-press",
   {
     variants: {
       variant: {
@@ -50,12 +56,22 @@ const buttonVariants = cva(
           "bg-emce-light text-emce-darkest border border-emce-mid/40 hover:bg-emce-mid hover:-translate-y-px hover:shadow-emce",
       },
       size: {
+        // All size variants inherit `rounded-full` from the base
+        // class above — sizes only set height + padding + text size.
+        // (Previously sm/xs/lg had `rounded`/`rounded-md` overrides
+        // which yielded a square-ish look distinct from LinkedIn.)
         default: "h-10 px-5 py-2.5",
         // 36px tall — closer to Apple's 44px touch target than the
         // older 32px while still reading as a "small" button. Used
         // densely on admin moderation rows and job cards.
-        sm: "h-9 rounded px-3 text-xs",
-        lg: "h-12 rounded-md px-7 text-base",
+        sm: "h-9 px-3 text-xs",
+        // 32px tall, 11px text — used on dense action rows where 6-7
+        // buttons need to fit in one line (e.g. the profile page's
+        // Connect / Follow / Compass / Message / Save / Share / Download
+        // row). Below Apple's 44px touch-target guidance, so reserve
+        // for desktop-dense surfaces; mobile flows should use `sm`.
+        xs: "h-8 px-3 text-[11px]",
+        lg: "h-12 px-7 text-base",
         icon: "h-10 w-10",
       },
     },

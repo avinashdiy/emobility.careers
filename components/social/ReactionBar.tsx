@@ -65,20 +65,29 @@ export function ReactionBar({
 
   return (
     <div
-      className="relative inline-block"
+      // Outer wrapper is `flex-1` (NOT inline-block) so the trigger
+      // button below stretches to the LinkedIn-style equal-cell width
+      // when this component sits inside the post-card action bar.
+      // The hover popover positions absolutely so it's unaffected.
+      className="relative flex flex-1"
       onMouseLeave={() => setOpen(false)}
     >
       <button
         type="button"
         onClick={() => react(active ?? "LIKE")}
         onMouseEnter={() => setOpen(true)}
+        // Matches `actionTabCls` from PostCard.tsx — flex-1 cell, icon
+        // + label, hover background fills the whole tap target. Imported
+        // explicitly would be tighter but ReactionBar is a leaf-level
+        // social primitive and we don't want a circular import; keep the
+        // styles in sync manually.
         className={cn(
-          "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-bold hover:bg-emce-light-soft",
-          active ? display.color : "text-emce-text-sec",
+          "flex flex-1 items-center justify-center gap-2 rounded-md py-2 text-xs font-semibold transition-colors hover:bg-emce-light-soft",
+          active ? display.color : "text-emce-text-sec hover:text-emce-text",
         )}
         aria-label={active ? `Remove ${display.label.toLowerCase()}` : "React"}
       >
-        <span className="text-base">{display.emoji}</span>
+        <span className="text-[18px] leading-none">{display.emoji}</span>
         <span>{active ? display.label : "Like"}</span>
         {c > 0 && <span className="text-emce-text-muted">· {c}</span>}
       </button>

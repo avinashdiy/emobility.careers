@@ -27,6 +27,10 @@ interface Props {
   /** Visual variant: `button` for full Button-style trigger, `icon` for
       icon-only chip. Defaults to `button`. */
   variant?: "button" | "icon";
+  /** Height of the trigger button. Defaults to `sm` (h-9 — matches
+      `Button size="sm"`). Pass `xs` on dense action rows where the
+      trigger sits next to 6+ other buttons at h-8. */
+  size?: "sm" | "xs";
   /** Optional extra class on the trigger. */
   className?: string;
 }
@@ -52,6 +56,7 @@ export function ShareDropdown({
   description,
   label = "Share",
   variant = "button",
+  size = "sm",
   className = "",
 }: Props) {
   const [open, setOpen] = useState(false);
@@ -125,9 +130,13 @@ export function ShareDropdown({
           onClick={() => setOpen((v) => !v)}
           aria-expanded={open}
           aria-haspopup="menu"
-          className="inline-flex h-9 items-center gap-1.5 rounded-md border border-emce-border bg-white px-3 text-xs font-bold text-emce-text hover:bg-emce-light-soft"
+          className={`inline-flex items-center gap-1.5 rounded-md border border-emce-border bg-white font-bold text-emce-text hover:bg-emce-light-soft ${
+            size === "xs"
+              ? "h-8 px-2.5 text-[11px]"
+              : "h-9 px-3 text-xs"
+          }`}
         >
-          <Share2 className="h-3.5 w-3.5" />
+          <Share2 className={size === "xs" ? "h-3 w-3" : "h-3.5 w-3.5"} />
           {label}
         </button>
       ) : (
@@ -137,9 +146,11 @@ export function ShareDropdown({
           aria-expanded={open}
           aria-haspopup="menu"
           aria-label={label}
-          className="grid h-9 w-9 place-items-center rounded-md text-emce-text-sec hover:bg-emce-light-soft hover:text-emce-text"
+          className={`grid place-items-center rounded-md text-emce-text-sec hover:bg-emce-light-soft hover:text-emce-text ${
+            size === "xs" ? "h-8 w-8" : "h-9 w-9"
+          }`}
         >
-          <Share2 className="h-4 w-4" />
+          <Share2 className={size === "xs" ? "h-3.5 w-3.5" : "h-4 w-4"} />
         </button>
       )}
 

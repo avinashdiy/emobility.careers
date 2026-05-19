@@ -419,7 +419,20 @@ export default async function EmployerFairDetailPage({
           </Card>
         )}
 
-        <div>
+        <div className="flex flex-wrap gap-2">
+          {/* Booth-day tools — visible to confirmed booths only.
+              Scanner = booth-day code lookup; pre-screen = pre-event
+              candidate list with filters. */}
+          {part.status === "CONFIRMED" && (
+            <>
+              <Button asChild size="sm">
+                <Link href={`/employer/fairs/${part.drive.id}/scan`}>📷 Booth scanner</Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
+                <Link href={`/employer/fairs/${part.drive.id}/candidates`}>👥 Pre-screen candidates</Link>
+              </Button>
+            </>
+          )}
           <Button asChild variant="outline" size="sm">
             <Link href={`/fairs/${part.drive.slug}`}>View public fair page →</Link>
           </Button>

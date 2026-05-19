@@ -50,9 +50,13 @@ export function SharePostMenu({ postId, authorName, url }: Props) {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Send or share post"
-        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-bold text-emce-text-sec hover:bg-emce-light-soft hover:text-emce-text"
+        // Matches `actionTabCls` from PostCard.tsx — equal-width cell
+        // (flex-1), icon + label, hover fills cell. Kept inline (not
+        // imported) so SharePostMenu stays a self-contained leaf
+        // component without a circular dep on PostCard.
+        className="flex flex-1 items-center justify-center gap-2 rounded-md py-2 text-xs font-semibold text-emce-text-sec transition-colors hover:bg-emce-light-soft hover:text-emce-text"
       >
-        <Send className="h-3.5 w-3.5" />
+        <Send className="h-[18px] w-[18px]" aria-hidden />
         <span>Send</span>
       </button>
       {open && (

@@ -13,6 +13,7 @@ import { PostCard, type FeedPostShape } from "@/components/social/PostCard";
 import { ConnectButton } from "@/components/social/ConnectButton";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
+import { EvNewsCard } from "@/components/feed/EvNewsCard";
 import { getFeed, getForYouFeed, suggestConnections, getConnectionStatus, getViewerPollVotes } from "@/server/social/queries";
 import { getProfileViewStats } from "@/server/profile/views";
 import { isFeatureOff, FeatureOffNotice } from "@/components/layout/FeatureGate";
@@ -163,7 +164,7 @@ export default async function FeedPage({
       <div className="container max-w-6xl py-4 md:py-6">
         <div className="grid gap-4 lg:grid-cols-12">
         {/* ─── Left rail — profile card + stats + shortcuts ─── */}
-        <aside className="hidden space-y-2 lg:col-span-3 lg:block">
+        <aside className="hidden space-y-3 lg:col-span-3 lg:block">
           {/* Profile mini-card — LinkedIn-density: 56px banner, 72px
               avatar overlapping by 50%, 12px padding, no breathing room
               wasted under the headline. */}
@@ -376,8 +377,15 @@ export default async function FeedPage({
           </div>
         </main>
 
-        {/* ─── Right rail — suggestions, competitions, news ─── */}
-        <aside className="hidden space-y-2 lg:col-span-3 lg:block">
+        {/* ─── Right rail — news, suggestions, competitions ─── */}
+        <aside className="hidden space-y-3 lg:col-span-3 lg:block">
+          {/* "What's happening in EV" — top of rail because it's the
+              most universally relevant. Cached for 15min via
+              unstable_cache so the upstream fetch doesn't tax the
+              feed render. Auto-hides on upstream errors / empty
+              results so we don't surface a broken card. */}
+          <EvNewsCard />
+
           {upcomingMentorshipSession && (
             <Card>
               <div className="flex items-start gap-2">
@@ -459,6 +467,7 @@ export default async function FeedPage({
                                 : status.status === "PENDING_IN" ? "PENDING_IN"
                                 : "NONE"}
                               connectionId={status.connectionId}
+                              size="xs"
                             />
                           </div>
                         </div>

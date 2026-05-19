@@ -8,6 +8,9 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { SiteHeader } from "@/components/layout/site-header";
+import { RecruitathonHeaderBar } from "@/components/recruitathon/RecruitathonHeaderBar";
+import { getRecruitathonViewerStatus } from "@/lib/recruitathon/viewer-status";
+import { recruitmentFairJsonLd, jsonLdScriptTag } from "@/lib/seo/schemas";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { VenueMap } from "@/components/recruitment-drives/VenueMap";
@@ -59,6 +62,7 @@ export async function generateMetadata({
       tagline: true,
       city: true,
       bannerImageUrl: true,
+      heroImageUrl: true,
       status: true,
     },
   });
@@ -68,6 +72,10 @@ export async function generateMetadata({
   const description =
     drive.tagline ??
     `EV-industry recruitment drive in ${drive.city}. Multiple companies hiring across battery, charging, motor, and software roles.`;
+  // Prefer hero (16:9, designed for social) over banner (3:1, designed
+  // for /fairs grid). Both are public-read S3 URLs so OG crawlers
+  // (WhatsApp, LinkedIn, Twitter) can fetch them directly.
+  const ogImage = drive.heroImageUrl || drive.bannerImageUrl || undefined;
   return {
     title: `${drive.title} · ${drive.city}`,
     description,
@@ -77,7 +85,14 @@ export async function generateMetadata({
       url: `${env.NEXT_PUBLIC_APP_URL}/fairs/${slug}`,
       title: drive.title,
       description,
-      images: drive.bannerImageUrl ? [drive.bannerImageUrl] : undefined,
+      images: ogImage ? [ogImage] : undefined,
+      siteName: "emobility.careers",
+    },
+    twitter: {
+      card: ogImage ? "summary_large_image" : "summary",
+      title: drive.title,
+      description,
+      images: ogImage ? [ogImage] : undefined,
     },
   };
 }
@@ -302,14 +317,62 @@ export default async function FairLandingPage({
       );
     }
   }
+  // Whitelist of statuses that allow registration — safer than
+  // blacklisting CLOSED / DRAFT because a new status added later
+  // (e.g. CANCELLED, which already exists in the enum but was
+  // previously accidentally allowed by the blacklist) would default
+  // to "allowed" with that pattern. With a whitelist, anything new
+  // defaults to "not allowed" until explicitly enabled.
   const registrationOpen =
-    drive.status !== "CLOSED" &&
-    drive.status !== "DRAFT" &&
+    (drive.status === "OPEN" || drive.status === "IN_PROGRESS") &&
     (!drive.registrationClosesAt || drive.registrationClosesAt > new Date());
+
+  // Viewer status drives the header bar's CTA labels (Register vs.
+  // View pass / dashboard). Cheap — three parallel queries on
+  // indexed columns; only fires for signed-in viewers.
+  const viewerStatus = await getRecruitathonViewerStatus(
+    session?.user?.id ?? null,
+    drive.id,
+  );
+
+  // schema.org Event JSON-LD — drives Google rich-results carousel +
+  // unblocks WhatsApp / LinkedIn / Twitter preview cards on shares.
+  // Renders as a raw <script type="application/ld+json"> tag in the
+  // page body (App Router doesn't have a first-class "structured
+  // data" helper yet so we inline). DRAFT/CANCELLED already short-
+  // circuit metadata robots:no-index above; the script renders
+  // regardless because crawlers can still hit those URLs via direct
+  // shares.
+  const fairJsonLd = recruitmentFairJsonLd({
+    slug: drive.slug,
+    title: drive.title,
+    tagline: drive.tagline,
+    description: drive.description,
+    bannerImageUrl: drive.bannerImageUrl,
+    heroImageUrl: drive.heroImageUrl,
+    startsAt: drive.startsAt,
+    endsAt: drive.endsAt,
+    status: drive.status,
+    city: drive.city,
+    state: drive.state,
+    country: drive.country,
+    venueName: drive.venueName,
+    venueAddress: drive.venueAddress,
+    registrationOpensAt: drive.registrationOpensAt,
+    registrationClosesAt: drive.registrationClosesAt,
+  });
 
   return (
     <>
+      {/* eslint-disable-next-line react/no-danger */}
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: jsonLdScriptTag(fairJsonLd) }} />
       <SiteHeader />
+      <RecruitathonHeaderBar
+        driveSlug={drive.slug}
+        driveTitle={drive.title}
+        registrationOpen={registrationOpen}
+        viewerStatus={viewerStatus}
+      />
       <main className="min-h-screen bg-emce-light-bg">
         {previewMode && (
           <div className="bg-emce-orange-light py-2 text-center text-sm text-emce-text">
@@ -393,13 +456,33 @@ export default async function FairLandingPage({
                   can be in: not signed in / no registration yet /
                   already registered. Closed fairs hide the CTA
                   entirely. */}
+              {/* Signed-out: route to the inline-signup form rather
+                  than /signin → the user doesn't have an account yet
+                  in the common Recruitathon traffic case (social
+                  share, placement-team email, etc.). The form creates
+                  the account + the registration in one shot. Three
+                  audiences = three CTAs side-by-side. */}
               {registrationOpen && !session?.user && (
-                <Link
-                  href={`/signin?next=/fairs/${drive.slug}`}
-                  className="inline-flex h-10 items-center rounded-md bg-emce-light px-5 text-sm font-bold text-emce-darkest hover:bg-emce-mid"
-                >
-                  Register to attend
-                </Link>
+                <>
+                  <Link
+                    href={`/fairs/${drive.slug}/register?as=candidate`}
+                    className="inline-flex h-10 items-center rounded-md bg-emce-light px-5 text-sm font-bold text-emce-darkest hover:bg-emce-mid"
+                  >
+                    🎓 Register as candidate
+                  </Link>
+                  <Link
+                    href={`/fairs/${drive.slug}/register?as=employer`}
+                    className="inline-flex h-10 items-center rounded-md border border-emce-mid bg-white px-5 text-sm font-bold text-emce-darkest hover:bg-emce-light-soft"
+                  >
+                    🏢 Register company
+                  </Link>
+                  <Link
+                    href={`/fairs/${drive.slug}/register?as=tpo`}
+                    className="inline-flex h-10 items-center rounded-md border border-emce-mid bg-white px-5 text-sm font-bold text-emce-darkest hover:bg-emce-light-soft"
+                  >
+                    📋 Register as TPO / College
+                  </Link>
+                </>
               )}
               {registrationOpen && session?.user?.role === "CANDIDATE" && !myRegistration && (
                 myEligibility?.ok ? (
@@ -656,6 +739,121 @@ export default async function FairLandingPage({
                       </div>
                     );
                   },
+                )}
+              </div>
+            </section>
+          )}
+
+          {/* Floor map — venue layout image showing where each
+              booth sits. Auto-hides when not uploaded. Lazy-loaded
+              + large click target so candidates can zoom on mobile
+              by long-pressing → Save Image. */}
+          {drive.floorMapUrl && (
+            <section
+              id="floor-map"
+              aria-labelledby="floor-map-heading"
+              className="scroll-mt-20 rounded-lg border border-emce-border bg-white p-5 md:p-6"
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+                    Venue
+                  </p>
+                  <h2 id="floor-map-heading" className="text-section text-emce-text">
+                    Floor map
+                  </h2>
+                </div>
+                <p className="hidden text-hint text-emce-text-sec sm:block">
+                  Long-press on mobile to save
+                </p>
+              </div>
+              <a
+                href={`${drive.floorMapUrl}?v=${drive.updatedAt.getTime()}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-3 block overflow-hidden rounded-md border border-emce-border bg-emce-light-soft transition hover:border-emce-mid"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`${drive.floorMapUrl}?v=${drive.updatedAt.getTime()}`}
+                  alt={`${drive.title} floor map`}
+                  loading="lazy"
+                  className="w-full"
+                />
+              </a>
+              <p className="mt-2 text-hint text-emce-text-sec">
+                Each booth&apos;s label appears under its company on the
+                Participating partners list above.
+              </p>
+            </section>
+          )}
+
+          {/* Brochure downloads — public PDF collateral. Two
+              audience variants (hiring partners + colleges). The
+              card auto-hides when no brochures are uploaded yet, so
+              fairs without admin-uploaded brochures don't show an
+              empty placeholder. Cache-busting `?v=updatedAt` keeps a
+              freshly re-uploaded brochure from being served stale
+              from CDN caches (the underlying S3 key is stable). */}
+          {(drive.hiringPartnerBrochureUrl || drive.collegeBrochureUrl) && (
+            <section
+              id="brochures"
+              aria-labelledby="brochures-heading"
+              className="scroll-mt-20 rounded-lg border border-emce-border bg-white p-5 md:p-6"
+            >
+              <div className="flex items-baseline justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+                    Downloads
+                  </p>
+                  <h2 id="brochures-heading" className="text-section text-emce-text">
+                    Brochures
+                  </h2>
+                </div>
+                <p className="hidden text-hint text-emce-text-sec sm:block">
+                  PDF · share with your team
+                </p>
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                {drive.hiringPartnerBrochureUrl && (
+                  <a
+                    href={`${drive.hiringPartnerBrochureUrl}?v=${drive.updatedAt.getTime()}`}
+                    download
+                    className="group flex items-start gap-3 rounded-md border border-emce-border bg-emce-light-soft/40 p-4 transition hover:border-emce-mid hover:bg-emce-light-soft"
+                  >
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-white text-xl">
+                      🏢
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-emce-text">For hiring partners</p>
+                      <p className="mt-0.5 text-hint text-emce-text-sec">
+                        Booth packages, sponsor tiers, candidate footfall, past-edition ROI.
+                      </p>
+                      <p className="mt-1 text-xs font-bold text-emce-dark group-hover:underline">
+                        📥 Download PDF →
+                      </p>
+                    </div>
+                  </a>
+                )}
+                {drive.collegeBrochureUrl && (
+                  <a
+                    href={`${drive.collegeBrochureUrl}?v=${drive.updatedAt.getTime()}`}
+                    download
+                    className="group flex items-start gap-3 rounded-md border border-emce-border bg-emce-light-soft/40 p-4 transition hover:border-emce-mid hover:bg-emce-light-soft"
+                  >
+                    <span className="grid h-10 w-10 shrink-0 place-items-center rounded-md bg-white text-xl">
+                      🎓
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-emce-text">For colleges &amp; TPOs</p>
+                      <p className="mt-0.5 text-hint text-emce-text-sec">
+                        Cohort onboarding, roster CSV import, expected outcomes, fair-day logistics.
+                      </p>
+                      <p className="mt-1 text-xs font-bold text-emce-dark group-hover:underline">
+                        📥 Download PDF →
+                      </p>
+                    </div>
+                  </a>
                 )}
               </div>
             </section>

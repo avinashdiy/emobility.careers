@@ -282,6 +282,87 @@ export function jsonLdScriptTag(obj: unknown): string {
 }
 
 /**
+ * schema.org Event for a recruitment fair / Recruitathon. Surfaces
+ * the fair to Google rich-results (knowledge panel + Event carousel)
+ * + makes social shares (LinkedIn, Twitter, WhatsApp) parse the
+ * fair as a real event with date, location, and image.
+ *
+ * For ONSITE fairs we emit a Place location with the venue address.
+ * Status mapping: OPEN/IN_PROGRESS → EventScheduled;
+ * CANCELLED → EventCancelled; CLOSED → EventPostponed (Google treats
+ * past events as having "happened"; postponed keeps the link alive
+ * without misleading the carousel).
+ */
+export function recruitmentFairJsonLd(d: {
+  slug: string;
+  title: string;
+  tagline: string | null;
+  description: string | null;
+  bannerImageUrl: string | null;
+  heroImageUrl: string | null;
+  startsAt: Date;
+  endsAt: Date;
+  status: string;
+  city: string;
+  state: string | null;
+  country: string;
+  venueName: string | null;
+  venueAddress: string | null;
+  registrationOpensAt: Date | null;
+  registrationClosesAt: Date | null;
+}) {
+  const url = `${BASE()}/fairs/${d.slug}`;
+  const eventStatusMap: Record<string, string> = {
+    OPEN: "https://schema.org/EventScheduled",
+    IN_PROGRESS: "https://schema.org/EventScheduled",
+    CANCELLED: "https://schema.org/EventCancelled",
+    CLOSED: "https://schema.org/EventPostponed",
+    DRAFT: "https://schema.org/EventScheduled",
+  };
+  const image = d.heroImageUrl || d.bannerImageUrl || null;
+  const description = (d.description ?? d.tagline ?? `EV-industry recruitment fair in ${d.city}.`).slice(0, 5000);
+  return {
+    "@context": "https://schema.org",
+    "@type": "BusinessEvent",
+    "@id": url,
+    name: d.title,
+    description,
+    eventStatus: eventStatusMap[d.status] ?? "https://schema.org/EventScheduled",
+    eventAttendanceMode: "https://schema.org/OfflineEventAttendanceMode",
+    startDate: d.startsAt.toISOString(),
+    endDate: d.endsAt.toISOString(),
+    location: {
+      "@type": "Place",
+      name: d.venueName ?? `${d.city} venue`,
+      address: {
+        "@type": "PostalAddress",
+        streetAddress: d.venueAddress ?? undefined,
+        addressLocality: d.city,
+        addressRegion: d.state ?? undefined,
+        addressCountry: d.country,
+      },
+    },
+    organizer: {
+      "@type": "Organization",
+      name: "emobility.careers",
+      url: BASE(),
+    },
+    url,
+    ...(image && { image: [image] }),
+    // Free attendance — surfaces the "Free" badge in Google's Event card.
+    offers: {
+      "@type": "Offer",
+      url: `${url}/register`,
+      price: 0,
+      priceCurrency: "INR",
+      availability: "https://schema.org/InStock",
+      validFrom: (d.registrationOpensAt ?? d.startsAt).toISOString(),
+      ...(d.registrationClosesAt && { validThrough: d.registrationClosesAt.toISOString() }),
+    },
+  };
+}
+
+/**
  * QAPage schema for a Quora-style question post. Surfaces the
  * question text + accepted/top answers to Google so the page is
  * eligible for the "People also ask" rich result. We set the

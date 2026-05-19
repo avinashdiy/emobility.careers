@@ -99,6 +99,11 @@ function buildGroups(counts: Counts): Group[] {
         // per-fair check-in scanner + roster CSV import nested
         // under each fair's detail page.
         { href: "/admin/fairs", label: "Job fairs", icon: CalendarDays },
+        // Recruitathon inline-signup registrations + CSV exports for
+        // the placement team. Separate from /admin/fairs (which is
+        // admin-side fair setup) — this is the conversion-funnel
+        // dashboard for public self-registrations.
+        { href: "/admin/recruitathon", label: "Recruitathon signups", icon: CalendarDays },
         { href: "/admin/reports", label: "Job reports", icon: Flag, badge: counts.reports },
         { href: "/admin/post-reports", label: "Post reports", icon: Flag, badge: counts.postReports },
       ],

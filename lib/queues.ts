@@ -23,6 +23,7 @@ export const QueueNames = {
   ResumeDraft: "resume-draft",
   WhatsAppDigest: "whatsapp-digest",
   NotificationMaintenance: "notification-maintenance",
+  FairReminders: "fair-reminders",
 } as const;
 
 export type ResumeParseJob = {
@@ -63,6 +64,7 @@ export type MentorshipReminderJob = { tick: true };
 export type CompetitionTickJob = { tick: true };
 export type ResumeDraftJob = { candidateId: string };
 export type WhatsAppDigestJob = { tick: true };
+export type FairReminderJob = { tick: true };
 /** Tick payload for the notification maintenance worker. Fires
     cleanup (delete past-expiresAt rows) AND the daily email digest
     in the same run since both are users-table sweeps. */
@@ -104,6 +106,7 @@ export const resumeDraftQueue = new Queue<ResumeDraftJob>(QueueNames.ResumeDraft
   },
 });
 export const whatsappDigestQueue = new Queue<WhatsAppDigestJob>(QueueNames.WhatsAppDigest, baseOpts);
+export const fairRemindersQueue = new Queue<FairReminderJob>(QueueNames.FairReminders, baseOpts);
 
 export const notificationMaintenanceQueue = new Queue<NotificationMaintenanceJob>(
   QueueNames.NotificationMaintenance,

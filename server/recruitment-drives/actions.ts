@@ -780,7 +780,7 @@ function sniffImageKind(buffer: Buffer): "jpeg" | "png" | "gif" | "webp" | null 
  */
 async function uploadDriveImage(opts: {
   formData: FormData;
-  field: "bannerImageUrl" | "heroImageUrl";
+  field: "bannerImageUrl" | "heroImageUrl" | "floorMapUrl";
   width: number;
   height: number;
   keyPrefix: string;
@@ -854,7 +854,11 @@ async function uploadDriveImage(opts: {
     });
     await audit({
       actorId: session.user.id,
-      action: `recruitment_drive.${opts.field === "bannerImageUrl" ? "banner" : "hero"}_uploaded`,
+      action: `recruitment_drive.${
+        opts.field === "bannerImageUrl" ? "banner"
+        : opts.field === "heroImageUrl" ? "hero"
+        : "floor_map"
+      }_uploaded`,
       entity: "RecruitmentDrive",
       entityId: drive.id,
     });
@@ -898,12 +902,35 @@ export async function uploadDriveHero(formData: FormData): Promise<FormState & {
   });
 }
 
+/**
+ * Floor map — venue layout image with booth labels visible on it.
+ * Larger canvas (1600×1200) so labels stay legible when zoomed; not
+ * cropped to a specific aspect because venue maps vary in shape.
+ * Reuses the sharp pipeline (resize, contain rather than cover would
+ * preserve the layout — but cover is what uploadDriveImage uses, so
+ * admins should pre-crop / pad their floor map to a roughly 4:3 frame
+ * before upload).
+ */
+export async function uploadDriveFloorMap(formData: FormData): Promise<FormState & { url?: string }> {
+  return uploadDriveImage({
+    formData,
+    field: "floorMapUrl",
+    width: 1600,
+    height: 1200,
+    keyPrefix: "fair-floor-maps",
+  });
+}
+
+export async function removeDriveFloorMap(formData: FormData): Promise<FormState> {
+  return clearDriveImage(formData, "floorMapUrl");
+}
+
 // ─── Removers — set image URL back to null ──────────────────────────
 //
 // Used when an admin uploaded the wrong image / wants to fall back to
 // the brand gradient. We don't delete the underlying S3 object (cheap
 // to keep, expensive to re-upload by accident) — only blank the FK.
-async function clearDriveImage(formData: FormData, field: "bannerImageUrl" | "heroImageUrl"): Promise<FormState> {
+async function clearDriveImage(formData: FormData, field: "bannerImageUrl" | "heroImageUrl" | "floorMapUrl"): Promise<FormState> {
   try {
     const session = await auth();
     if (session?.user?.role !== "ADMIN") {
@@ -930,6 +957,166 @@ export async function removeDriveBanner(formData: FormData): Promise<FormState> 
 
 export async function removeDriveHero(formData: FormData): Promise<FormState> {
   return clearDriveImage(formData, "heroImageUrl");
+}
+
+// ─── Admin: upload PDF brochures ───────────────────────────────────
+//
+// Two brochures per fair — one for hiring partners, one for colleges.
+// Stored in the `logos` bucket (public-read ACL) so the download link
+// works without a presign hop, organized under
+// `fair-brochures/<driveId>/<type>.pdf`.
+//
+// We use `logos` (not `docs`) because `docs` is intentionally PRIVATE
+// (Aadhar / GDPR exports) — brochures are public marketing collateral
+// and need to download from a static URL when the visitor clicks the
+// CTA on /fairs/[slug].
+
+const ALLOWED_BROCHURE_MIMES = new Set(["application/pdf"]);
+const MAX_BROCHURE_BYTES = 25 * 1024 * 1024; // 25 MB — generous for a graphics-heavy brochure
+
+type BrochureField = "hiringPartnerBrochureUrl" | "collegeBrochureUrl";
+
+/**
+ * Confirm the upload starts with the PDF magic header `%PDF-`. Cheap
+ * server-side gate that catches misnamed `image.jpg → .pdf` rename
+ * attacks that get past the client-side accept="application/pdf"
+ * filter.
+ */
+function looksLikePdf(buffer: Buffer): boolean {
+  return (
+    buffer.length >= 5 &&
+    buffer[0] === 0x25 && // %
+    buffer[1] === 0x50 && // P
+    buffer[2] === 0x44 && // D
+    buffer[3] === 0x46 && // F
+    buffer[4] === 0x2d    // -
+  );
+}
+
+async function uploadDriveBrochure(opts: {
+  formData: FormData;
+  field: BrochureField;
+  keyName: string;
+}): Promise<FormState & { url?: string }> {
+  try {
+    const session = await requireAdmin();
+    const driveId = z.string().parse(opts.formData.get("driveId"));
+    const file = opts.formData.get("brochure") as File | null;
+    const drive = await db.recruitmentDrive.findUnique({
+      where: { id: driveId },
+      select: { id: true, slug: true },
+    });
+    if (!drive) return { ok: false, message: "Drive not found." };
+    if (!file) return { ok: false, message: "No file received." };
+    if (file.size === 0) return { ok: false, message: "Empty file." };
+    if (file.size > MAX_BROCHURE_BYTES) {
+      return { ok: false, message: "Brochure must be under 25 MB." };
+    }
+    if (file.type && !ALLOWED_BROCHURE_MIMES.has(file.type)) {
+      return { ok: false, message: "PDF files only." };
+    }
+
+    const inputBuffer = Buffer.from(await file.arrayBuffer());
+    if (!looksLikePdf(inputBuffer)) {
+      return {
+        ok: false,
+        message: "File doesn't look like a real PDF. Re-export from the source and try again.",
+      };
+    }
+
+    // Stable key — uploads to the same key overwrite the previous
+    // brochure so admins don't have to manually clean up old PDFs.
+    // The cache-buster suffix (?v=timestamp) on the download link
+    // (added at render time) keeps the public-facing URL fresh after
+    // a re-upload even though the underlying key is identical.
+    const key = `fair-brochures/${drive.id}/${opts.keyName}.pdf`;
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: buckets.logos,
+        Key: key,
+        Body: inputBuffer,
+        ContentType: "application/pdf",
+        // Content-Disposition: attachment forces a download dialog
+        // instead of an in-browser PDF preview — matches user intent
+        // for a "Download brochure" CTA.
+        ContentDisposition: `attachment; filename="${opts.keyName}-${drive.slug}.pdf"`,
+        ACL: "public-read",
+        Metadata: { "x-content-type-options": "nosniff" },
+      }),
+    );
+
+    const url = publicUrl("logos", key);
+    await db.recruitmentDrive.update({
+      where: { id: drive.id },
+      data: { [opts.field]: url },
+    });
+    await audit({
+      actorId: session.user.id,
+      action: `recruitment_drive.${opts.field === "hiringPartnerBrochureUrl" ? "hiring_brochure" : "college_brochure"}_uploaded`,
+      entity: "RecruitmentDrive",
+      entityId: drive.id,
+    });
+    revalidatePath(`/admin/fairs/${drive.id}`);
+    revalidatePath(`/fairs/${drive.slug}`);
+    revalidatePath("/fairs");
+    return { ok: true, url };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[recruitment-drive] upload brochure failed");
+    return { ok: false, message: "Upload failed. Try again." };
+  }
+}
+
+export async function uploadHiringPartnerBrochure(
+  formData: FormData,
+): Promise<FormState & { url?: string }> {
+  return uploadDriveBrochure({
+    formData,
+    field: "hiringPartnerBrochureUrl",
+    keyName: "hiring-partner-brochure",
+  });
+}
+
+export async function uploadCollegeBrochure(
+  formData: FormData,
+): Promise<FormState & { url?: string }> {
+  return uploadDriveBrochure({
+    formData,
+    field: "collegeBrochureUrl",
+    keyName: "college-brochure",
+  });
+}
+
+async function clearDriveBrochure(
+  formData: FormData,
+  field: BrochureField,
+): Promise<FormState> {
+  try {
+    const session = await auth();
+    if (session?.user?.role !== "ADMIN") {
+      return { ok: false, message: "Admin only." };
+    }
+    const driveId = String(formData.get("driveId") ?? "");
+    if (!driveId) return { ok: false, message: "Missing driveId." };
+    await db.recruitmentDrive.update({
+      where: { id: driveId },
+      data: { [field]: null },
+    });
+    revalidatePath(`/admin/fairs/${driveId}`);
+    return { ok: true, message: "Brochure removed." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[clearDriveBrochure] failed");
+    return { ok: false, message: "Could not remove brochure." };
+  }
+}
+
+export async function removeHiringPartnerBrochure(formData: FormData): Promise<FormState> {
+  return clearDriveBrochure(formData, "hiringPartnerBrochureUrl");
+}
+
+export async function removeCollegeBrochure(formData: FormData): Promise<FormState> {
+  return clearDriveBrochure(formData, "collegeBrochureUrl");
 }
 
 // ─── Admin: toggle featured ──────────────────────────────────────────

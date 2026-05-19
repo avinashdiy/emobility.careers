@@ -11,7 +11,7 @@ import { notificationsQueue, QueueNames, type BroadcastJob } from "@/lib/queues"
  * worker handles in-app + email/SMS dispatch with the user's preferences.
  */
 
-function whereForTarget(target: string): Prisma.UserWhereInput {
+function whereForTarget(target: string, targetDriveId: string | null): Prisma.UserWhereInput {
   switch (target) {
     case "ALL_USERS":
       return { status: "ACTIVE" };
@@ -29,6 +29,55 @@ function whereForTarget(target: string): Prisma.UserWhereInput {
         role: "EMPLOYER",
         employerProfile: { company: { verificationStatus: "VERIFIED" } },
       };
+    // ─── Fair-scoped audiences ───────────────────────────────
+    // Each fair-scoped target requires a targetDriveId. If missing
+    // we fall back to a no-match where so the broadcast lands with
+    // recipientCount=0 (rather than accidentally hitting everyone).
+    case "FAIR_REGISTERED_CANDIDATES":
+      if (!targetDriveId) return { id: "__no_match__" };
+      return {
+        status: "ACTIVE",
+        candidateProfile: {
+          fairRegistrations: { some: { driveId: targetDriveId, cancelledAt: null } },
+        },
+      };
+    case "FAIR_REGISTERED_EMPLOYERS":
+      if (!targetDriveId) return { id: "__no_match__" };
+      return {
+        status: "ACTIVE",
+        employerProfile: {
+          company: {
+            recruitmentDriveParticipations: {
+              some: { driveId: targetDriveId, withdrawnAt: null },
+            },
+          },
+        },
+      };
+    case "FAIR_REGISTERED_TPOS":
+      if (!targetDriveId) return { id: "__no_match__" };
+      // TPOs whose placement-cell referred at least one candidate
+      // to this fair. Practical use: blast "your students need to
+      // complete profiles" only to TPOs who actually have students
+      // here, not every approved cell on the platform.
+      return {
+        status: "ACTIVE",
+        placementCellsCreated: {
+          some: {
+            status: "APPROVED",
+            referredRegistrations: { some: { driveId: targetDriveId } },
+          },
+        },
+      };
+    case "FAIR_ALL_REGISTRANTS":
+      if (!targetDriveId) return { id: "__no_match__" };
+      return {
+        status: "ACTIVE",
+        OR: [
+          { candidateProfile: { fairRegistrations: { some: { driveId: targetDriveId, cancelledAt: null } } } },
+          { employerProfile: { company: { recruitmentDriveParticipations: { some: { driveId: targetDriveId, withdrawnAt: null } } } } },
+          { placementCellsCreated: { some: { status: "APPROVED", referredRegistrations: { some: { driveId: targetDriveId } } } } },
+        ],
+      };
     default:
       return { status: "ACTIVE" };
   }
@@ -42,7 +91,7 @@ export function startBroadcastsWorker() {
       const broadcast = await db.broadcast.findUnique({ where: { id: broadcastId } });
       if (!broadcast) return { ok: false, reason: "not-found" };
 
-      const where = whereForTarget(broadcast.target);
+      const where = whereForTarget(broadcast.target, broadcast.targetDriveId);
       const total = await db.user.count({ where });
       await db.broadcast.update({
         where: { id: broadcastId },

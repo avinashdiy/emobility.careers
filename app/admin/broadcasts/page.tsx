@@ -20,10 +20,11 @@ export default async function BroadcastsPage() {
   const session = await auth();
   if (session?.user?.role !== "ADMIN") redirect("/403");
 
-  const [broadcasts, segmentCounts] = await Promise.all([
+  const [broadcasts, segmentCounts, activeFairs] = await Promise.all([
     db.broadcast.findMany({
       orderBy: { createdAt: "desc" },
       take: 50,
+      include: { targetDrive: { select: { title: true, slug: true } } },
     }),
     Promise.all([
       db.user.count({ where: { status: "ACTIVE" } }),
@@ -36,6 +37,17 @@ export default async function BroadcastsPage() {
         where: { status: "ACTIVE", role: "CANDIDATE", candidateProfile: { openToWork: true } },
       }),
     ]),
+    // Active fairs feed the FAIR_* audience selector. Limit to
+    // OPEN/IN_PROGRESS — broadcasting to a closed fair's audience
+    // post-event is occasionally valid (thank-you notes, surveys)
+    // but the more common case is in-flight ops, so we surface only
+    // the live ones.
+    db.recruitmentDrive.findMany({
+      where: { status: { in: ["OPEN", "IN_PROGRESS"] } },
+      orderBy: { startsAt: "asc" },
+      take: 20,
+      select: { id: true, slug: true, title: true, city: true, startsAt: true },
+    }),
   ]);
 
   const [allUsers, allCandidates, allEmployers, diyguru, openToWork] = segmentCounts;
@@ -66,13 +78,35 @@ export default async function BroadcastsPage() {
             <div className="sm:col-span-5">
               <Label htmlFor="target">Audience</Label>
               <NativeSelect id="target" name="target" defaultValue="ALL_CANDIDATES">
-                <option value="ALL_USERS">All active users · ~{allUsers.toLocaleString()}</option>
-                <option value="ALL_CANDIDATES">All candidates · ~{allCandidates.toLocaleString()}</option>
-                <option value="ALL_EMPLOYERS">All employers · ~{allEmployers.toLocaleString()}</option>
-                <option value="DIYGURU_VERIFIED">DIYguru verified · ~{diyguru.toLocaleString()}</option>
-                <option value="OPEN_TO_WORK">Open to work · ~{openToWork.toLocaleString()}</option>
-                <option value="EMPLOYERS_VERIFIED">Verified employers</option>
+                <optgroup label="Platform-wide">
+                  <option value="ALL_USERS">All active users · ~{allUsers.toLocaleString()}</option>
+                  <option value="ALL_CANDIDATES">All candidates · ~{allCandidates.toLocaleString()}</option>
+                  <option value="ALL_EMPLOYERS">All employers · ~{allEmployers.toLocaleString()}</option>
+                  <option value="DIYGURU_VERIFIED">DIYguru verified · ~{diyguru.toLocaleString()}</option>
+                  <option value="OPEN_TO_WORK">Open to work · ~{openToWork.toLocaleString()}</option>
+                  <option value="EMPLOYERS_VERIFIED">Verified employers</option>
+                </optgroup>
+                <optgroup label="Fair-scoped (pick a fair below)">
+                  <option value="FAIR_REGISTERED_CANDIDATES">Fair candidates</option>
+                  <option value="FAIR_REGISTERED_EMPLOYERS">Fair employers</option>
+                  <option value="FAIR_REGISTERED_TPOS">Fair TPOs</option>
+                  <option value="FAIR_ALL_REGISTRANTS">Fair — everyone</option>
+                </optgroup>
               </NativeSelect>
+            </div>
+            <div className="sm:col-span-12">
+              <Label htmlFor="targetDriveId">Fair (required for fair-scoped audiences)</Label>
+              <NativeSelect id="targetDriveId" name="targetDriveId" defaultValue="">
+                <option value="">— Platform-wide broadcast (no fair) —</option>
+                {activeFairs.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.title} · {f.city} · {new Date(f.startsAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                  </option>
+                ))}
+              </NativeSelect>
+              <p className="mt-1 text-hint text-emce-text-muted">
+                Only OPEN / IN_PROGRESS fairs are listed. To target a closed fair&apos;s audience (e.g. post-event survey), bump it back to OPEN temporarily.
+              </p>
             </div>
             <fieldset className="sm:col-span-12 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <legend className="sr-only">Channels</legend>
@@ -124,7 +158,10 @@ export default async function BroadcastsPage() {
                           : b.status === "FAILED" ? "danger"
                           : "outline"
                         }>{b.status}</Badge>
-                        <Badge variant="default">{b.target.replace("_", " ").toLowerCase()}</Badge>
+                        <Badge variant="default">{b.target.replace(/_/g, " ").toLowerCase()}</Badge>
+                        {b.targetDrive && (
+                          <Badge variant="outline" size="sm">📅 {b.targetDrive.title}</Badge>
+                        )}
                       </div>
                       <p className="mt-1 line-clamp-2 text-hint text-emce-text-sec">{b.body}</p>
                       <p className="mt-1 text-hint text-emce-text-muted">

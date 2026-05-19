@@ -13,6 +13,7 @@ import { startCompetitionTicksWorker } from "@/workers/processors/competition-ti
 import { startResumeDraftWorker } from "@/workers/processors/resume-draft";
 import { startWhatsAppDigestWorker } from "@/workers/processors/whatsapp-digest";
 import { startNotificationMaintenanceWorker } from "@/workers/processors/notification-maintenance";
+import { startFairRemindersWorker } from "@/workers/processors/fair-reminders";
 
 const workers = [
   startResumeParseWorker(),
@@ -25,6 +26,7 @@ const workers = [
   startResumeDraftWorker(),
   startWhatsAppDigestWorker(),
   startNotificationMaintenanceWorker(),
+  startFairRemindersWorker(),
 ];
 
 logger.info(`[worker] eMC worker process online (${workers.length} processors registered).`);

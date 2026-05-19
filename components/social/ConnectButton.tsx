@@ -18,11 +18,19 @@ export function ConnectButton({
   initialStatus,
   connectionId,
   variant = "default",
+  size = "default",
 }: {
   targetUserId: string;
   initialStatus: Status;
   connectionId?: string;
   variant?: "default" | "outline";
+  /**
+   * Forwarded to the underlying Button. Defaults to `default` (h-10)
+   * so existing callers don't change. Pass `xs` on dense rows where
+   * 6+ buttons need to fit in one line (e.g. the profile page action
+   * row, the feed page "People you may know" widget).
+   */
+  size?: "default" | "sm" | "xs";
 }) {
   const [status, setStatus] = useState<Status>(initialStatus);
   const [, start] = useTransition();
@@ -30,7 +38,7 @@ export function ConnectButton({
   if (status === "SELF") return null;
   if (status === "ANON") {
     return (
-      <Button asChild variant={variant}>
+      <Button asChild variant={variant} size={size}>
         <Link href="/signin">Sign in to connect</Link>
       </Button>
     );
@@ -80,22 +88,22 @@ export function ConnectButton({
 
   if (status === "NONE") {
     return (
-      <Button type="button" variant={variant} onClick={send}>
+      <Button type="button" variant={variant} size={size} onClick={send}>
         + Connect
       </Button>
     );
   }
   if (status === "PENDING_OUT") {
     return (
-      <Button type="button" variant="outline" onClick={withdraw}>
-        Pending — Withdraw
+      <Button type="button" variant="outline" size={size} onClick={withdraw}>
+        {size === "xs" ? "Pending" : "Pending — Withdraw"}
       </Button>
     );
   }
   if (status === "PENDING_IN") {
     return (
-      <Button type="button" onClick={accept}>
-        Accept request
+      <Button type="button" size={size} onClick={accept}>
+        {size === "xs" ? "Accept" : "Accept request"}
       </Button>
     );
   }
@@ -110,7 +118,7 @@ export function ConnectButton({
         } catch { /* ignore */ }
       }}
     >
-      <ConfirmSubmit confirm="Remove this connection?" variant="outline">
+      <ConfirmSubmit confirm="Remove this connection?" variant="outline" size={size}>
         ✓ Connected
       </ConfirmSubmit>
     </form>

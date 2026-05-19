@@ -12,7 +12,7 @@ import { relativeTime } from "@/lib/utils";
 import { CountryFlag } from "@/components/profile/CountryFlag";
 import { VerifiedBadge } from "@/components/profile/VerifiedBadge";
 import type { EmbedProvider, PostAttachmentType, PostKind, ReactionType } from "@prisma/client";
-import { Briefcase, ExternalLink, FileText, Globe, Users } from "lucide-react";
+import { Briefcase, ExternalLink, FileText, Globe, GraduationCap, MessageSquare, Repeat2, Users } from "lucide-react";
 
 const PERSON_TYPE_LABEL: Record<string, string> = {
   PROFESSIONAL: "Professional",
@@ -130,6 +130,20 @@ export interface FeedPostShape {
   viewerPollVotes?: string[];
 }
 
+/**
+ * Shared class for the 4-tab action bar at the bottom of every post.
+ * LinkedIn-parity: equal-width cells (flex-1), 32px tap target, icon
+ * + label horizontally, hover background fills the whole cell. Used
+ * by ReactionBar's main trigger, CommentToggleLink, RepostButton,
+ * and SharePostMenu's trigger so the four cells render identically.
+ *
+ * Exported so the four siblings can import vs each defining its own
+ * className (drift was the original problem — every bar button had
+ * slightly different padding / weight / rounding).
+ */
+export const actionTabCls =
+  "flex flex-1 items-center justify-center gap-2 rounded-md py-2 text-xs font-semibold text-emce-text-sec transition-colors hover:bg-emce-light-soft hover:text-emce-text";
+
 export function PostCard({
   post,
   viewerId,
@@ -170,7 +184,10 @@ export function PostCard({
         </Link>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
-            <Link href={headerSlug} className="font-bold text-emce-text hover:underline">
+            {/* font-semibold (600) instead of font-bold (700) — matches
+                LinkedIn's post-author weight. Bold was reading shouty
+                in a feed where the same name appears 20+ times. */}
+            <Link href={headerSlug} className="font-semibold text-emce-text hover:underline">
               {headerName}
             </Link>
             {/* Verified blue checkmark — only when admin has approved
@@ -181,7 +198,11 @@ export function PostCard({
             {!isCompanyPost && c?.country && (
               <CountryFlag code={c.country} size="sm" />
             )}
-            {!isCompanyPost && c?.isDIYguruVerified && <Badge variant="verified" className="text-[10px]">⭐</Badge>}
+            {!isCompanyPost && c?.isDIYguruVerified && (
+              <Badge variant="verified" className="gap-1 text-[10px]">
+                <GraduationCap className="h-3 w-3" aria-hidden /> DIYguru
+              </Badge>
+            )}
             {!isCompanyPost && c && (
               <span className="text-hint text-emce-text-muted">·</span>
             )}
@@ -475,25 +496,28 @@ export function PostCard({
         </div>
       )}
 
-      {/* Action bar — questions promote "Answer" as the primary CTA next
-          to reactions; the standard comment toggle still sits there for
-          short clarifications on the question itself. */}
-      <div className="mt-3 flex flex-wrap items-center gap-1 border-t border-emce-border pt-2">
+      {/* Action bar — LinkedIn's 4-tab pattern: equal-width
+          Like / Comment / Repost / Send cells with icon + label,
+          tap target stretches the full cell so mobile users can hit
+          them without precision. Each child wires its own click
+          behaviour but shares the className via the `actionTabCls`
+          token below. Question posts get a 5th "Answer" cell
+          inserted before Comment. */}
+      <div className="mt-2 flex items-stretch border-t border-emce-border pt-1">
         <ReactionBar postId={post.id} initialReaction={myReaction} count={post.reactionsCount} />
         {post.kind === "QUESTION" ? (
           <Link
             href={`/posts/${post.id}#answers`}
-            className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-bold text-emce-dark hover:bg-emce-light-soft"
+            className={actionTabCls}
           >
-            💬 Answer
+            <MessageSquare className="h-[18px] w-[18px]" aria-hidden />
+            <span>Answer</span>
           </Link>
         ) : null}
         <CommentToggleLink postId={post.id} count={post.commentsCount} />
         <RepostButton postId={post.id} />
         {/* Send via DM (LinkedIn-style "Send" — connection picker
-            modal + secondary copy/WhatsApp/X share options). The
-            inner modal pulls connections via getMyConnectionsForShare
-            on open; nothing to load until the user clicks Send. */}
+            modal + secondary copy/WhatsApp/X share options). */}
         <SharePostMenu
           postId={post.id}
           authorName={
@@ -546,11 +570,8 @@ function renderBodyWithLinks(body: string): React.ReactNode[] {
 
 function CommentToggleLink({ postId, count }: { postId: string; count: number }) {
   return (
-    <Link
-      href={`/posts/${postId}`}
-      className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-bold text-emce-text-sec hover:bg-emce-light-soft"
-    >
-      <span>💬</span>
+    <Link href={`/posts/${postId}`} className={actionTabCls}>
+      <MessageSquare className="h-[18px] w-[18px]" aria-hidden />
       <span>Comment{count > 0 ? ` · ${count}` : ""}</span>
     </Link>
   );
@@ -775,11 +796,8 @@ function extractVideoId(url: string, provider: EmbedProvider): string | undefine
 
 function RepostButton({ postId }: { postId: string }) {
   return (
-    <Link
-      href={`/posts/${postId}?repost=1`}
-      className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-bold text-emce-text-sec hover:bg-emce-light-soft"
-    >
-      <span>🔁</span>
+    <Link href={`/posts/${postId}?repost=1`} className={actionTabCls}>
+      <Repeat2 className="h-[18px] w-[18px]" aria-hidden />
       <span>Repost</span>
     </Link>
   );

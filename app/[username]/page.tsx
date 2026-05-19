@@ -983,7 +983,9 @@ export default async function PublicCandidateProfile({
                   <span className="text-sm text-emce-text-muted">({profile.pronouns})</span>
                 )}
                 {profile.isDIYguruVerified && (
-                  <Badge variant="verified" className="ml-1 text-[10px]">⭐ DIYguru</Badge>
+                  <Badge variant="verified" className="ml-1 gap-1 text-[10px]">
+                    <GraduationCap className="h-3 w-3" aria-hidden /> DIYguru
+                  </Badge>
                 )}
                 {profile.customCta && (
                   <Badge variant="default" size="sm" className="ml-1">
@@ -1061,20 +1063,24 @@ export default async function PublicCandidateProfile({
               </div>
             </div>
 
-            {/* Action buttons — dedicated row at the bottom, primary is filled */}
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            {/* Action buttons — dedicated row at the bottom, primary is filled.
+                size="xs" (h-8 + 11px text) so all 6-7 buttons stay on one
+                line on a ≥720px-wide profile card. Drops below Apple's
+                44px touch-target rec, but this is a desktop-dense row;
+                mobile collapses to wrap-2-rows naturally via flex-wrap. */}
+            <div className="mt-4 flex flex-wrap items-center gap-1.5">
               {isOwner ? (
                 <>
-                  <Button asChild size="sm">
+                  <Button asChild size="xs">
                     <Link href="/me/profile">Edit profile</Link>
                   </Button>
-                  <Button asChild size="sm" variant="outline">
+                  <Button asChild size="xs" variant="outline">
                     <Link href="/me">Open dashboard</Link>
                   </Button>
                   {/* Compass CTA — owner-visible. Public visitors see
                       the same link via the right rail of the profile.
                       It's also linked from the Pulse page. */}
-                  <Button asChild size="sm" variant="outline" className="border-emce-mid text-emce-darkest hover:bg-emce-light-soft">
+                  <Button asChild size="xs" variant="outline" className="border-emce-mid text-emce-darkest hover:bg-emce-light-soft">
                     <Link href={`/${profile.slug}/compass`}>⚡ My Compass</Link>
                   </Button>
                 </>
@@ -1084,48 +1090,37 @@ export default async function PublicCandidateProfile({
                     targetUserId={profile.user.id}
                     initialStatus={ctaStatus}
                     connectionId={connectionStatus.connectionId}
+                    size="xs"
                   />
                   {session?.user && (
                     <FollowUserButton
                       userId={profile.user.id}
                       initialFollowing={isFollowing}
                       signedIn={true}
+                      size="xs"
                     />
                   )}
-                  <Button asChild size="sm" variant="outline" className="border-emce-mid text-emce-darkest hover:bg-emce-light-soft">
-                    <Link href={`/${profile.slug}/compass`}>⚡ View Compass</Link>
+                  <Button asChild size="xs" variant="outline" className="border-emce-mid text-emce-darkest hover:bg-emce-light-soft">
+                    <Link href={`/${profile.slug}/compass`}>⚡ Compass</Link>
                   </Button>
                   {/* Peer DM — visible to any signed-in viewer who is
-                      already mutually connected (regardless of role).
-                      Previously the Message button only rendered for
-                      employers, so two connected candidates had no way
-                      to start a conversation from each other's profile
-                      even though the connection itself was accepted.
-                      Uses startConnectionThread (canonical-pair scheme,
-                      same one as sharePostViaMessage) so it lands in
-                      the same thread row as any post-share DM. */}
+                      already mutually connected (regardless of role). */}
                   {ctaStatus === "ACCEPTED" && !isEmployer && (
                     <form action={startConnectionThread}>
                       <input type="hidden" name="peerUserId" value={profile.user.id} />
-                      <Button type="submit" size="sm">💬 Message</Button>
+                      <Button type="submit" size="xs">💬 Message</Button>
                     </form>
                   )}
                   {isEmployer && (
                     <>
-                      {/* Cold-outreach DM — opens (or reuses) a thread
-                          between this recruiter and the candidate.
-                          Recruiters previously had no way to message
-                          a candidate they hadn't received an application
-                          from, even though the MessageThread schema
-                          supported (candidateUserId, employerUserId)
-                          cold threads. */}
+                      {/* Cold-outreach DM — recruiter → candidate. */}
                       <form action={startDirectThread}>
                         <input type="hidden" name="candidateUserId" value={profile.userId} />
-                        <Button type="submit" size="sm">💬 Message</Button>
+                        <Button type="submit" size="xs">💬 Message</Button>
                       </form>
                       <form action={saveCandidate}>
                         <input type="hidden" name="candidateId" value={profile.id} />
-                        <Button type="submit" variant="outline" size="sm">☆ Save</Button>
+                        <Button type="submit" variant="outline" size="xs">☆ Save</Button>
                       </form>
                     </>
                   )}
@@ -1135,12 +1130,13 @@ export default async function PublicCandidateProfile({
                 url={`${env.NEXT_PUBLIC_APP_URL}/${profile.slug}`}
                 title={`${fullName} on eMobility Careers`}
                 description={profile.headline ?? `${fullName}'s profile on eMobility Careers`}
-                label="Share profile"
+                label="Share"
+                size="xs"
               />
               {showResume && (
-                <Button asChild variant="outline" size="sm">
+                <Button asChild variant="outline" size="xs">
                   <a href={resumeDownloadHref} target="_blank" rel="noopener noreferrer">
-                    📄 Download résumé
+                    📄 Résumé
                   </a>
                 </Button>
               )}

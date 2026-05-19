@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { auth } from "@/lib/auth";
+import { env } from "@/lib/env";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
@@ -13,6 +15,8 @@ import {
   FUNNEL_STAGES,
 } from "@/lib/tpo";
 import { relativeTime } from "@/lib/utils";
+import { TpoInviteLinkCard } from "@/components/recruitathon/TpoInviteLinkCard";
+import { TpoLiveCheckInCard } from "@/components/recruitathon/TpoLiveCheckInCard";
 
 export const metadata = { title: "Placement dashboard" };
 
@@ -47,6 +51,16 @@ export default async function TpoDashboard({
       take: 50,
     }),
   ]);
+
+  // ─── Invite-link card data ────────────────────────────────────
+  // Only renders when the current TPO has an APPROVED placement
+  // cell with a minted inviteToken. Admins (no cell) see nothing
+  // here — they get the full cohort dashboard above + the admin
+  // surfaces. The card lists the upcoming OPEN drives with the
+  // TPO's shareable invite URL + how many students have used it
+  // so far per fair.
+  const session = await auth();
+  const inviteData = session?.user ? await loadInviteLinkData(session.user.id) : null;
 
   const peakReached = Math.max(1, ...funnel.map((f) => f.reached));
 
@@ -83,6 +97,28 @@ export default async function TpoDashboard({
           </form>
         }
       />
+
+      {/* Live check-in card — only renders when at least one fair
+          this TPO has students at is IN_PROGRESS. Surfaces real-time
+          attendance from this college so the TPO can answer "how
+          many of my students made it" without leaving the dashboard. */}
+      {inviteData && inviteData.liveFairs.length > 0 && (
+        <TpoLiveCheckInCard
+          collegeName={inviteData.collegeName}
+          liveFairs={inviteData.liveFairs}
+        />
+      )}
+
+      {/* Invite-link card — top of page so it's the first thing a
+          TPO sees post-approval. Hidden for admins (no cell) and
+          for cells in PENDING/REJECTED status (no token to share). */}
+      {inviteData && (
+        <TpoInviteLinkCard
+          collegeName={inviteData.collegeName}
+          inviteUrls={inviteData.inviteUrls}
+          perFair={inviteData.perFair}
+        />
+      )}
 
       {/* KPI strip — six tiles, LinkedIn-density */}
       <div className="grid gap-3 md:grid-cols-3 lg:grid-cols-6">
@@ -252,3 +288,168 @@ const STAGE_LABELS: Record<string, string> = {
 // Just so the stages export is referenced — keeps TS noUnusedLocals happy if
 // future dashboards consume this file's range vs. lib/tpo's own export.
 void FUNNEL_STAGES;
+
+/**
+ * Resolve the data the TpoInviteLinkCard needs for the currently-
+ * signed-in user. Returns null when the user has no APPROVED
+ * placement cell (admin viewing /tpo, or pending TPO).
+ *
+ * Three queries — kept here vs lib/tpo because the card is local to
+ * this page right now; extract if a second consumer materialises.
+ */
+interface LiveCheckInFair {
+  driveTitle: string;
+  driveSlug: string;
+  totalRegistered: number;
+  checkedIn: number;
+  recentlyCheckedIn: {
+    candidateName: string;
+    candidateSlug: string;
+    checkedInAt: Date;
+  }[];
+}
+
+async function loadInviteLinkData(userId: string): Promise<
+  | null
+  | {
+      collegeName: string;
+      inviteUrls: { driveSlug: string; driveTitle: string; url: string; registeredCount: number }[];
+      perFair: { driveTitle: string; registeredCount: number; profileCompletePct: number; checkedInCount: number }[];
+      liveFairs: LiveCheckInFair[];
+    }
+> {
+  const cell = await db.collegePlacementCell.findFirst({
+    where: { createdById: userId, status: "APPROVED", inviteToken: { not: null } },
+    select: {
+      id: true,
+      inviteToken: true,
+      institution: { select: { name: true } },
+    },
+  });
+  if (!cell || !cell.inviteToken) return null;
+
+  // Upcoming drives = OPEN or IN_PROGRESS with endsAt in the future.
+  // Limit to 4 so the card doesn't grow unbounded across multiple
+  // fair series.
+  const drives = await db.recruitmentDrive.findMany({
+    where: {
+      status: { in: ["OPEN", "IN_PROGRESS"] },
+      endsAt: { gte: new Date() },
+    },
+    orderBy: { startsAt: "asc" },
+    take: 4,
+    select: { slug: true, title: true },
+  });
+
+  // Per-drive counts via groupBy — one query for all upcoming fairs.
+  const counts = await db.recruitmentDriveRegistration.groupBy({
+    by: ["driveId"],
+    where: {
+      viaTpoCellId: cell.id,
+      drive: { slug: { in: drives.map((d) => d.slug) } },
+    },
+    _count: { _all: true },
+  });
+  // GroupBy returns driveId, but we have slug — map via a second cheap lookup.
+  const driveIdToSlug = new Map<string, string>();
+  if (drives.length > 0) {
+    const driveRows = await db.recruitmentDrive.findMany({
+      where: { slug: { in: drives.map((d) => d.slug) } },
+      select: { id: true, slug: true },
+    });
+    for (const d of driveRows) driveIdToSlug.set(d.id, d.slug);
+  }
+  const countBySlug = new Map<string, number>();
+  for (const c of counts) {
+    const slug = driveIdToSlug.get(c.driveId);
+    if (slug) countBySlug.set(slug, c._count._all);
+  }
+
+  const appUrl = env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "") ?? "";
+  const inviteUrls = drives.map((d) => ({
+    driveSlug: d.slug,
+    driveTitle: d.title,
+    url: `${appUrl}/fairs/${d.slug}/register?as=candidate&tpo=${cell.inviteToken}`,
+    registeredCount: countBySlug.get(d.slug) ?? 0,
+  }));
+
+  // perFair — across ALL drives (not just upcoming) where this cell
+  // referred students. Lets the TPO see historical performance even
+  // after a fair closes.
+  const allRegistrations = await db.recruitmentDriveRegistration.findMany({
+    where: { viaTpoCellId: cell.id },
+    select: {
+      checkedInAt: true,
+      candidate: { select: { profileCompleteness: true } },
+      drive: { select: { id: true, title: true } },
+    },
+  });
+  const perFairMap = new Map<
+    string,
+    { driveTitle: string; registeredCount: number; profileSum: number; checkedInCount: number }
+  >();
+  for (const r of allRegistrations) {
+    const key = r.drive.id;
+    const row = perFairMap.get(key) ?? {
+      driveTitle: r.drive.title,
+      registeredCount: 0,
+      profileSum: 0,
+      checkedInCount: 0,
+    };
+    row.registeredCount += 1;
+    row.profileSum += r.candidate.profileCompleteness;
+    if (r.checkedInAt) row.checkedInCount += 1;
+    perFairMap.set(key, row);
+  }
+  const perFair = Array.from(perFairMap.values()).map((row) => ({
+    driveTitle: row.driveTitle,
+    registeredCount: row.registeredCount,
+    profileCompletePct: row.registeredCount > 0 ? Math.round(row.profileSum / row.registeredCount) : 0,
+    checkedInCount: row.checkedInCount,
+  }));
+
+  // ─── Live check-in data (IN_PROGRESS fairs only) ──────────
+  // Only loads when at least one fair is currently running, so the
+  // TPO dashboard doesn't pay the cost on a typical day. The card
+  // surfaces "X of Y students checked in" + the 5 most recent
+  // check-ins with name + time.
+  const liveDrives = await db.recruitmentDrive.findMany({
+    where: { status: "IN_PROGRESS" },
+    select: { id: true, slug: true, title: true },
+  });
+  const liveFairs: LiveCheckInFair[] = [];
+  for (const d of liveDrives) {
+    const regs = await db.recruitmentDriveRegistration.findMany({
+      where: { driveId: d.id, viaTpoCellId: cell.id, cancelledAt: null },
+      select: {
+        checkedInAt: true,
+        candidate: { select: { slug: true, firstName: true, lastName: true } },
+      },
+    });
+    if (regs.length === 0) continue; // skip fairs with no students from this college
+    const checkedIn = regs.filter((r) => r.checkedInAt).length;
+    const recentlyCheckedIn = regs
+      .filter((r) => r.checkedInAt)
+      .sort((a, b) => (b.checkedInAt!.getTime() - a.checkedInAt!.getTime()))
+      .slice(0, 5)
+      .map((r) => ({
+        candidateName: `${r.candidate.firstName} ${r.candidate.lastName ?? ""}`.trim(),
+        candidateSlug: r.candidate.slug,
+        checkedInAt: r.checkedInAt!,
+      }));
+    liveFairs.push({
+      driveTitle: d.title,
+      driveSlug: d.slug,
+      totalRegistered: regs.length,
+      checkedIn,
+      recentlyCheckedIn,
+    });
+  }
+
+  return {
+    collegeName: cell.institution.name,
+    inviteUrls,
+    perFair,
+    liveFairs,
+  };
+}
