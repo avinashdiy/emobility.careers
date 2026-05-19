@@ -20,7 +20,11 @@ import { getProfileViewStats } from "@/server/profile/views";
 import { isFeatureOff, FeatureOffNotice } from "@/components/layout/FeatureGate";
 import { relativeTime } from "@/lib/utils";
 
-export const metadata = { title: "Feed" };
+export const metadata = {
+  title: "Feed",
+  description:
+    "The EV-industry social feed — posts from engineers, recruiters, mentors, and companies across battery, charging, and powertrain. Discover jobs and people.",
+};
 
 export default async function FeedPage({
   searchParams,
@@ -306,6 +310,13 @@ export default async function FeedPage({
 
         {/* ─── Center column — composer + feed ─── */}
         <main className="lg:col-span-6">
+          {/* Visually-hidden h1 — Bing flagged /feed as "missing
+              h1" in the SEO audit. We don't want a chunky page title
+              competing with the composer for the recruiter's eye
+              (LinkedIn does the same — no visible "Feed" header on
+              the feed page), so the h1 is sr-only. Crawlers still
+              see it; layout stays unchanged. */}
+          <h1 className="sr-only">EV-industry social feed</h1>
           <RichPostComposer
             user={{
               name: fullName,

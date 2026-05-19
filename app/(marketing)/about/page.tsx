@@ -7,7 +7,10 @@ import { LEGAL, formatAddress } from "@/lib/legal";
 
 export const metadata: Metadata = {
   title: "About",
-  description: `${LEGAL.brand} — India's specialised hiring platform for the EV industry.`,
+  // Bing flagged the previous 82-char description as too short. The
+  // 150+ char version below adds the EV-domain breadcrumbs that
+  // matter to crawlers indexing this page for "who is X" queries.
+  description: `${LEGAL.brand} — India's specialised hiring platform for the EV industry. Battery, charging, powertrain, and motor-engineering roles for technicians and engineers.`,
 };
 
 export default function AboutPage() {

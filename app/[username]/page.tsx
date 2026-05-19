@@ -17,6 +17,7 @@ import { ShareButton } from "@/components/profile/ShareButton";
 import { CountryFlag } from "@/components/profile/CountryFlag";
 import { VerifiedBadge } from "@/components/profile/VerifiedBadge";
 import { RequestContactButton } from "@/components/profile/RequestContactButton";
+import { ProfilePaywall } from "@/components/profile/ProfilePaywall";
 import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { ExpandableText } from "@/components/profile/ExpandableText";
 import { EditPencil } from "@/components/profile/EditPencil";
@@ -186,7 +187,25 @@ export async function generateMetadata({
   }
   const name = [profile.firstName, profile.lastName].filter(Boolean).join(" ");
   const url = `${env.NEXT_PUBLIC_APP_URL}/${username}`;
-  const description = profile.headline ?? `${name} on eMobility Careers`;
+  // Build a 140-160 char description for every candidate profile.
+  // The previous version fell back to `headline ?? "${name} on
+  // eMobility Careers"` which produced 20-40 char descriptions for
+  // candidates with short or missing headlines — Bing Webmaster
+  // Tools flagged 100+ pages as "meta description too short". Two
+  // templates keep the user's actual headline phrasing when present
+  // and pad with industry/platform context when absent; both clamp
+  // to ≤160 with a word-boundary trim so Bing/Google don't truncate
+  // mid-word in the SERP.
+  const headlineText = profile.headline?.trim();
+  let description: string;
+  if (headlineText) {
+    description = `${name} — ${headlineText}. Explore experience, EV-industry skills, and DIYguru-verified credentials on eMobility Careers, India's specialised EV hiring platform.`;
+  } else {
+    description = `${name} on eMobility Careers — India's specialised EV-industry talent platform. Explore experience, skills, certifications, and DIYguru-verified credentials across battery, charging, and powertrain.`;
+  }
+  if (description.length > 160) {
+    description = description.slice(0, 158).replace(/\s+\S*$/, "") + "…";
+  }
   const heroImage = profile.profilePhotoUrl ?? null;
   return {
     title: name,
@@ -457,6 +476,83 @@ export default async function PublicCandidateProfile({
             </Link>
           </p>
         </main>
+      </>
+    );
+  }
+
+  // ─── Logged-out paywall ───────────────────────────────────────
+  //
+  // Personal profiles (candidate OR employer-person; both share the
+  // /[username] route via CandidateProfile.slug) are gated behind
+  // sign-in. Anonymous visitors see the photo+name hero only, then
+  // a blurred skeleton + sign-up CTA — LinkedIn's "join to see full
+  // profile" pattern.
+  //
+  // NOT gated:
+  //   • Company pages (/company/[slug]) — organisations, not people
+  //   • Institution pages (/institutions/[slug]) — same reason
+  //   • Mentor profiles (/mentors/[slug]) — mentors WANT to be
+  //     discovered for paid bookings; gating them would kill that
+  //     funnel
+  //   • CMS Pages + Articles that share this route via slug —
+  //     handled in the early branches above, never reach this gate
+  //
+  // SEO trade-off accepted: search engines crawl logged-out, so they
+  // only see the limited version. The `metadata.description` in
+  // generateMetadata above carries the headline + brand tail (140-160
+  // chars) — enough for SERP snippets to surface the page and
+  // convert the click into a signup.
+  if (!session?.user) {
+    const limitedName = `${profile.firstName} ${profile.lastName ?? ""}`.trim();
+    const returnPath = `/${username}`;
+    return (
+      <>
+        <SiteHeader />
+        <div className="container max-w-5xl py-4 sm:py-6">
+          {/* Hero — banner + avatar + name only. Mirrors the
+              logged-in hero structurally (same banner heights, same
+              avatar overlap, same name typography) so a visitor who
+              signs up doesn't experience visual reflow when the
+              full page reveals. Everything below name is omitted. */}
+          <Card className="overflow-hidden p-0 shadow-sm">
+            {profile.bannerUrl ? (
+              <div
+                className="relative h-32 bg-cover bg-center sm:h-44"
+                style={{ backgroundImage: `url(${profile.bannerUrl})` }}
+                role="img"
+                aria-label={`${limitedName} cover photo`}
+              >
+                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-1/2 bg-gradient-to-t from-black/15 to-transparent" />
+              </div>
+            ) : (
+              <div className="emce-mesh-hero relative h-32 sm:h-44">
+                <div
+                  aria-hidden
+                  className="emce-dot-grid pointer-events-none absolute inset-0 opacity-25"
+                />
+              </div>
+            )}
+            <div className="relative px-4 pb-4 sm:px-6 sm:pb-5">
+              <div className="absolute left-4 top-0 -translate-y-1/2 sm:left-6">
+                <Avatar
+                  src={profile.profilePhotoUrl}
+                  name={limitedName}
+                  size="xl"
+                  className="h-24 w-24 ring-4 ring-white sm:h-32 sm:w-32 [&>span]:text-2xl"
+                />
+              </div>
+              <div className="h-16 sm:h-20" />
+              <h1 className="text-[22px] font-semibold leading-tight tracking-tight text-emce-text sm:text-2xl">
+                {limitedName}
+              </h1>
+            </div>
+          </Card>
+
+          {/* Blurred skeleton + signup CTA overlay. Self-contained
+              component so the same wall can be reused on other
+              personal-profile surfaces later. */}
+          <ProfilePaywall displayName={limitedName} returnPath={returnPath} />
+        </div>
       </>
     );
   }

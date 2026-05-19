@@ -12,7 +12,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { rankJobsForCandidate } from "@/server/matching/candidate-match";
 
-export const metadata = { title: "Browse EV jobs" };
+export const metadata = {
+  title: "Browse EV jobs",
+  description:
+    "Browse EV-industry jobs in India — battery, charging, powertrain, motor, and vehicle engineering roles. Filter by location, work mode, and EV domain.",
+};
 
 export default async function JobsPage({
   searchParams,

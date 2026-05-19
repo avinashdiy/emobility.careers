@@ -27,7 +27,11 @@ import { ProfilePerformanceCard } from "@/components/profile/ProfilePerformanceC
 import { getCandidateApplicationStats } from "@/lib/applications-stats";
 import { relativeTime } from "@/lib/utils";
 
-export const metadata = { title: "My dashboard" };
+export const metadata = {
+  title: "My dashboard",
+  description:
+    "Your eMobility Careers dashboard — applications, mentor sessions, saved jobs, profile completeness, and the latest jobs matched to your EV-industry skills.",
+};
 
 const APPLICATION_STAGE_TONE: Record<string, "default" | "warning" | "verified" | "outline"> = {
   APPLIED: "outline",

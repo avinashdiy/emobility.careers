@@ -6,7 +6,11 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 
-export const metadata = { title: "EV companies hiring" };
+export const metadata = {
+  title: "EV companies hiring",
+  description:
+    "Browse verified EV companies hiring in India — OEMs, startups, charging operators, battery makers, and Tier-1 suppliers. Discover open roles and team pages.",
+};
 
 export default async function CompaniesPage() {
   const companies = await db.company.findMany({

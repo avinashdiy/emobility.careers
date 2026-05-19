@@ -57,6 +57,11 @@ export async function GET(req: NextRequest) {
       id: true,
       email: true,
       name: true,
+      // Phone is captured at signup (SMS-OTP path) or added later via
+      // /me/settings. Some legacy candidates have phone on
+      // CandidateProfile but not on User — we surface both columns
+      // separately so the admin can see which copy exists.
+      phone: true,
       role: true,
       status: true,
       emailVerifiedAt: true,
@@ -66,6 +71,11 @@ export async function GET(req: NextRequest) {
       candidateProfile: {
         select: {
           slug: true,
+          // CandidateProfile carries its own phone copy — older
+          // signups stored phone here exclusively. Export both so the
+          // admin can deduplicate / pick whichever is non-null.
+          phone: true,
+          email: true,
           country: true,
           city: true,
           headline: true,
@@ -91,6 +101,7 @@ export async function GET(req: NextRequest) {
     "id",
     "email",
     "name",
+    "phone",
     "role",
     "status",
     "email_verified_at",
@@ -98,6 +109,8 @@ export async function GET(req: NextRequest) {
     "last_login_at",
     "created_at",
     "candidate_slug",
+    "candidate_phone",
+    "candidate_email",
     "country",
     "city",
     "headline",
@@ -119,6 +132,7 @@ export async function GET(req: NextRequest) {
         u.id,
         u.email,
         u.name,
+        u.phone,
         u.role,
         u.status,
         u.emailVerifiedAt,
@@ -126,6 +140,8 @@ export async function GET(req: NextRequest) {
         u.lastLoginAt,
         u.createdAt,
         c?.slug,
+        c?.phone,
+        c?.email,
         c?.country,
         c?.city,
         c?.headline,

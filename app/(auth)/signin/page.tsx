@@ -4,7 +4,11 @@ import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 import { turnstilePublicKey } from "@/lib/anti-spam";
 
-export const metadata = { title: "Sign in" };
+export const metadata = {
+  title: "Sign in",
+  description:
+    "Sign in to eMobility Careers — India's specialised EV-industry hiring platform. Continue your job search, applications, mentor sessions, and social feed.",
+};
 
 export default async function SignInPage({
   searchParams,

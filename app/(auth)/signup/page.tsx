@@ -4,7 +4,11 @@ import { turnstilePublicKey } from "@/lib/anti-spam";
 import { t } from "@/lib/i18n";
 import { getLocale } from "@/lib/i18n-server";
 
-export const metadata = { title: "Create your account" };
+export const metadata = {
+  title: "Create your account",
+  description:
+    "Create your eMobility Careers account — India's specialised EV-industry hiring platform. Apply to battery, charging, powertrain, and motor-engineering roles.",
+};
 
 export default async function SignUpPage({
   searchParams,

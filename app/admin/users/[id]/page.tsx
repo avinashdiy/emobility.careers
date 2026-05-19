@@ -7,10 +7,20 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/select";
 import { AdminShell } from "@/components/layout/admin-shell";
-import { setUserRole, setUserStatus } from "@/server/admin/actions";
+import { ToastFromSearchParams } from "@/components/ui/toast-from-params";
+import {
+  setUserRole,
+  setUserStatus,
+  setUserEmail,
+  setUserName,
+  forceVerifyEmail,
+  sendUserPasswordReset,
+  softDeleteUser,
+} from "@/server/admin/actions";
 import { startImpersonation } from "@/server/admin/impersonation";
 import { setShadowBan } from "@/server/admin/comment-moderation";
 import { relativeTime } from "@/lib/utils";
@@ -60,9 +70,13 @@ export default async function AdminUserDetail({ params }: { params: Promise<{ id
   const cp = user.candidateProfile;
   const fullName = cp ? `${cp.firstName} ${cp.lastName ?? ""}`.trim() : (user.name ?? user.email);
 
+  const isSelf = session.user.id === user.id;
+  const isDeleted = user.status === "DELETED";
+
   return (
     <AdminShell>
       <div className="px-4 py-6 lg:px-8 lg:py-8 space-y-4">
+        <ToastFromSearchParams />
         <div>
           <Link href="/admin/users" className="text-sm text-emce-text-sec hover:underline">← All users</Link>
           <h1 className="mt-1 text-dashboard text-emce-text md:text-3xl">{fullName}</h1>
@@ -128,18 +142,175 @@ export default async function AdminUserDetail({ params }: { params: Promise<{ id
               <h2 className="text-section text-emce-text">Account status</h2>
               <form action={setUserStatus} className="mt-3 flex gap-2">
                 <input type="hidden" name="userId" value={user.id} />
-                <NativeSelect name="status" defaultValue={user.status} className="flex-1">
+                {/* DELETED is intentionally absent from the dropdown.
+                    The dedicated "Delete user" card below routes
+                    through softDeleteUser, which scrubs PII and kills
+                    sessions in addition to flipping the status — a
+                    plain status flip would leave the user's data
+                    public. */}
+                <NativeSelect
+                  name="status"
+                  defaultValue={user.status === "DELETED" ? "SUSPENDED" : user.status}
+                  className="flex-1"
+                  disabled={isDeleted}
+                >
                   <option value="ACTIVE">Active</option>
                   <option value="SUSPENDED">Suspended</option>
-                  <option value="DELETED">Deleted</option>
                 </NativeSelect>
                 <ConfirmSubmit
                   size="sm"
                   variant="destructive"
                   confirm={`Change status for ${fullName}? Suspending blocks sign-in.`}
+                  disabled={isDeleted}
                 >Save</ConfirmSubmit>
               </form>
+              {isDeleted && (
+                <p className="mt-2 text-hint italic text-emce-text-sec">
+                  This account is DELETED — PII scrubbed, sign-in disabled. Status changes are no-ops.
+                </p>
+              )}
             </Card>
+
+            {/* Edit identity — fixes signup typos. Touches the User
+                row directly (sign-in surface), not the public-profile
+                copies on CandidateProfile. Email change clears email
+                verification so the user must re-prove ownership. */}
+            {!isDeleted && (
+              <Card>
+                <h2 className="text-section text-emce-text">Edit identity</h2>
+                <p className="mt-1 text-hint text-emce-text-sec">
+                  Fix typos in the sign-in email or display name. Email change clears verification.
+                </p>
+                <form action={setUserEmail} className="mt-3 flex gap-2">
+                  <input type="hidden" name="userId" value={user.id} />
+                  <Input
+                    type="email"
+                    name="email"
+                    defaultValue={user.email}
+                    aria-label="Sign-in email"
+                    className="flex-1"
+                    disabled={isSelf}
+                  />
+                  <ConfirmSubmit
+                    size="sm"
+                    variant="outline"
+                    confirm={`Change sign-in email to the new address? The user will need to re-verify the email.`}
+                    disabled={isSelf}
+                  >
+                    Save email
+                  </ConfirmSubmit>
+                </form>
+                <form action={setUserName} className="mt-2 flex gap-2">
+                  <input type="hidden" name="userId" value={user.id} />
+                  <Input
+                    type="text"
+                    name="name"
+                    defaultValue={user.name ?? ""}
+                    placeholder="Display name"
+                    aria-label="Display name"
+                    className="flex-1"
+                  />
+                  <Button size="sm" variant="outline" type="submit">
+                    Save name
+                  </Button>
+                </form>
+                {isSelf && (
+                  <p className="mt-2 text-hint italic text-emce-text-sec">
+                    You can't change your own email from here — use /me/settings.
+                  </p>
+                )}
+              </Card>
+            )}
+
+            {/* Email verification override — flips `emailVerifiedAt`
+                to now() for users who lost the verification link or
+                whose email provider blocked it. Disabled if already
+                verified (the action also refuses to no-op). */}
+            {!isDeleted && (
+              <Card>
+                <h2 className="text-section text-emce-text">Email verification</h2>
+                {user.emailVerifiedAt ? (
+                  <>
+                    <Badge variant="verified">
+                      Verified {relativeTime(user.emailVerifiedAt)}
+                    </Badge>
+                    <p className="mt-2 text-hint italic text-emce-text-sec">
+                      Email is verified. Use "Edit identity" above to change the email — that clears verification automatically.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-hint text-emce-text-sec">
+                      User hasn't verified <code>{user.email}</code>. Force-verify
+                      on their behalf if the link expired or got lost.
+                    </p>
+                    <form action={forceVerifyEmail} className="mt-3">
+                      <input type="hidden" name="userId" value={user.id} />
+                      <ConfirmSubmit
+                        size="sm"
+                        variant="outline"
+                        confirm={`Mark ${user.email} as verified? Only do this if you've confirmed the email belongs to ${fullName} via another channel.`}
+                      >
+                        ✓ Force-verify email
+                      </ConfirmSubmit>
+                    </form>
+                  </>
+                )}
+              </Card>
+            )}
+
+            {/* Password reset — triggers the same one-time-link email
+                the self-serve /forgot-password flow uses. Admin
+                doesn't see or set the new password — the user owns
+                that. Works for OAuth-only accounts too (the reset
+                flow sets a password if none exists). */}
+            {!isDeleted && (
+              <Card>
+                <h2 className="text-section text-emce-text">Password reset</h2>
+                <p className="text-hint text-emce-text-sec">
+                  Emails a one-time reset link to <code>{user.email}</code> (1-hour expiry). They set
+                  the new password themselves — you never see it.
+                </p>
+                <form action={sendUserPasswordReset} className="mt-3">
+                  <input type="hidden" name="userId" value={user.id} />
+                  <ConfirmSubmit
+                    size="sm"
+                    variant="outline"
+                    confirm={`Send a password reset link to ${user.email}? They'll have 1 hour to use it.`}
+                  >
+                    ✉ Send reset email
+                  </ConfirmSubmit>
+                </form>
+              </Card>
+            )}
+
+            {/* Delete user — soft delete with PII scrub + session
+                kill. Preserves the User row so application history,
+                posts, audit log entries continue to resolve (showing
+                as "Deleted user"). Refused on admins, on self, and
+                on employers who own a company with applications. */}
+            {!isDeleted && user.role !== "ADMIN" && !isSelf && (
+              <Card className="border-emce-red-deep/30 bg-emce-red-light/20">
+                <h2 className="text-section text-emce-text">Delete user</h2>
+                <p className="mt-1 text-hint text-emce-text-sec">
+                  Soft-deletes the account: scrubs name/email/phone/avatar/resume,
+                  kills active sessions, disables sign-in. Posts/applications/
+                  messages survive as "Deleted user" so other parties don't lose
+                  context. Hard-delete is not available — ask engineering for the
+                  rare legal-takedown case.
+                </p>
+                <form action={softDeleteUser} className="mt-3">
+                  <input type="hidden" name="userId" value={user.id} />
+                  <ConfirmSubmit
+                    size="sm"
+                    variant="destructive"
+                    confirm={`Delete ${user.email}? PII will be scrubbed permanently; active sessions ended; sign-in blocked. Application/post/message history is preserved as "Deleted user". This action cannot be reversed.`}
+                  >
+                    🗑 Delete user
+                  </ConfirmSubmit>
+                </form>
+              </Card>
+            )}
 
             {/* Impersonate — admin signs in as this user for support
                 debugging. Renders a sticky red banner across every
@@ -171,8 +342,9 @@ export default async function AdminUserDetail({ params }: { params: Promise<{ id
                 seeing their own content (so they don't notice). Use
                 instead of full SUSPEND when you want plausible
                 deniability — spammers rage-create new accounts when
-                hard-banned, but go quiet when shadow-banned. */}
-            {user.role !== "ADMIN" && (
+                hard-banned, but go quiet when shadow-banned.
+                Skipped on DELETED accounts — they can't post anyway. */}
+            {user.role !== "ADMIN" && !isDeleted && (
               <Card>
                 <h2 className="text-section text-emce-text">Shadow ban</h2>
                 {user.shadowBannedAt ? (

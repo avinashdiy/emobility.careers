@@ -40,6 +40,12 @@ export async function GET() {
     { path: "/competitions", priority: 0.7, changefreq: "weekly" },
     { path: "/pulse", priority: 0.7, changefreq: "hourly" },
     { path: "/salaries", priority: 0.7, changefreq: "weekly" },
+    // Articles index — individual articles live in
+    // sitemap-articles.xml, but the index page itself was missing
+    // from the static shard. Bing flagged it as "Important pages
+    // missing in sitemaps". Crawl daily — new articles publish
+    // frequently and the index page reflects them.
+    { path: "/articles", priority: 0.8, changefreq: "daily" },
     { path: "/about", priority: 0.5, changefreq: "weekly" },
     { path: "/signup", priority: 0.5, changefreq: "weekly" },
     { path: "/signin", priority: 0.5, changefreq: "weekly" },

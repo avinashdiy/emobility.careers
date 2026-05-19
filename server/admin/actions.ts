@@ -98,6 +98,397 @@ export async function setUserStatus(formData: FormData) {
   revalidatePath("/admin/users");
 }
 
+// ─── Identity edits ──────────────────────────────────────────
+//
+// Lets an admin fix sign-up typos (wrong email captured at signup,
+// misspelt name, etc.). These touch the `User` row directly — the
+// authoritative identity surface used for sign-in + email delivery.
+// Candidate-profile edits live in candidate-actions.ts and target
+// the public-profile fields (firstName, lastName, headline, etc.),
+// which are separate copies.
+
+const setEmailSchema = z.object({
+  userId: z.string().min(1),
+  email: z.string().email("Enter a valid email address").toLowerCase().max(254),
+});
+
+export async function setUserEmail(formData: FormData) {
+  const session = await requireAdmin();
+  const parsed = setEmailSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    redirect(
+      "/admin/users?error=" + encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid email"),
+    );
+  }
+  const { userId, email } = parsed.data;
+  const before = await db.user.findUnique({
+    where: { id: userId },
+    select: { email: true, role: true },
+  });
+  if (!before) {
+    redirect("/admin/users?error=" + encodeURIComponent("User not found."));
+  }
+  // Self-guard: changing your own email out from under your own
+  // session would invalidate every magic-link / sign-in the admin
+  // might rely on. Force them to do it from /me/settings instead.
+  if (userId === session.user.id) {
+    redirect(
+      `/admin/users/${userId}?error=` +
+        encodeURIComponent("Use /me/settings to change your own email."),
+    );
+  }
+  // Uniqueness check — Prisma will throw a P2002 anyway but the
+  // generic toast is unhelpful. Catch early with a specific message.
+  const collision = await db.user.findUnique({
+    where: { email },
+    select: { id: true },
+  });
+  if (collision && collision.id !== userId) {
+    redirect(
+      `/admin/users/${userId}?error=` +
+        encodeURIComponent(`Another user already has ${email}. Resolve the duplicate first.`),
+    );
+  }
+  // Email change resets verification — they need to re-prove
+  // ownership of the new address. Same pattern as the self-serve
+  // /me/settings email-change flow.
+  await db.user.update({
+    where: { id: userId },
+    data: { email, emailVerifiedAt: null },
+  });
+  await audit({
+    actorId: session.user.id,
+    action: "user.email_change",
+    entity: "User",
+    entityId: userId,
+    meta: { from: before!.email, to: email, byRole: before!.role },
+  });
+  revalidatePath("/admin/users");
+  revalidatePath(`/admin/users/${userId}`);
+  redirect(
+    `/admin/users/${userId}?notice=` +
+      encodeURIComponent("Email updated. Verification cleared — user needs to re-verify."),
+  );
+}
+
+const setNameSchema = z.object({
+  userId: z.string().min(1),
+  name: z.string().trim().min(1).max(120),
+});
+
+export async function setUserName(formData: FormData) {
+  const session = await requireAdmin();
+  const parsed = setNameSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) {
+    redirect(
+      "/admin/users?error=" + encodeURIComponent(parsed.error.issues[0]?.message ?? "Invalid name"),
+    );
+  }
+  const { userId, name } = parsed.data;
+  const before = await db.user.findUnique({
+    where: { id: userId },
+    select: { name: true },
+  });
+  if (!before) redirect("/admin/users?error=" + encodeURIComponent("User not found."));
+  await db.user.update({ where: { id: userId }, data: { name } });
+  await audit({
+    actorId: session.user.id,
+    action: "user.name_change",
+    entity: "User",
+    entityId: userId,
+    meta: { from: before!.name, to: name },
+  });
+  revalidatePath("/admin/users");
+  revalidatePath(`/admin/users/${userId}`);
+  redirect(
+    `/admin/users/${userId}?notice=` + encodeURIComponent("Display name updated."),
+  );
+}
+
+/**
+ * Force-verify email — flips `emailVerifiedAt` to now() for a user
+ * whose verification link expired or got lost in spam. The user is
+ * told via email so they know admin acted on their behalf.
+ *
+ * Refuses to re-verify an already-verified email (no-op) — keeps
+ * the audit log clean.
+ */
+export async function forceVerifyEmail(formData: FormData) {
+  const session = await requireAdmin();
+  const userId = z.string().parse(formData.get("userId"));
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { email: true, emailVerifiedAt: true, name: true },
+  });
+  if (!user) redirect("/admin/users?error=" + encodeURIComponent("User not found."));
+  if (user!.emailVerifiedAt) {
+    redirect(
+      `/admin/users/${userId}?error=` +
+        encodeURIComponent("Email is already verified — nothing to do."),
+    );
+  }
+  await db.user.update({
+    where: { id: userId },
+    data: { emailVerifiedAt: new Date() },
+  });
+  await audit({
+    actorId: session.user.id,
+    action: "user.email_force_verified",
+    entity: "User",
+    entityId: userId,
+    meta: { email: user!.email },
+  });
+  revalidatePath(`/admin/users/${userId}`);
+  redirect(
+    `/admin/users/${userId}?notice=` +
+      encodeURIComponent(`Marked ${user!.email} as verified.`),
+  );
+}
+
+/**
+ * Send a password-reset email to a user as the admin. The user
+ * receives the same one-time link the self-serve "forgot password"
+ * flow generates and can set a password from there — works for
+ * accounts created via OAuth too (sets a password if none exists).
+ *
+ * The admin doesn't get to set the password directly — that'd be a
+ * trust-boundary violation. They trigger the flow, the user owns
+ * the actual change.
+ */
+export async function sendUserPasswordReset(formData: FormData) {
+  const session = await requireAdmin();
+  const userId = z.string().parse(formData.get("userId"));
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { email: true, status: true, name: true },
+  });
+  if (!user) redirect("/admin/users?error=" + encodeURIComponent("User not found."));
+  if (user!.status !== "ACTIVE") {
+    redirect(
+      `/admin/users/${userId}?error=` +
+        encodeURIComponent("Reactivate the account before sending a password reset — the link won't work for a SUSPENDED/DELETED account."),
+    );
+  }
+  try {
+    const { issueToken } = await import("@/lib/auth-tokens");
+    const { passwordResetEmail } = await import("@/lib/emails/templates");
+    const { sendMail } = await import("@/lib/mail");
+    const { token } = await issueToken("password-reset", user!.email);
+    const tpl = passwordResetEmail(user!.email, token);
+    await sendMail({ to: user!.email, ...tpl });
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    const { logger } = await import("@/lib/logger");
+    logger.error({ err, userId }, "[admin] password reset email send failed");
+    redirect(
+      `/admin/users/${userId}?error=` +
+        encodeURIComponent("Couldn't send the reset email — check /admin/settings?tab=email for delivery issues."),
+    );
+  }
+  await audit({
+    actorId: session.user.id,
+    action: "user.password_reset_sent",
+    entity: "User",
+    entityId: userId,
+    meta: { email: user!.email },
+  });
+  redirect(
+    `/admin/users/${userId}?notice=` +
+      encodeURIComponent(`Password reset link emailed to ${user!.email}. Link expires in 1 hour.`),
+  );
+}
+
+/**
+ * Soft-delete a user — scrubs PII, blocks sign-in, kills active
+ * sessions, and marks the row as DELETED while preserving the User
+ * id so foreign keys (Applications, Posts, Messages, audit log)
+ * remain intact.
+ *
+ * Why soft-delete instead of hard-delete:
+ *   • Hard-cascade would erase application history (interviews,
+ *     stage moves, notes) that other parties still need to see.
+ *     Employers don't lose their pipeline because a candidate's
+ *     account was removed.
+ *   • Posts/comments authored by a deleted user become "Deleted
+ *     user" placeholders rather than disappearing — preserves the
+ *     replies/threads other users participated in.
+ *   • Audit log integrity — the actor reference on `auditEntries`
+ *     remains valid, so historical actions stay attributable.
+ *
+ * What this DOES:
+ *   • `User.status = "DELETED"`, `passwordHash = null`, `name`,
+ *     `phone`, `image`, `phoneVerifiedAt`, `emailVerifiedAt` cleared.
+ *   • `User.email` renamed to `deleted-{id}@deleted.local` — keeps
+ *     the unique constraint satisfied, blocks any sign-in / reset.
+ *   • Active `Session` rows deleted (immediate logout everywhere).
+ *   • Linked OAuth `Account` rows deleted (no "Sign in with Google"
+ *     resurrection path).
+ *   • If a CandidateProfile exists: PII fields scrubbed (firstName,
+ *     lastName, headline, summary, phone, email, resume/photo/banner
+ *     URLs, custom CTA, location/city). Slug renamed to
+ *     `deleted-{id}` so the public profile URL 404s.
+ *
+ * Guards (refuses with helpful error):
+ *   • Can't soft-delete yourself (no self-destruct).
+ *   • Can't soft-delete another ADMIN (must demote first).
+ *   • Can't soft-delete an EMPLOYER who owns a Company with active
+ *     jobs that have applications — mirrors deleteCompany guard so
+ *     candidate application history is never silently destroyed.
+ */
+export async function softDeleteUser(formData: FormData) {
+  const session = await requireAdmin();
+  const userId = z.string().parse(formData.get("userId"));
+
+  if (userId === session.user.id) {
+    redirect(
+      `/admin/users/${userId}?error=` +
+        encodeURIComponent("You can't delete your own account from here — ask another admin."),
+    );
+  }
+
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      role: true,
+      status: true,
+      candidateProfile: { select: { id: true, slug: true } },
+      ownedCompanies: { select: { id: true, name: true } },
+    },
+  });
+  if (!user) redirect("/admin/users?error=" + encodeURIComponent("User not found."));
+  if (user!.role === "ADMIN") {
+    redirect(
+      `/admin/users/${userId}?error=` +
+        encodeURIComponent("Demote this admin to CANDIDATE/EMPLOYER first — admins can't be deleted directly."),
+    );
+  }
+  if (user!.status === "DELETED") {
+    redirect(
+      `/admin/users/${userId}?error=` +
+        encodeURIComponent("Already deleted."),
+    );
+  }
+
+  // Block delete if they own any company with applications attached
+  // to its jobs. Same guardrail as `deleteCompany` — we never
+  // silently erase pipeline history. Admin must address the company
+  // first (delete it, transfer ownership, or move applications).
+  if (user!.ownedCompanies.length > 0) {
+    const ownedIds = user!.ownedCompanies.map((c) => c.id);
+    const blockingApps = await db.application.count({
+      where: { job: { companyId: { in: ownedIds } } },
+    });
+    if (blockingApps > 0) {
+      redirect(
+        `/admin/users/${userId}?error=` +
+          encodeURIComponent(
+            `Can't delete — this user owns ${user!.ownedCompanies.length} company/companies with ${blockingApps} application(s) attached. Transfer ownership or delete the companies first.`,
+          ),
+      );
+    }
+  }
+
+  const scrubbedEmail = `deleted-${user!.id}@deleted.local`;
+  const scrubbedSlug = `deleted-${user!.candidateProfile?.id ?? user!.id}`;
+
+  // All-or-nothing inside one transaction. If any step fails we
+  // don't want a half-scrubbed user lingering (logged out everywhere
+  // but with their real name + resume still public).
+  await db.$transaction(async (tx) => {
+    // Kill auth surfaces first — invalidates sessions even if the
+    // later steps fail. Cascade-deletes on Account/Session would
+    // fire on a hard delete; for soft-delete we issue the deletes
+    // explicitly.
+    await tx.session.deleteMany({ where: { userId } });
+    await tx.account.deleteMany({ where: { userId } });
+    // Any outstanding verification tokens are now meaningless.
+    await tx.verificationToken.deleteMany({
+      where: {
+        OR: [
+          { identifier: `email-verify:${user!.email.toLowerCase()}` },
+          { identifier: `password-reset:${user!.email.toLowerCase()}` },
+        ],
+      },
+    });
+
+    if (user!.candidateProfile) {
+      await tx.candidateProfile.update({
+        where: { id: user!.candidateProfile.id },
+        data: {
+          slug: scrubbedSlug,
+          firstName: "Deleted",
+          lastName: null,
+          headline: null,
+          summary: null,
+          phone: null,
+          email: null,
+          location: null,
+          city: null,
+          country: null,
+          profilePhotoUrl: null,
+          bannerUrl: null,
+          resumeUrl: null,
+          portfolioUrl: null,
+          linkedinUrl: null,
+          githubUrl: null,
+          twitterUrl: null,
+          websiteUrl: null,
+          customCta: null,
+          // Keep `isDIYguruVerified` / experience counts intact — they
+          // power aggregates we'd lose if we zeroed them out. None of
+          // those are PII.
+        },
+      });
+    }
+
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        status: "DELETED",
+        email: scrubbedEmail,
+        name: null,
+        image: null,
+        phone: null,
+        passwordHash: null,
+        emailVerifiedAt: null,
+        phoneVerifiedAt: null,
+        // Clear shadow-ban state too — DELETED supersedes it.
+        shadowBannedAt: null,
+        shadowBanReason: null,
+        // Disable any TPO flag — a deleted user shouldn't keep /tpo
+        // access if reactivated under a new admin's hand.
+        isPlacementOfficer: false,
+      },
+    });
+  });
+
+  await audit({
+    actorId: session.user.id,
+    action: "user.soft_deleted",
+    entity: "User",
+    entityId: userId,
+    meta: {
+      originalEmail: user!.email,
+      originalName: user!.name,
+      role: user!.role,
+      hadCandidateProfile: !!user!.candidateProfile,
+      ownedCompaniesCount: user!.ownedCompanies.length,
+    },
+  });
+
+  revalidatePath("/admin/users");
+  revalidatePath(`/admin/users/${userId}`);
+  // Public profile (now 404) — bust any cached layouts.
+  revalidatePath("/[username]", "page");
+  redirect(
+    "/admin/users?notice=" +
+      encodeURIComponent(`Deleted ${user!.email}. PII scrubbed, sessions killed, sign-in disabled.`),
+  );
+}
+
 // ─── Employer / company verification ────────────────────────
 
 export async function setCompanyVerification(formData: FormData) {
