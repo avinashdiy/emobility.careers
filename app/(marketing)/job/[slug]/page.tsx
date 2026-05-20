@@ -244,7 +244,12 @@ export default async function PublicJobDetail({
   // #3 Warm-intro graph — alumni at this company who share an alma
   // mater with the viewing candidate.
   let warmIntros: Awaited<ReturnType<typeof findWarmIntros>> = [];
-  if (session?.user && session.user.role === "CANDIDATE") {
+  // Owner-based fetch (not role-based). Any logged-in user with a
+  // CandidateProfile gets the candidate-side UI — apply form, save
+  // button, match score, warm-intro card. EMPLOYERs are people too;
+  // the previous `role === "CANDIDATE"` check excluded recruiters
+  // who are also looking for jobs (LinkedIn's dual-persona pattern).
+  if (session?.user) {
     const profile = await db.candidateProfile.findUnique({
       where: { userId: session.user.id },
       select: { id: true, profileCompleteness: true },
@@ -469,8 +474,13 @@ export default async function PublicJobDetail({
                   <Link href={`/signup?role=CANDIDATE&next=/job/${job.slug}`}>Create candidate account</Link>
                 </Button>
               </div>
-            ) : session.user.role === "CANDIDATE" ? (
-              candidateCompleteness !== null && candidateCompleteness < COMPLETENESS_THRESHOLDS.APPLY ? (
+            ) : candidateCompleteness !== null ? (
+              // ↑ Owner-gate: anyone with a CandidateProfile can apply
+              // (their profile is what the recruiter sees, regardless
+              // of User.role). The completeness threshold gate inside
+              // is the meaningful UX guard — incomplete profiles get
+              // bounced to the editor.
+              candidateCompleteness < COMPLETENESS_THRESHOLDS.APPLY ? (
                 // Hard gate — apply server action would redirect anyway,
                 // but showing the locked state up-front avoids a useless
                 // form submission round-trip. Threshold lives on
@@ -550,9 +560,20 @@ export default async function PublicJobDetail({
                 </form>
               )
             ) : (
-              <p className="mt-3 text-hint text-emce-text-sec">
-                Sign in as a candidate to apply.
-              </p>
+              // Logged-in user without a CandidateProfile — unusual
+              // since OAuth signup seeds one. Send them through
+              // /onboarding to lazy-create. Carry jobId so they
+              // land back here.
+              <div className="mt-3 space-y-2">
+                <p className="text-hint text-emce-text-sec">
+                  Complete your candidate profile to apply.
+                </p>
+                <Button asChild className="w-full">
+                  <Link href={`/onboarding?next=/job/${job.slug}`}>
+                    Set up profile →
+                  </Link>
+                </Button>
+              </div>
             )}
           </Card>
           </div>
@@ -581,7 +602,10 @@ export default async function PublicJobDetail({
             </Link>
           </Card>
 
-          {session?.user?.role === "CANDIDATE" && !alreadyApplied && (
+          {/* Save button — owner-gated. Anyone with a CandidateProfile
+              can save jobs to their list, including dual-persona
+              recruiters. */}
+          {candidateCompleteness !== null && !alreadyApplied && (
             <form action={saveJob}>
               <input type="hidden" name="jobId" value={job.id} />
               <Button type="submit" variant="outline" className="w-full">

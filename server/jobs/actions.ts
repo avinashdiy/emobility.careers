@@ -25,8 +25,28 @@ export async function applyToJob(formData: FormData) {
   if (!session?.user) {
     redirect("/signin?next=" + encodeURIComponent("/jobs/" + formData.get("jobId")));
   }
-  if (session.user.role !== "CANDIDATE" && session.user.role !== "ADMIN") {
-    redirect("/403");
+  // Owner gate, not role gate. Anyone with a CandidateProfile can
+  // apply — applying is a self-action on YOUR personal page (the
+  // application carries your CandidateProfile snapshot to the
+  // recruiter). EMPLOYERs (recruiters) who are also job-seekers
+  // need this path; the previous role===CANDIDATE check broke the
+  // LinkedIn-style dual-persona flow and 403'd them silently.
+  //
+  // The actual ownership check is the `candidateId: profile.id`
+  // clause on the unique constraint a few lines down — you can only
+  // create an Application keyed to YOUR profile.
+  const callerProfile = await db.candidateProfile.findUnique({
+    where: { userId: session.user.id },
+    select: { id: true },
+  });
+  if (!callerProfile) {
+    // No personal page yet — send through the onboarding flow which
+    // lazy-creates one. Carry the job id forward so they land back
+    // on the right page after completing onboarding.
+    redirect(
+      "/onboarding?next=" +
+        encodeURIComponent("/job/" + (formData.get("jobId") ?? "")),
+    );
   }
 
   // Recover the candidate's intended target before any throwable work

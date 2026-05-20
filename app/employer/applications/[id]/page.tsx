@@ -344,10 +344,31 @@ export default async function ApplicationDetail({
               <Button asChild variant="outline" size="sm">
                 <Link href={`/${c.slug}`}>Full profile →</Link>
               </Button>
-              {resumeHref && (
+              {/* Resume affordance — three states the recruiter needs
+                  to distinguish:
+                    (a) Have URL → "View resume" button as before
+                    (b) Snapshot OR live URL both null → "No resume
+                        on file" so the recruiter knows the candidate
+                        simply hasn't uploaded one (not a UI bug)
+                    (c) Stored URL exists but `getResumeDownloadUrl`
+                        couldn't resolve it (signed-URL mint failed,
+                        legacy bucket name, missing storage object)
+                        → "Resume unavailable" so the recruiter knows
+                        it's an infrastructure problem to flag
+                  Previously the button just vanished, making (b) and
+                  (c) indistinguishable from "ATS is broken". */}
+              {resumeHref ? (
                 <Button asChild variant="ghost" size="sm">
                   <a href={resumeHref} target="_blank" rel="noopener noreferrer">View resume</a>
                 </Button>
+              ) : c.resumeUrl || application.resumeSnapshotUrl ? (
+                <div className="rounded-md border border-emce-orange/40 bg-emce-orange-light/40 px-2 py-1.5 text-[11px] text-emce-orange-deep">
+                  Resume unavailable — link is broken. Ask the candidate to re-upload.
+                </div>
+              ) : (
+                <div className="rounded-md border border-emce-border bg-emce-light-soft/40 px-2 py-1.5 text-[11px] text-emce-text-muted">
+                  No resume on file
+                </div>
               )}
             </div>
           </div>

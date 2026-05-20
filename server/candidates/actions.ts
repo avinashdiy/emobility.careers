@@ -881,6 +881,51 @@ export async function removeBanner() {
 }
 
 /**
+ * Removes the candidate's uploaded resume. Until now, a candidate
+ * who'd uploaded a resume could only REPLACE it by re-uploading at
+ * /onboarding/resume — there was no way to actually DELETE one
+ * (e.g. after typo'd a personal phone in the PDF and wants it gone
+ * fast, or moving fully to the AI-drafted version and wanting the
+ * stale manual upload off recruiters' radar).
+ *
+ * Implementation note: we DON'T delete the underlying MinIO object,
+ * only the DB pointer. The S3 lifecycle policy reaps orphans, and a
+ * still-referenced URL from a frozen `Application.resumeSnapshotUrl`
+ * keeps working — important because recruiters viewing an existing
+ * application still need to see the resume the candidate submitted
+ * at apply time, even if the candidate later removed it from their
+ * live profile.
+ *
+ * Returns a FormState so the existing toast-on-error pattern in
+ * the PrivacyEditor client component just works.
+ */
+export async function removeResume(): Promise<FormState> {
+  try {
+    const { profile } = await requireCandidate();
+    await db.candidateProfile.update({
+      where: { id: profile.id },
+      data: {
+        resumeUrl: null,
+        resumeParsedAt: null,
+        resumeParseDraft: Prisma.JsonNull,
+      },
+    });
+    await recalcCompleteness(profile.id);
+    revalidatePath("/me/profile");
+    revalidatePath("/me");
+    revalidatePath(`/${profile.slug}`);
+    return { ok: true, message: "Resume removed." };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[removeResume] failed");
+    return {
+      ok: false,
+      message: "Couldn't remove the resume — try again.",
+    };
+  }
+}
+
+/**
  * LinkedIn-style availability frame: pick exactly one of looking,
  * hiring, or neither. The two boolean columns on CandidateProfile
  * (`openToWork`, `hiringNow`) are kept independent in the schema but

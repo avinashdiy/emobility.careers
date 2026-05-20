@@ -73,11 +73,14 @@ export default async function FairBoothSlotsPage({
     include: { job: { select: { id: true, title: true } } },
   });
 
-  // Eligibility — only computed for signed-in candidates.
+  // Eligibility — owner-gated: computed for any logged-in user who
+  // has a CandidateProfile (regardless of User.role), so dual-persona
+  // recruiters can book interview slots at booths as attendees too.
   let eligibility: ReturnType<typeof evaluateFairEligibility> | null = null;
   let registered = false;
   let myBookingAtBooth: { id: string; startsAt: Date } | null = null;
-  if (session?.user?.role === "CANDIDATE") {
+  let hasCandidateProfile = false;
+  if (session?.user) {
     const profile = await db.candidateProfile.findUnique({
       where: { userId: session.user.id },
       select: {
@@ -90,6 +93,7 @@ export default async function FairBoothSlotsPage({
       },
     });
     if (profile) {
+      hasCandidateProfile = true;
       eligibility = evaluateFairEligibility(
         {
           profileCompleteness: profile.profileCompleteness,
@@ -235,7 +239,7 @@ export default async function FairBoothSlotsPage({
             </Card>
           )}
 
-          {session?.user?.role === "CANDIDATE" && !registered && (
+          {hasCandidateProfile && !registered && (
             <Card className="border-emce-orange/50 bg-emce-orange-light p-4">
               <p className="text-section text-emce-text">
                 Register for the fair first
@@ -256,7 +260,7 @@ export default async function FairBoothSlotsPage({
             </Card>
           )}
 
-          {session?.user?.role === "CANDIDATE" &&
+          {hasCandidateProfile &&
             registered &&
             eligibility &&
             !eligibility.ok && (

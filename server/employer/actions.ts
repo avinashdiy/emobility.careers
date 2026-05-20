@@ -801,36 +801,72 @@ async function uploadCompanyImage(
   const { employer } = await requireEmployerWithCompany();
   if (!employer.isCompanyAdmin) redirect("/403");
   const file = formData.get(fieldName) as File | null;
-  if (!file || file.size === 0) return;
+  // Validation errors `redirect` with ?error=… instead of throwing.
+  // These actions are bound to NATIVE form submission on
+  // /employer/company — a raw `throw new Error("...")` would land
+  // the recruiter on the global error page (500-ish look) for
+  // routine UX cases like "file too big". Redirect-with-toast keeps
+  // them on the same page with a useful message.
+  if (!file || file.size === 0) {
+    // Bare submit (no file picked) — silent return, the file input
+    // is `required` on the client so this only fires for edge UAs.
+    return;
+  }
   if (file.size > maxBytes) {
-    throw new Error(`Image too large (max ${Math.round(maxBytes / 1024 / 1024)}MB).`);
+    redirect(
+      "/employer/company?error=" +
+        encodeURIComponent(
+          `${fieldName === "logo" ? "Logo" : "Banner"} too large — max ${Math.round(maxBytes / 1024 / 1024)}MB.`,
+        ),
+    );
   }
   if (file.type && !ALLOWED_BRAND_MIMES.has(file.type)) {
-    throw new Error("Only JPEG, PNG, or WebP images.");
+    redirect(
+      "/employer/company?error=" +
+        encodeURIComponent("Only JPEG, PNG, or WebP images are accepted."),
+    );
   }
   const buffer = Buffer.from(await file.arrayBuffer());
   const kind = sniffBrandImage(buffer);
-  if (!kind) throw new Error("File content is not a valid image.");
+  if (!kind) {
+    redirect(
+      "/employer/company?error=" +
+        encodeURIComponent("File content is not a valid image — try a different file."),
+    );
+  }
   const ext = kind === "jpeg" ? "jpg" : kind;
   const contentType = `image/${kind === "jpeg" ? "jpeg" : kind}`;
   const { objectKey, buckets, s3, publicUrl } = await import("@/lib/storage");
   const { PutObjectCommand } = await import("@aws-sdk/client-s3");
   const key = objectKey(`companies/${employer.companyId}/${field}`, ext);
-  await s3.send(
-    new PutObjectCommand({
-      Bucket: buckets.logos,
-      Key: key,
-      Body: buffer,
-      ContentType: contentType,
-      ACL: "public-read",
-    }),
-  );
+  try {
+    await s3.send(
+      new PutObjectCommand({
+        Bucket: buckets.logos,
+        Key: key,
+        Body: buffer,
+        ContentType: contentType,
+        ACL: "public-read",
+      }),
+    );
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err, companyId: employer.companyId, field }, "[uploadCompanyImage] S3 put failed");
+    redirect(
+      "/employer/company?error=" +
+        encodeURIComponent("Couldn't upload — storage is temporarily unavailable. Try again in a minute."),
+    );
+  }
   await db.company.update({
     where: { id: employer.companyId },
     data: { [field]: publicUrl("logos", key) },
   });
   revalidatePath("/employer/company");
   revalidatePath(`/company/${employer.company.slug}`);
+  redirect(
+    "/employer/company?notice=" +
+      encodeURIComponent(`${field === "logoUrl" ? "Logo" : "Banner"} updated.`),
+  );
 }
 
 export async function uploadCompanyLogo(formData: FormData) {
@@ -852,18 +888,36 @@ export async function bulkInviteCandidates(formData: FormData) {
   const { session, employer } = await requireEmployerWithCompany();
   const parsed = inviteSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
+    // Surface the validation failure to the recruiter instead of
+    // silently returning. The previous void-return left the
+    // "Invite to apply" button looking like it worked when it
+    // didn't (no selected candidates, malformed comma list, etc.).
+    // We use the form's `jobId` value if present to land back on
+    // the right matches page; otherwise the dashboard.
     logger.warn(
       { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[employer] Zod validation failed — bare-form action returns void; user sees no feedback. Migrate to useActionState if per-field errors needed.",
+      "[bulkInviteCandidates] validation failed",
     );
-    return;
+    const jobIdRaw = formData.get("jobId");
+    const back =
+      typeof jobIdRaw === "string" && jobIdRaw.length > 0
+        ? `/employer/jobs/${jobIdRaw}/matches`
+        : "/employer";
+    redirect(
+      `${back}?error=` +
+        encodeURIComponent(
+          "Couldn't send invites — no candidates selected or the form was malformed. Try again.",
+        ),
+    );
   }
 
   const job = await db.jobPosting.findUnique({
     where: { id: parsed.data.jobId },
     select: { id: true, companyId: true, title: true, status: true },
   });
-  if (!job) return;
+  if (!job) {
+    redirect("/employer?error=" + encodeURIComponent("Job not found."));
+  }
   if (session.user.role !== "ADMIN" && job.companyId !== employer.companyId) redirect("/403");
   if (job.status !== "OPEN" && job.status !== "DRAFT") {
     redirect(`/employer/jobs/${job.id}/matches?error=` + encodeURIComponent("Job is not open"));
@@ -874,12 +928,26 @@ export async function bulkInviteCandidates(formData: FormData) {
     .map((s) => s.trim())
     .filter(Boolean)
     .slice(0, 50);
-  if (candidateIds.length === 0) return;
+  if (candidateIds.length === 0) {
+    redirect(
+      `/employer/jobs/${job.id}/matches?error=` +
+        encodeURIComponent("Select at least one candidate before inviting."),
+    );
+  }
 
-  // Pull candidates + skip those already applied to this job
+  // Pull candidates + skip those already applied to this job.
+  // We also pull `resumeUrl` so we can SNAPSHOT it onto the
+  // Application at invite-time. Without this, an invited
+  // application's `resumeSnapshotUrl` stays NULL and the ATS falls
+  // back to the candidate's LIVE `resumeUrl` — which becomes wrong
+  // (or NULL) if the candidate later re-uploads or removes their
+  // resume. Recruiters then see "No resume" in the ATS for an
+  // application they themselves invited. Match the snapshot
+  // semantics used by the direct apply path in
+  // server/jobs/actions.ts:234.
   const candidates = await db.candidateProfile.findMany({
     where: { id: { in: candidateIds } },
-    select: { id: true, firstName: true, user: { select: { id: true } } },
+    select: { id: true, firstName: true, resumeUrl: true, user: { select: { id: true } } },
   });
   const existing = await db.application.findMany({
     where: { jobId: job.id, candidateId: { in: candidateIds } },
@@ -904,6 +972,11 @@ export async function bulkInviteCandidates(formData: FormData) {
         stage: "APPLIED" as const,
         source: "AI_INVITED" as const,
         appliedAt: now,
+        // Snapshot the candidate's resume at invite time. See note
+        // above the `findMany` for why this matters — without the
+        // snapshot, the ATS resume preview goes stale or empty
+        // whenever the candidate re-uploads / removes their resume.
+        resumeSnapshotUrl: c.resumeUrl ?? null,
       })),
       skipDuplicates: true,
     });

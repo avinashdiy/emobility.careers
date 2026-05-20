@@ -49,8 +49,15 @@ export default async function FairPassPage({
   const { slug } = await params;
   const session = await auth();
   if (!session?.user) redirect(`/signin?next=/me/fairs/${slug}/pass`);
-  if (session.user.role !== "CANDIDATE") redirect("/403");
 
+  // No role gate. The fair pass is personal data — the
+  // CandidateProfile lookup + registration check below ARE the owner
+  // gate. An EMPLOYER (or ADMIN) who registered to ATTEND a fair (vs
+  // booth-staff at one) has every right to view their own pass.
+  // The previous role===CANDIDATE check 403'd anyone whose User.role
+  // had been bumped to EMPLOYER between fair-registration and arrival
+  // at the venue — a regression that would have stranded dual-persona
+  // users at the door.
   const profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
     select: { id: true, firstName: true, lastName: true },

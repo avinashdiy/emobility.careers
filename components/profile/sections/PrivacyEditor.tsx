@@ -11,7 +11,7 @@ import {
   CONTACT_VISIBILITY_DESCRIPTIONS,
   RESUME_VISIBILITY_DESCRIPTIONS,
 } from "@/lib/profile-visibility";
-import { updatePrivacySettings } from "@/server/candidates/actions";
+import { updatePrivacySettings, removeResume } from "@/server/candidates/actions";
 
 interface Props {
   contactVisibility: ContactVisibility;
@@ -133,10 +133,41 @@ export function PrivacyEditor({
         </div>
         <p className="mt-1 text-hint text-emce-text-sec">
           Optional — overrides the AI version when "Use the AI-drafted version" above is off.
-          The existing uploader at{" "}
+          The uploader at{" "}
           <a href="/onboarding/resume" className="font-bold text-emce-dark hover:underline">/onboarding/resume</a>{" "}
           accepts PDF + DOCX.
         </p>
+        {/* Remove-on-file affordance — until this shipped, a
+            candidate who'd uploaded a resume could only REPLACE it
+            via re-upload, never DELETE. That mattered for people
+            who'd accidentally uploaded the wrong PDF (or a draft
+            with sensitive info) and wanted it off recruiters'
+            radar immediately. We only delete the DB pointer, not
+            the underlying file — frozen `Application.resumeSnapshotUrl`
+            references stay live so recruiters reviewing existing
+            applications still see what was submitted at apply time. */}
+        {hasManualResume && (
+          <div className="mt-3 flex items-center gap-2 rounded-md border border-emce-border bg-white p-2">
+            <FileText className="h-4 w-4 text-emce-text-sec" />
+            <span className="flex-1 text-hint font-semibold text-emce-text">
+              Resume on file
+            </span>
+            <button
+              type="button"
+              disabled={pending}
+              onClick={() => {
+                if (!window.confirm("Remove your uploaded resume? Recruiters reviewing existing applications will still see what you submitted at apply time, but new viewers will see no resume until you upload again.")) return;
+                startTransition(async () => {
+                  const r = await removeResume();
+                  r.ok ? toast.success(r.message ?? "Removed.") : toast.error(r.message ?? "Failed.");
+                });
+              }}
+              className="rounded-md border border-emce-red bg-white px-3 py-1 text-xs font-bold text-emce-red-deep hover:bg-emce-red-light disabled:opacity-50"
+            >
+              {pending ? "Removing…" : "Remove"}
+            </button>
+          </div>
+        )}
       </div>
     </Card>
   );

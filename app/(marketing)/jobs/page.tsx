@@ -51,7 +51,12 @@ export default async function JobsPage({
       select: { id: true, isDIYguruVerified: true },
     });
     viewerIsDIYguru = !!profile?.isDIYguruVerified;
-    if (session.user.role === "CANDIDATE" && profile) {
+    // Owner-gated: any signed-in user with a CandidateProfile gets
+    // personalised ranking. EMPLOYERs who are also browsing jobs as
+    // people (dual-persona) get the same matched-jobs treatment as
+    // pure CANDIDATEs. Was role===CANDIDATE before; that excluded
+    // recruiters from the personalised path for no good reason.
+    if (profile) {
       candidateProfileId = profile.id;
     }
   }

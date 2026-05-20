@@ -289,7 +289,14 @@ export default async function FairLandingPage({
   // public page first.
   let myRegistration: { id: string; status: string; checkInCode: string } | null = null;
   let myEligibility: ReturnType<typeof evaluateFairEligibility> | null = null;
-  if (session?.user?.role === "CANDIDATE") {
+  // Owner-gated: any logged-in user with a CandidateProfile can
+  // register to ATTEND a fair (as a candidate). EMPLOYERs who are
+  // booth-staff use the separate `/employer/fairs/*` surfaces; this
+  // is the attendee path. The previous role===CANDIDATE check
+  // excluded dual-persona recruiters who legitimately wanted to
+  // attend as job-seekers.
+  let hasCandidateProfile = false;
+  if (session?.user) {
     const profile = await db.candidateProfile.findUnique({
       where: { userId: session.user.id },
       select: {
@@ -302,6 +309,7 @@ export default async function FairLandingPage({
       },
     });
     if (profile) {
+      hasCandidateProfile = true;
       myRegistration = await db.recruitmentDriveRegistration.findUnique({
         where: { driveId_candidateId: { driveId: drive.id, candidateId: profile.id } },
         select: { id: true, status: true, checkInCode: true },
@@ -521,7 +529,7 @@ export default async function FairLandingPage({
                   </Link>
                 </>
               )}
-              {registrationOpen && session?.user?.role === "CANDIDATE" && !myRegistration && (
+              {registrationOpen && hasCandidateProfile && !myRegistration && (
                 myEligibility?.ok ? (
                   <form action={registerForDrive}>
                     <input type="hidden" name="driveId" value={drive.id} />
@@ -576,7 +584,7 @@ export default async function FairLandingPage({
               clear, the panel disappears and the hero CTA flips
               to a real Register button. */}
           {registrationOpen &&
-            session?.user?.role === "CANDIDATE" &&
+            hasCandidateProfile &&
             !myRegistration &&
             myEligibility &&
             !myEligibility.ok && (
@@ -627,7 +635,7 @@ export default async function FairLandingPage({
               registered (otherwise the "View your pass" CTA above
               already tells the right story). */}
           {registrationOpen &&
-            session?.user?.role === "CANDIDATE" &&
+            hasCandidateProfile &&
             !myRegistration &&
             myEligibility?.ok && (
               <p className="rounded-md border border-emce-mid/40 bg-emce-light-soft/40 p-3 text-hint text-emce-success-deep">
@@ -997,7 +1005,7 @@ export default async function FairLandingPage({
                       >
                         ✓ View your fair pass
                       </Link>
-                    ) : registrationOpen && session.user.role === "CANDIDATE" ? (
+                    ) : registrationOpen && hasCandidateProfile ? (
                       myEligibility?.ok ? (
                         <form action={registerForDrive}>
                           <input type="hidden" name="driveId" value={drive.id} />
@@ -1192,7 +1200,7 @@ export default async function FairLandingPage({
                         take). Clicking mints a peer thread tagged
                         FAIR_LIVE_CHAT and redirects into the message
                         view. */}
-                    {isLive && session?.user?.role === "CANDIDATE" && (
+                    {isLive && hasCandidateProfile && (
                       <form action={startLiveBoothChat} className="mt-3">
                         <input type="hidden" name="driveCompanyId" value={p.id} />
                         <Button type="submit" variant="outline" size="sm" className="w-full">

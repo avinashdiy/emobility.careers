@@ -11,6 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { EmployerShell } from "@/components/layout/employer-shell";
+import { ToastFromSearchParams } from "@/components/ui/toast-from-params";
 import { updateCompany, uploadCompanyLogo, uploadCompanyBanner } from "@/server/employer/actions";
 import { SubmitButton } from "@/components/ui/submit-button";
 
@@ -30,6 +31,7 @@ export default async function CompanySettings() {
   return (
     <EmployerShell>
       <div className="container max-w-3xl py-10">
+        <ToastFromSearchParams />
         <div className="mb-4 flex items-center justify-between">
           <h1 className="text-dashboard text-emce-text">Company settings</h1>
           <Button asChild variant="outline" size="sm">

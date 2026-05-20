@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { EmployerShell } from "@/components/layout/employer-shell";
+import { ToastFromSearchParams } from "@/components/ui/toast-from-params";
 import { PipelineBoard, type PipelineApp } from "@/components/ats/PipelineBoard";
 
 export default async function ATSPage({
@@ -131,6 +132,7 @@ export default async function ATSPage({
   return (
     <EmployerShell>
       <div className="container max-w-7xl py-6">
+        <ToastFromSearchParams />
         <div className="mb-4 flex flex-col gap-3 animate-fade-up sm:flex-row sm:items-center sm:justify-between">
           <div className="min-w-0">
             <Link href={`/employer/jobs/${id}`} className="text-hint font-bold text-emce-text-sec hover:text-emce-dark">

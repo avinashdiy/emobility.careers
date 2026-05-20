@@ -7,6 +7,8 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { rateLimitOrThrow } from "@/lib/rate-limit";
+import { isRouterControlError } from "@/lib/server-action-errors";
+import { logger } from "@/lib/logger";
 import { ApplicationStage, NoteVisibility } from "@prisma/client";
 
 /**
@@ -286,16 +288,51 @@ export async function addNote(formData: FormData) {
 export async function bulkMoveStage(formData: FormData) {
   const ids = formData.getAll("ids").map(String);
   const toStage = z.nativeEnum(ApplicationStage).parse(formData.get("toStage"));
-  if (ids.length === 0) return;
+  // `returnTo` lets the form land the user back on the kanban or
+  // detail surface they triggered the bulk action from. Falls back
+  // to the employer dashboard if missing or malformed.
+  const returnToRaw = String(formData.get("returnTo") ?? "/employer");
+  const returnTo = returnToRaw.startsWith("/") ? returnToRaw : "/employer";
 
+  if (ids.length === 0) {
+    redirect(`${returnTo}?error=` + encodeURIComponent("No applications selected."));
+  }
+
+  // Count successes vs failures so the recruiter sees the real
+  // result. The previous version silently swallowed per-row errors
+  // — a recruiter bulk-moving 10 applications could have 4 fail
+  // (e.g. already withdrawn, invalid transition, RBAC mismatch on
+  // a stray admin-impersonation row) and see nothing. Now we
+  // surface a "moved N of M" toast with the skipped count.
+  let moved = 0;
+  let skipped = 0;
   for (const id of ids) {
     try {
       const fakeData = new FormData();
       fakeData.append("applicationId", id);
       fakeData.append("toStage", toStage);
       await moveStage(fakeData);
-    } catch {
-      // continue on per-row errors
+      moved += 1;
+    } catch (err) {
+      // moveStage uses redirect() for its own errors, which throws
+      // a NEXT_REDIRECT control flow exception. Don't count that as
+      // a real per-row failure — re-throw so the outer caller can
+      // honour the redirect.
+      if (isRouterControlError(err)) throw err;
+      skipped += 1;
+      logger.warn(
+        { err, applicationId: id, toStage },
+        "[bulkMoveStage] per-row move failed",
+      );
     }
   }
+
+  const message =
+    skipped === 0
+      ? `Moved ${moved} application${moved === 1 ? "" : "s"} to ${toStage}.`
+      : `Moved ${moved}, skipped ${skipped} (already in target stage, invalid transition, or no longer accessible). Check the audit log for specifics.`;
+  redirect(
+    `${returnTo}?${skipped === 0 ? "notice" : "error"}=` +
+      encodeURIComponent(message),
+  );
 }

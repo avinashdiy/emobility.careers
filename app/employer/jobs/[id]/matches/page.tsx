@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { EmployerShell } from "@/components/layout/employer-shell";
+import { ToastFromSearchParams } from "@/components/ui/toast-from-params";
 import { matchCandidatesForJob, buildCandidateBriefs } from "@/server/matching/score";
 import { rerankMatches, type RerankedCandidate } from "@/lib/ai/rerank";
 import { jobEmbeddingText } from "@/lib/ai/embeddings";
@@ -62,6 +63,7 @@ export default async function MatchesPage({
   return (
     <EmployerShell>
       <div className="container max-w-5xl py-6">
+        <ToastFromSearchParams />
         <div className="mb-4 flex items-center justify-between">
           <div>
             <Link href={`/employer/jobs/${id}`} className="text-hint font-bold text-emce-text-sec hover:text-emce-dark">
