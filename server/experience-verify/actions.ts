@@ -43,7 +43,10 @@ const requestSchema = z.object({
 export async function requestExperienceEmailVerify(formData: FormData) {
   const session = await auth();
   if (!session?.user) redirect("/signin");
-  if (session.user.role !== "CANDIDATE" && session.user.role !== "ADMIN") redirect("/403");
+  // No role check — verifying your own work history is a self-action.
+  // The owner gate lives a few lines down (profile lookup by userId
+  // + experience ownership check). Previously this 403'd EMPLOYERs
+  // who tried to verify their own past employer email.
 
   const parsed = requestSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {

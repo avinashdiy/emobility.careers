@@ -40,9 +40,12 @@ export async function claimDIYguruVerification(): Promise<{
   try {
   const session = await auth();
   if (!session?.user) redirect("/signin");
-  if (session.user.role !== "CANDIDATE" && session.user.role !== "ADMIN") {
-    return { ok: false, message: "Only candidates can claim a DIYguru badge." };
-  }
+  // No role check — claiming your own DIYguru badge is a self-action
+  // on personal data. The roster lookup below is the real gate: only
+  // users whose email matches a roster row can flip the badge.
+  // EMPLOYERs who are themselves DIYguru graduates (it happens —
+  // ex-students who later founded EV companies and post jobs here)
+  // were previously locked out for no reason.
   // Rate-limit claim attempts so a curious user can't probe the
   // roster by spamming the action with different identifier shapes.
   // Reuses the `saveItem` bucket — same low-volume profile.

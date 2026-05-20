@@ -44,9 +44,11 @@ const MAX_BYTES = 6 * 1024 * 1024; // 6MB — typical Aadhar PDF is <1MB
 async function requireCandidate() {
   const session = await auth();
   if (!session?.user) redirect("/signin");
-  if (session.user.role !== "CANDIDATE" && session.user.role !== "ADMIN") {
-    redirect("/403");
-  }
+  // Owner-based gate. ID verification on your own profile is a
+  // self-action — role doesn't enter into it. An EMPLOYER editing
+  // their personal page is just as entitled to upload an Aadhaar
+  // for the blue checkmark as a CANDIDATE is. See the matching note
+  // in server/candidates/actions.ts → requireCandidate().
   const profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
   });

@@ -33,9 +33,18 @@ import {
 async function requireCandidate() {
   const session = await auth();
   if (!session?.user) redirect("/signin");
-  if (session.user.role !== "CANDIDATE" && session.user.role !== "ADMIN") {
-    redirect("/403");
-  }
+  // OWNER check, not role check. Every user — CANDIDATE, EMPLOYER,
+  // ADMIN — gets a CandidateProfile because it's the universal
+  // personal-page surface (shown at /[username], edited at
+  // /me/profile). An EMPLOYER editing their own headline / phone /
+  // photo is a legitimate self-action, not a privilege escalation;
+  // the earlier role check incorrectly 403'd them on Save.
+  //
+  // Existence of a CandidateProfile keyed by `userId` IS the owner
+  // gate — by definition you own the profile keyed by your own user
+  // id. Missing profile → send to /onboarding (which itself routes
+  // EMPLOYERs to /employer/onboarding if they came in via that
+  // signup path, so no loop).
   const profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
   });
