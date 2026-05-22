@@ -7,10 +7,17 @@ import { NativeSelect } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { toast } from "sonner";
 import { Lock, FileText, Sparkles } from "lucide-react";
+// Import from the client-safe constants file (split from
+// `lib/profile-visibility.ts` in PR-AUDIT-2). The parent file
+// imports `@/lib/db` at module level, which previously dragged
+// the entire Prisma client runtime into this client component's
+// browser bundle. The split keeps the bundle slim, and the
+// `import "server-only"` marker on the parent file now turns any
+// future regression into a build-time error.
 import {
   CONTACT_VISIBILITY_DESCRIPTIONS,
   RESUME_VISIBILITY_DESCRIPTIONS,
-} from "@/lib/profile-visibility";
+} from "@/lib/profile-visibility-constants";
 import { updatePrivacySettings, removeResume } from "@/server/candidates/actions";
 
 interface Props {

@@ -13,7 +13,15 @@ import {
 } from "@dnd-kit/core";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { percentileBadge } from "@/lib/applications-percentile";
+// Import from the client-safe constants file (split from
+// `lib/applications-percentile.ts` in PR-AUDIT-2). The parent
+// file imports `@/lib/db` at module level, which previously dragged
+// the entire Prisma client runtime (~113KB) into this client
+// component's browser bundle (visible in the build manifest as the
+// `2272-…js` shared chunk on `/me/applications`). The split keeps
+// the bundle slim, and the `import "server-only"` marker on the
+// parent file now turns any future regression into a build-time error.
+import { percentileBadge } from "@/lib/applications-percentile-constants";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";

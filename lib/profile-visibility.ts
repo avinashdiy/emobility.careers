@@ -1,5 +1,20 @@
+import "server-only";
+
 import { db } from "@/lib/db";
 import type { ContactVisibility, ResumeVisibility, Role } from "@prisma/client";
+
+// Re-export the UI-display constants from the client-safe split
+// file so existing server callers that destructured them in a
+// single `import { canSeeContact, CONTACT_VISIBILITY_DESCRIPTIONS } …`
+// keep working without an import-path sweep. The constants
+// themselves live in `lib/profile-visibility-constants.ts` —
+// importing them there is the path client components MUST use
+// (this file's `import "server-only"` marker above will error
+// at build time if a client component imports from HERE instead).
+export {
+  CONTACT_VISIBILITY_DESCRIPTIONS,
+  RESUME_VISIBILITY_DESCRIPTIONS,
+} from "@/lib/profile-visibility-constants";
 
 /**
  * Central authorization helpers for sensitive profile fields. Use these
@@ -178,23 +193,9 @@ export function canSeeResume(visibility: ResumeVisibility, ctx: ViewerContext): 
   }
 }
 
-/** UI-friendly description for the toggle screens in /me/profile.
- *  Note: as of 2026-05 the platform enforces a privacy floor —
- *  contact info only surfaces to admins, employers at companies
- *  where you've applied, and people you've explicitly granted via a
- *  contact-share request. The dropdown options below stay in the
- *  schema for a future relaxation but every option behaves the
- *  same right now: signed-out visitors and casual browsers never
- *  see your email/phone. */
-export const CONTACT_VISIBILITY_DESCRIPTIONS: Record<ContactVisibility, string> = {
-  PRIVATE: "Hidden by default. Recruiters at companies you've applied to see it; everyone else has to send a contact-share request which you can accept or decline.",
-  CONNECTIONS: "Same as Private right now — site-wide policy keeps email and phone hidden from connections too. Use the contact-share flow if you want a connection to have your details.",
-  EMPLOYERS_ONLY: "Recruiters at companies where you've applied see your contact. Other employers must send a contact-share request — like LinkedIn InMail.",
-  EVERYONE: "Same as Private right now — site-wide privacy policy keeps email and phone off the public profile regardless. Change back to PRIVATE if you don't want to revisit this when the policy relaxes.",
-};
-
-export const RESUME_VISIBILITY_DESCRIPTIONS: Record<ResumeVisibility, string> = {
-  PRIVATE: "Your resume is hidden. Employers see it only when you apply to a job.",
-  EMPLOYERS_ONLY: "Verified employers can download your resume from your profile.",
-  EVERYONE: "Anyone with your profile link can download your resume.",
-};
+// The CONTACT_VISIBILITY_DESCRIPTIONS + RESUME_VISIBILITY_DESCRIPTIONS
+// definitions used to live here, but they've been moved to
+// `lib/profile-visibility-constants.ts` so client components can
+// import them without pulling Prisma into the browser bundle.
+// They're re-exported from this file (see top) so server callers
+// don't need to change their import paths.

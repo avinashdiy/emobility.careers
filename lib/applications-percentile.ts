@@ -1,4 +1,16 @@
+import "server-only";
+
 import { db } from "@/lib/db";
+
+// Re-export the pure UI helper from the client-safe split file so
+// existing server callers that destructured both helpers in one
+// `import { getApplicationPercentiles, percentileBadge } …` keep
+// working without an import-path sweep. The badge helper itself
+// lives in `lib/applications-percentile-constants.ts` — client
+// components MUST import it from there (this file's `import
+// "server-only"` marker above will error at build time if a client
+// component imports from HERE instead).
+export { percentileBadge } from "@/lib/applications-percentile-constants";
 
 /**
  * #3 Wave A — Top Applicant percentile compute.
@@ -83,24 +95,8 @@ export async function getApplicationPercentiles(
   return result;
 }
 
-/**
- * Pick a friendly percentile bucket label. Pass the percentile from
- * `getApplicationPercentiles` (where 0 = best, 1 = worst). Returns
- * null when the badge shouldn't surface.
- *
- * Bands:
- *   - top 5%   → "Top applicant" (verified-tone badge)
- *   - top 10%  → "Top 10%"
- *   - top 25%  → "Top 25%"
- *   - else     → null (don't surface)
- */
-export function percentileBadge(pct: number | null): {
-  label: string;
-  tone: "verified" | "success" | "default";
-} | null {
-  if (pct === null) return null;
-  if (pct <= 0.05) return { label: "Top applicant", tone: "verified" };
-  if (pct <= 0.1) return { label: "Top 10%", tone: "success" };
-  if (pct <= 0.25) return { label: "Top 25%", tone: "default" };
-  return null;
-}
+// `percentileBadge` used to live here, but it's been moved to
+// `lib/applications-percentile-constants.ts` so the `JobTrackerBoard`
+// client component can import it without pulling Prisma into the
+// browser bundle. It's re-exported from this file (see top) so
+// server callers don't need to change their import paths.
