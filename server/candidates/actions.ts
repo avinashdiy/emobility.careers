@@ -151,13 +151,31 @@ export async function uploadAndParseResume(formData: FormData) {
   const { profile } = await requireCandidate();
   await rateLimitOrThrow(`resume:${profile.userId}`, "resumeUpload");
   const file = formData.get("resume") as File | null;
-  if (!file) throw new Error("No file provided");
-
+  // Validation errors `redirect` with ?error=… instead of throwing.
+  // This action is bound to a NATIVE form submission on
+  // /onboarding/resume (no client-component wrapper to catch a
+  // thrown Error). A raw `throw new Error("...")` previously landed
+  // every "file too big / wrong type" case on the global 500 page,
+  // killing the candidate's onboarding flow mid-step. Redirect-with-
+  // toast keeps them on the resume-upload page with a useful
+  // message, mirroring the pattern used by uploadCompanyImage.
+  if (!file) {
+    redirect(
+      "/onboarding/resume?error=" +
+        encodeURIComponent("Pick a file before submitting."),
+    );
+  }
   if (file.size > 10 * 1024 * 1024) {
-    throw new Error("Resume file is too large (max 10MB).");
+    redirect(
+      "/onboarding/resume?error=" +
+        encodeURIComponent("Resume too large — max 10MB."),
+    );
   }
   if (file.size === 0) {
-    throw new Error("Empty file.");
+    redirect(
+      "/onboarding/resume?error=" +
+        encodeURIComponent("That file looks empty — try a different file."),
+    );
   }
 
   const buffer = Buffer.from(await file.arrayBuffer());
@@ -165,11 +183,17 @@ export async function uploadAndParseResume(formData: FormData) {
   // are advisory; an attacker can lie about both.
   const kind = sniffResumeKind(buffer);
   if (!kind) {
-    throw new Error("Only PDF or DOCX resumes are accepted.");
+    redirect(
+      "/onboarding/resume?error=" +
+        encodeURIComponent("Only PDF or DOCX resumes are accepted."),
+    );
   }
   // Cross-check declared MIME if present — block declared-image-but-actually-pdf etc.
   if (file.type && !RESUME_MIME_TYPES.has(file.type) && !["application/octet-stream", ""].includes(file.type)) {
-    throw new Error("Resume content does not match declared type.");
+    redirect(
+      "/onboarding/resume?error=" +
+        encodeURIComponent("File contents don't match the file extension. Try saving / re-exporting and uploading again."),
+    );
   }
 
   const ext = kind === "doc" ? "doc" : kind === "docx" ? "docx" : "pdf";

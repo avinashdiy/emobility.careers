@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { ToastFromSearchParams } from "@/components/ui/toast-from-params";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { uploadAndParseResume } from "@/server/candidates/actions";
@@ -21,6 +22,11 @@ export default async function ResumeUploadStep() {
   const isReupload = hasExisting && Boolean(profile?.onboardingCompletedAt);
   return (
     <Card animate className="p-8">
+      {/* Surface ?error=… / ?notice=… toasts from uploadAndParseResume's
+          redirect-on-validation-failure path. Without this the
+          server-action redirects with a useful message in the URL
+          but nothing renders it on screen. */}
+      <ToastFromSearchParams />
       <Badge variant="default" className="mb-2">{isReupload ? "Update" : "Step 2 of 5"}</Badge>
       <h1 className="text-2xl font-extrabold text-emce-text">
         {isReupload ? "Re-upload your resume" : (

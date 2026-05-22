@@ -307,14 +307,19 @@ export async function linkedinSignIn() {
   await signIn("linkedin", { redirectTo: "/me" });
 }
 
-// Helper for the "next" param-aware OAuth start
+// Helper for the "next" param-aware OAuth start. Both OAuth helpers
+// validate `next` through `safeRelativePath` first — without it, a
+// crafted `?next=//evil.com/phish` from a phishing email would
+// bounce successful OAuth sign-ins to an external origin
+// (open-redirect / credential-phishing vector). Junk values fall
+// through to /me, the home of every authenticated user.
 export async function googleSignInWithNext(formData: FormData) {
-  const next = String(formData.get("next") ?? "/me");
+  const next = safeRelativePath(String(formData.get("next") ?? "")) ?? "/me";
   await signIn("google", { redirectTo: next });
 }
 
 export async function linkedinSignInWithNext(formData: FormData) {
-  const next = String(formData.get("next") ?? "/me");
+  const next = safeRelativePath(String(formData.get("next") ?? "")) ?? "/me";
   await signIn("linkedin", { redirectTo: next });
 }
 
@@ -462,7 +467,11 @@ export async function magicLinkSignIn(_prev: FormState, formData: FormData): Pro
   } catch (e) {
     return { ok: false, message: e instanceof Error ? e.message : "Too many attempts" };
   }
-  const next = String(formData.get("next") ?? "/me");
+  // Same-origin validation on `next` — closes the same open-redirect
+  // risk we hardened on signin / signup / OAuth helpers. A crafted
+  // ?next=//evil.com from a phishing email would otherwise bounce
+  // the magic-link click to an external page after sign-in.
+  const next = safeRelativePath(String(formData.get("next") ?? "")) ?? "/me";
   try {
     await signIn("email", { email: lower, redirectTo: next });
   } catch (e) {
