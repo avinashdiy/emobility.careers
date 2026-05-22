@@ -1,12 +1,14 @@
 "use client";
 
 import { useActionState } from "react";
+import type { Country } from "@prisma/client";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/select";
 import { FieldError } from "@/components/ui/field-error";
+import { SUPPORTED_COUNTRY_LIST } from "@/lib/countries";
 import {
   createCompany,
   type CreateCompanyFormState,
@@ -19,6 +21,15 @@ interface Props {
   /// /employer/onboarding?create=1&name=X. Falls through to
   /// state.prevValues if a validation failure round-trips.
   initialName?: string;
+  /**
+   * Pre-fill the country dropdown — passed by the onboarding page
+   * from the signed-in user's `User.country` (captured at signup).
+   * Recruiter can override (they may be setting up a UAE entity
+   * while their personal account country is India). The chosen
+   * value lands on `Company.hqCountry` and becomes the default for
+   * every job this company subsequently posts.
+   */
+  defaultCountry?: Country;
 }
 
 /**
@@ -27,10 +38,18 @@ interface Props {
  * failure no longer wipes every field — the user keeps their
  * typing AND sees the exact field that broke.
  */
-export function CreateCompanyForm({ initialName = "" }: Props) {
+export function CreateCompanyForm({
+  initialName = "",
+  defaultCountry = "IN",
+}: Props) {
   const [state, formAction] = useActionState(createCompany, INITIAL);
   const v = state.prevValues ?? {};
   const e = state.fieldErrors ?? {};
+  // Country precedence: user's last typing → caller-supplied default
+  // (= signed-in user's country). Always resolves to a real value
+  // so the <select> renders a selected option from the start.
+  const countryValue =
+    (v.hqCountry as string | undefined) ?? defaultCountry;
 
   return (
     <>
@@ -102,6 +121,30 @@ export function CreateCompanyForm({ initialName = "" }: Props) {
             defaultValue={v.hqLocation ?? ""}
             placeholder="e.g. Bengaluru, KA"
           />
+        </div>
+        {/* HQ country — required. Becomes Company.hqCountry, which
+            drives the default country dropdown on every subsequent
+            job post + the company's country attribution in the
+            employer directory. Pre-filled from the recruiter's
+            User.country (signup). They can override here if the
+            company is incorporated in a different market than they
+            personally signed up from. */}
+        <div>
+          <Label htmlFor="hqCountry">HQ country</Label>
+          <NativeSelect
+            id="hqCountry"
+            name="hqCountry"
+            required
+            defaultValue={countryValue}
+            aria-invalid={!!e.hqCountry}
+          >
+            {SUPPORTED_COUNTRY_LIST.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.flag} {c.name}
+              </option>
+            ))}
+          </NativeSelect>
+          <FieldError error={e.hqCountry} />
         </div>
         <div>
           <Label htmlFor="website">Website</Label>

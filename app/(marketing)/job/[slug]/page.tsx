@@ -25,6 +25,8 @@ import { jobPostingJsonLd } from "@/lib/seo/job-schema";
 import { breadcrumbJsonLd } from "@/lib/seo/schemas";
 import { env } from "@/lib/env";
 import { formatSalaryRange, relativeTime } from "@/lib/utils";
+import { formatLocalSalary, prewarmRates } from "@/lib/currency";
+import { getViewerCountry } from "@/lib/viewer-country";
 import { MapPin, Briefcase, Building2 } from "lucide-react";
 
 /**
@@ -229,6 +231,22 @@ export default async function PublicJobDetail({
   // signal when the job itself is too new (see getJobResponseStats).
   const responseStats = await getJobResponseStats(job.id);
 
+  // Resolve viewer country once + warm the FX cache for both
+  // sides of the (viewer ↔ posted) conversion so the salary
+  // badge below renders local-currency-first without any
+  // additional DB roundtrips.
+  const viewerCountry = await getViewerCountry();
+  await prewarmRates([viewerCountry, job.country]);
+  const localSalary = formatLocalSalary({
+    min: job.salaryMin != null ? Number(job.salaryMin) : null,
+    max: job.salaryMax != null ? Number(job.salaryMax) : null,
+    originalCurrency: job.salaryCurrency,
+    postedFromCountry: job.country ?? null,
+    viewerCountry,
+    period: job.salaryPeriod,
+    salaryHidden: job.salaryHidden,
+  });
+
   const session = await auth();
   let alreadyApplied = false;
   // Cache the candidate's completeness so the apply CTA can reflect the
@@ -345,15 +363,28 @@ export default async function PublicJobDetail({
               {/* Recruiter response-time signal — only renders when we
                   have ≥5 samples in the last 90 days. */}
               <ResponseTimePill stats={responseStats} />
-              {!job.salaryHidden && (job.salaryMin || job.salaryMax) && (
-                <Badge variant="success" size="sm">
-                  {formatSalaryRange(
-                    job.salaryMin ? Number(job.salaryMin) : null,
-                    job.salaryMax ? Number(job.salaryMax) : null,
-                    job.salaryCurrency,
-                    job.salaryPeriod,
-                  )}
-                </Badge>
+              {/* Cross-currency salary badge — shows the viewer's
+                  local currency primary + recruiter's original in
+                  parens when they differ (e.g. UK candidate sees
+                  "£3.8k–£5.1k /mo (AED 18,000–24,000)" on a Dubai
+                  role). Falls back to the legacy formatter for
+                  edge cases (salary hidden, empty band, currency
+                  with no matching country — all return null from
+                  formatLocalSalary). */}
+              {localSalary ? (
+                <Badge variant="success" size="sm">{localSalary.display}</Badge>
+              ) : (
+                !job.salaryHidden &&
+                (job.salaryMin || job.salaryMax) && (
+                  <Badge variant="success" size="sm">
+                    {formatSalaryRange(
+                      job.salaryMin ? Number(job.salaryMin) : null,
+                      job.salaryMax ? Number(job.salaryMax) : null,
+                      job.salaryCurrency,
+                      job.salaryPeriod,
+                    )}
+                  </Badge>
+                )
               )}
               {job.evDomains.map((d) => (
                 <Badge key={d.evDomain.slug} variant="success" size="sm">{d.evDomain.name}</Badge>

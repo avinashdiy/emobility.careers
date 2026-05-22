@@ -53,6 +53,12 @@ export default async function ATSPage({
           headline: true,
           profilePhotoUrl: true,
           isDIYguruVerified: true,
+          // Candidate's home country — drives the cross-border
+          // chip on the kanban card (PR 9). String-typed legacy
+          // column; null for candidates who haven't confirmed
+          // (typically because they signed up via OAuth pre-PR 6
+          // and haven't seen the banner yet).
+          country: true,
           phone: true,
           contactVisibility: true,
           // Wave A #1 — Open-to-Work / Hiring ring in the ATS card.
@@ -105,6 +111,20 @@ export default async function ATSPage({
         a.aiSummary && a.aiSummary.length > 0
           ? a.aiSummary.slice(0, 160) + (a.aiSummary.length > 160 ? "…" : "")
           : null,
+      // Cross-border flag (PR 9). True when the candidate's
+      // declared country differs from the job's country —
+      // recruiter sees the chip up-front so visa / relocation
+      // becomes part of the triage, not a post-screen surprise.
+      // Both sides null-safe: a candidate without a confirmed
+      // country (legacy / OAuth pre-banner) doesn't trigger
+      // the flag, neither does a missing job.country (impossible
+      // after PR 1's backfill but defensive against bad data).
+      isCrossBorder: Boolean(
+        a.candidate.country &&
+          job.country &&
+          a.candidate.country.toUpperCase() !== job.country
+      ),
+      jobCountry: job.country,
       candidate: {
         id: a.candidate.id,
         slug: a.candidate.slug,
@@ -113,6 +133,7 @@ export default async function ATSPage({
         headline: a.candidate.headline,
         profilePhotoUrl: a.candidate.profilePhotoUrl,
         isDIYguruVerified: a.candidate.isDIYguruVerified,
+        country: a.candidate.country,
         phone: phoneVisible ? a.candidate.phone ?? a.candidate.user.phone ?? null : null,
         openToWork: a.candidate.openToWork,
         hiringNow: a.candidate.hiringNow,

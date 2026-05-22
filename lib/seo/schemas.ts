@@ -115,9 +115,51 @@ export function organizationJsonLd(org: {
   logoUrl: string | null;
   description: string | null;
   hqLocation: string | null;
+  /**
+   * ISO 3166-1 alpha-2 country code from `Company.hqCountry`.
+   * Defaults to "IN" for callers that don't pass it (back-compat
+   * with pre-PR-7 code paths; the column itself defaults to IN
+   * for every legacy row via PR 1's backfill).
+   *
+   * Drives:
+   *   • `address.addressCountry` — was hard-coded to "IN"
+   *     pre-PR-7, so a JLR / Tesla / Bee'ah company page was
+   *     telling Google they were Indian organisations. Wrong
+   *     country attribution in Google's Knowledge Graph.
+   *   • `areaServed` — gives Google an explicit signal that the
+   *     organization operates in this country (vs just having
+   *     an address there). Used by the structured-data layer
+   *     for country-specific organic surfaces.
+   */
+  hqCountry?: string | null;
+  /**
+   * Additional countries the organization OPERATES in (PR 8).
+   * Pulled from `Company.operatesInCountries[]`. When non-empty,
+   * `areaServed` renders as a JSON-LD list — Google reads it as
+   * "this organisation operates in HQ + these additional
+   * markets". Pass `null` or empty array for single-country
+   * employers; rendering collapses to a single `{Country}` object
+   * (Google's preferred shape for the common case).
+   */
+  operatesInCountries?: string[] | null;
   foundedYear: number | null;
 }) {
   const url = `${BASE()}/companies/${org.slug}`;
+  const hq = (org.hqCountry ?? "IN").toUpperCase();
+  // areaServed — the full operating footprint. Union of the HQ
+  // country + any `operatesInCountries`. We dedupe (HQ might
+  // appear in both columns for users who tagged it twice) and
+  // pick the right shape for the cardinality: a single Country
+  // object for the common 1-country case, a list when truly
+  // multi-region. Tesla / JLR / multi-region employers get the
+  // list automatically once admin sets the field via
+  // /admin/companies (PR 8).
+  const extra = (org.operatesInCountries ?? []).map((c) => c.toUpperCase());
+  const allCountries = [hq, ...extra.filter((c) => c !== hq)];
+  const areaServed =
+    allCountries.length === 1
+      ? { "@type": "Country", name: allCountries[0] }
+      : allCountries.map((c) => ({ "@type": "Country", name: c }));
   return {
     "@context": "https://schema.org",
     "@type": "Organization",
@@ -128,8 +170,9 @@ export function organizationJsonLd(org: {
     ...(org.logoUrl && { logo: org.logoUrl }),
     ...(org.description && { description: org.description }),
     ...(org.hqLocation && {
-      address: { "@type": "PostalAddress", addressLocality: org.hqLocation, addressCountry: "IN" },
+      address: { "@type": "PostalAddress", addressLocality: org.hqLocation, addressCountry: hq },
     }),
+    areaServed,
     ...(org.foundedYear && { foundingDate: String(org.foundedYear) }),
   };
 }

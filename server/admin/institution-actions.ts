@@ -133,6 +133,20 @@ const EditSchema = z.object({
   ]),
   city: z.string().trim().max(80).optional(),
   state: z.string().trim().max(80).optional(),
+  /// ISO 3166-1 alpha-2 country code. Free-form string here (NOT
+  /// the Country enum) to match the existing `Institution.country`
+  /// schema field which predates the enum + still serves a wider
+  /// set than our supported countries. We validate it's exactly
+  /// 2 alpha chars to catch typos but don't restrict to the
+  /// supported set — a global mention of, say, "DE" (Germany) on
+  /// an institution is harmless even though we don't operate
+  /// there yet. The supported-country routing layer only counts
+  /// rows where this matches, so noise is contained.
+  country: z
+    .string()
+    .trim()
+    .length(2, { message: "Country must be a 2-letter ISO code (e.g. IN, GB)" })
+    .toUpperCase(),
   website: z.string().trim().max(500).optional(),
 });
 
@@ -150,7 +164,7 @@ export async function adminEditInstitution(formData: FormData): Promise<void> {
       const msg = parsed.error.issues[0]?.message ?? "Invalid edit";
       redirect("/admin/institutions?error=" + encodeURIComponent(msg));
     }
-    const { institutionId, name, type, city, state, website } = parsed.data;
+    const { institutionId, name, type, city, state, country, website } = parsed.data;
 
     await db.institution.update({
       where: { id: institutionId },
@@ -159,6 +173,7 @@ export async function adminEditInstitution(formData: FormData): Promise<void> {
         type,
         city: city || null,
         state: state || null,
+        country,
         website: website || null,
       },
     });

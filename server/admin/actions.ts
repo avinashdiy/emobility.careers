@@ -8,7 +8,8 @@ import { db } from "@/lib/db";
 import { isRouterControlError } from "@/lib/server-action-errors";
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
-import { CompanyVerification, Role, AccountStatus } from "@prisma/client";
+import { CompanyVerification, Country, Role, AccountStatus } from "@prisma/client";
+import { logger } from "@/lib/logger";
 
 async function requireAdmin() {
   const session = await auth();
@@ -490,6 +491,393 @@ export async function softDeleteUser(formData: FormData) {
 }
 
 // ─── Employer / company verification ────────────────────────
+
+/**
+ * Admin reclassification — flip a company's `hqCountry`. Used by
+ * /admin/companies (PR 7) to fix the IN-default for seeded
+ * companies that genuinely belong to another market (JLR → GB,
+ * Tesla → US, Bee'ah → AE, etc.).
+ *
+ * Side effects beyond the column update:
+ *   • Revalidates the per-country routes that include this company
+ *     (/[old-cc]/companies, /[new-cc]/companies) so the directory
+ *     surfaces refresh.
+ *   • Revalidates the public company page so its JSON-LD
+ *     `areaServed` reflects the new country immediately.
+ *   • Audit-logs the change with both old + new values so the team
+ *     can trace bulk reclassifications.
+ *
+ * Note: does NOT touch any of the company's jobs — those have
+ * their own `country` and stay where the recruiter put them. A
+ * company HQ'd in UK can post India jobs and vice versa; PR 3
+ * decoupled the two dimensions deliberately.
+ */
+const setCompanyCountrySchema = z.object({
+  companyId: z.string().min(1),
+  country: z.nativeEnum(Country),
+  /**
+   * Comma-separated list of additional countries the company
+   * OPERATES in (PR 8). Drives `Company.operatesInCountries[]`.
+   * Empty / missing → empty array (single-country employer —
+   * the common case). Invalid codes silently drop after parse.
+   * Filtered to exclude `hqCountry` so the array is genuinely
+   * "ADDITIONAL markets only" — the listing queries + JSON-LD
+   * already union (hqCountry ∪ operatesInCountries), so we want
+   * a single source of truth per country.
+   */
+  operatesInRaw: z.string().max(120).optional(),
+});
+
+/**
+ * Parse the comma-separated operatesIn input. Validates each
+ * code is in the Country enum + excludes the HQ (implicit) +
+ * dedupes within the array. Returns an empty array for empty /
+ * missing input — that's "single-country employer", the default.
+ */
+function parseOperatesIn(raw: string | undefined, exclude: Country): Country[] {
+  if (!raw) return [];
+  const seen = new Set<Country>();
+  const out: Country[] = [];
+  for (const code of raw.split(",").map((s) => s.trim().toUpperCase())) {
+    if (code === exclude) continue;
+    if (!(code in Country)) continue;
+    const c = code as Country;
+    if (!seen.has(c)) {
+      seen.add(c);
+      out.push(c);
+    }
+  }
+  return out;
+}
+
+/**
+ * Bulk reclassify companies from a CSV upload. PR 9 polish — the
+ * per-row form at /admin/companies handles ~528 companies one at
+ * a time, but onboarding a new market (UK launch: 200 anchor
+ * employers in one sweep) is friction-heavy that way. CSV upload
+ * gives the team a 30-second batch path.
+ *
+ * Expected CSV columns (header row required, case-insensitive):
+ *   slug          — Company.slug, the unique identifier
+ *   hqCountry     — ISO 3166-1 alpha-2 (IN, GB, AE, …) — required
+ *   operatesIn    — pipe-separated additional countries (`GB|US`) — optional
+ *
+ * Example:
+ *   slug,hqCountry,operatesIn
+ *   jaguar-land-rover,GB,IN
+ *   tesla,US,GB|AU
+ *   bee-ah,AE,
+ *
+ * Failure modes (each surfaces in the result summary, no row
+ * blocks the others):
+ *   • slug not found              → "row 4: slug 'foo' not in DB"
+ *   • hqCountry not in enum       → "row 7: 'XX' not a supported country"
+ *   • operatesIn contains invalid → silently drops the bad codes
+ *
+ * Returns a FormState the client renders as a summary table.
+ * The whole import runs in ONE transaction so a mid-CSV crash
+ * doesn't leave the DB half-reclassified.
+ */
+const bulkCsvSchema = z.object({
+  csv: z.string().min(1, "Upload a CSV file."),
+});
+
+export interface BulkCompanyCountryRow {
+  rowNum: number;
+  slug: string;
+  status: "ok" | "skipped" | "failed";
+  message: string;
+  /// Set on `ok` rows so the UI can show "GB → US" etc.
+  from?: string;
+  to?: string;
+}
+
+export interface BulkCompanyCountryResult {
+  ok: boolean;
+  message?: string;
+  /// Per-row results — rendered as a table by the admin page.
+  rows?: BulkCompanyCountryRow[];
+}
+
+export async function adminBulkReclassifyCompanies(
+  _prev: BulkCompanyCountryResult,
+  formData: FormData,
+): Promise<BulkCompanyCountryResult> {
+  try {
+    const session = await requireAdmin();
+    // We accept the CSV TEXT as a form field rather than a File
+    // upload — keeps the action signature simple (no multipart
+    // body parsing) and matches how the existing CSV import
+    // surfaces in `/admin/diyguru` pass their payload. The page-
+    // side wrapper reads the File object client-side and shoves
+    // its text into a hidden input before submit.
+    const parsed = bulkCsvSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      return { ok: false, message: "Upload a CSV file before submitting." };
+    }
+
+    const parseResult = Papa.parse<Record<string, string>>(parsed.data.csv, {
+      header: true,
+      skipEmptyLines: true,
+      transformHeader: (h) => h.trim().toLowerCase(),
+    });
+    if (parseResult.errors.length > 0) {
+      return {
+        ok: false,
+        message: `CSV parse error on row ${parseResult.errors[0].row}: ${parseResult.errors[0].message}`,
+      };
+    }
+    const rows = parseResult.data;
+    if (rows.length === 0) {
+      return { ok: false, message: "CSV had a header but no data rows." };
+    }
+    if (rows.length > 1000) {
+      return {
+        ok: false,
+        message: `Cap is 1000 rows per upload (got ${rows.length}). Split the CSV and try again.`,
+      };
+    }
+
+    // Pre-fetch every referenced slug in one query so we avoid N+1
+    // DB hits during the per-row loop.
+    const slugs = Array.from(
+      new Set(rows.map((r) => (r.slug ?? "").trim()).filter(Boolean)),
+    );
+    const existingCompanies = await db.company.findMany({
+      where: { slug: { in: slugs } },
+      select: { id: true, slug: true, name: true, hqCountry: true, operatesInCountries: true },
+    });
+    const bySlug = new Map(existingCompanies.map((c) => [c.slug, c]));
+
+    const results: BulkCompanyCountryRow[] = [];
+
+    // One transaction — if any individual update throws (rare,
+    // would be a Prisma-level error), the whole batch rolls back.
+    // Per-row VALIDATION failures don't throw, they just record a
+    // "failed" row in the results array.
+    await db.$transaction(async (tx) => {
+      for (let i = 0; i < rows.length; i += 1) {
+        const row = rows[i];
+        // CSV rows are 1-indexed in user-speak with the header at
+        // row 1, so data starts at row 2 — match that for error
+        // messages so the admin can find the right line in Excel.
+        const rowNum = i + 2;
+        const slug = (row.slug ?? "").trim();
+        const hqCountryRaw = (row.hqcountry ?? "").trim().toUpperCase();
+        const operatesInRaw = (row.operatesin ?? "").trim();
+
+        if (!slug) {
+          results.push({
+            rowNum,
+            slug: "(empty)",
+            status: "failed",
+            message: "Missing slug column.",
+          });
+          continue;
+        }
+        const existing = bySlug.get(slug);
+        if (!existing) {
+          results.push({
+            rowNum,
+            slug,
+            status: "failed",
+            message: "Company slug not found.",
+          });
+          continue;
+        }
+        if (!hqCountryRaw) {
+          results.push({
+            rowNum,
+            slug,
+            status: "failed",
+            message: "Missing hqCountry column.",
+          });
+          continue;
+        }
+        if (!(hqCountryRaw in Country)) {
+          results.push({
+            rowNum,
+            slug,
+            status: "failed",
+            message: `"${hqCountryRaw}" is not a supported country (IN/AE/AU/US/GB/MY/BD/NP).`,
+          });
+          continue;
+        }
+        const newHq = hqCountryRaw as Country;
+        // operatesIn uses `|` instead of `,` because the CSV itself
+        // is comma-separated — a column containing commas would
+        // need quoting. Pipe is unambiguous + readable.
+        const newOperatesIn = parseOperatesIn(
+          operatesInRaw.replace(/\|/g, ","),
+          newHq,
+        );
+
+        const sameOperates =
+          existing.operatesInCountries.length === newOperatesIn.length &&
+          newOperatesIn.every((c) => existing.operatesInCountries.includes(c));
+        if (existing.hqCountry === newHq && sameOperates) {
+          results.push({
+            rowNum,
+            slug,
+            status: "skipped",
+            message: "Already in target state.",
+            from: existing.hqCountry,
+            to: newHq,
+          });
+          continue;
+        }
+
+        await tx.company.update({
+          where: { id: existing.id },
+          data: { hqCountry: newHq, operatesInCountries: newOperatesIn },
+        });
+        results.push({
+          rowNum,
+          slug,
+          status: "ok",
+          message:
+            newOperatesIn.length > 0
+              ? `${existing.hqCountry} → ${newHq}, also operates in ${newOperatesIn.join("+")}`
+              : `${existing.hqCountry} → ${newHq}`,
+          from: existing.hqCountry,
+          to: newHq,
+        });
+      }
+    });
+
+    try {
+      await audit({
+        actorId: session.user.id,
+        action: "company.country.bulk_reclassify",
+        entity: "User",
+        entityId: session.user.id,
+        meta: {
+          total: rows.length,
+          ok: results.filter((r) => r.status === "ok").length,
+          skipped: results.filter((r) => r.status === "skipped").length,
+          failed: results.filter((r) => r.status === "failed").length,
+        },
+      });
+    } catch (err) {
+      logger.warn({ err }, "[adminBulkReclassifyCompanies] audit-log write failed");
+    }
+
+    // Revalidate sweepingly — bulk updates touch many countries.
+    // Cheaper to invalidate every supported country's listing
+    // than to compute the touched set per-row.
+    revalidatePath("/admin/companies");
+    revalidatePath("/companies");
+    for (const meta of Object.values(Country)) {
+      revalidatePath(`/${meta.toLowerCase()}/companies`);
+    }
+
+    const okCount = results.filter((r) => r.status === "ok").length;
+    const skippedCount = results.filter((r) => r.status === "skipped").length;
+    const failedCount = results.filter((r) => r.status === "failed").length;
+    return {
+      ok: true,
+      message: `Reclassified ${okCount}, skipped ${skippedCount} (already in target state), failed ${failedCount}.`,
+      rows: results,
+    };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[adminBulkReclassifyCompanies] failed");
+    return {
+      ok: false,
+      message:
+        "Bulk reclassify failed — no rows were updated (rolled back). Check the CSV format and try again.",
+    };
+  }
+}
+
+export async function adminSetCompanyCountry(formData: FormData) {
+  try {
+    const session = await requireAdmin();
+    const parsed = setCompanyCountrySchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      redirect(
+        "/admin/companies?error=" +
+          encodeURIComponent("Pick a supported country (IN, AE, AU, US, GB, MY, BD, or NP)."),
+      );
+    }
+    const { companyId, country: newCountry, operatesInRaw } = parsed.data;
+    const newOperatesIn = parseOperatesIn(operatesInRaw, newCountry);
+
+    const existing = await db.company.findUnique({
+      where: { id: companyId },
+      select: { slug: true, name: true, hqCountry: true, operatesInCountries: true },
+    });
+    if (!existing) {
+      redirect("/admin/companies?error=" + encodeURIComponent("Company not found."));
+    }
+    // Same-value short-circuit covers BOTH dimensions — same HQ
+    // AND same operatesIn array (order-independent comparison) =
+    // no-op, just toast and bounce.
+    const sameOperatesIn =
+      existing.operatesInCountries.length === newOperatesIn.length &&
+      newOperatesIn.every((c) => existing.operatesInCountries.includes(c));
+    if (existing.hqCountry === newCountry && sameOperatesIn) {
+      redirect(
+        "/admin/companies?notice=" +
+          encodeURIComponent(`${existing.name} unchanged.`),
+      );
+    }
+
+    await db.company.update({
+      where: { id: companyId },
+      data: {
+        hqCountry: newCountry,
+        operatesInCountries: newOperatesIn,
+      },
+    });
+
+    try {
+      await audit({
+        actorId: session.user.id,
+        action: "company.country.reclassify",
+        entity: "Company",
+        entityId: companyId,
+        meta: {
+          from: existing.hqCountry,
+          to: newCountry,
+          slug: existing.slug,
+          operatesInBefore: existing.operatesInCountries,
+          operatesInAfter: newOperatesIn,
+        },
+      });
+    } catch (err) {
+      logger.warn({ err, companyId }, "[adminSetCompanyCountry] audit-log write failed");
+    }
+
+    // Revalidate every surface that filters / lists by country —
+    // both the OLD country (this company leaves it) AND the NEW
+    // country (this company joins it). Plus every country in the
+    // OLD + NEW operatesIn arrays so multi-region transitions
+    // refresh cleanly (e.g. flipping JLR from GB-only to GB+IN
+    // needs /in/companies + /gb/companies to both re-render).
+    revalidatePath("/admin/companies");
+    revalidatePath("/companies");
+    revalidatePath(`/company/${existing.slug}`);
+    const allTouchedCountries = new Set<string>([
+      existing.hqCountry,
+      newCountry,
+      ...existing.operatesInCountries,
+      ...newOperatesIn,
+    ]);
+    for (const cc of allTouchedCountries) {
+      revalidatePath(`/${cc.toLowerCase()}/companies`);
+    }
+    revalidatePath(`/${newCountry.toLowerCase()}/companies`);
+    redirect(
+      "/admin/companies?notice=" +
+        encodeURIComponent(`${existing.name} reclassified ${existing.hqCountry} → ${newCountry}.`),
+    );
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[adminSetCompanyCountry] failed");
+    redirect("/admin/companies?error=" + encodeURIComponent("Reclassification failed — try again."));
+  }
+}
 
 export async function setCompanyVerification(formData: FormData) {
   const session = await requireAdmin();

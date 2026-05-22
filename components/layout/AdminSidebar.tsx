@@ -63,6 +63,11 @@ function buildGroups(counts: Counts): Group[] {
         // would require an extra groupBy in the layout that runs on
         // every admin page.
         { href: "/admin/companies/enrichment-queue", label: "Enrichment queue", icon: Briefcase },
+        // Per-company country reclassification (PR 7). Used to
+        // flip anchor employers off the IN backfill default into
+        // their real markets — JLR → UK, Tesla → US, etc. Drives
+        // per-country sitemaps + /[cc]/companies routes.
+        { href: "/admin/companies", label: "Country tagging", icon: Briefcase },
         // Candidate-submitted Institution rows awaiting admin
         // verification. Mirrors the Employers KYC queue but for the
         // Institution entity (the page at /institutions/<slug>).

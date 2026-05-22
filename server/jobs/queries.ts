@@ -1,5 +1,5 @@
 import { db } from "@/lib/db";
-import { Prisma, JobStatus, JobAudience, PowertrainArea, CompanyTier } from "@prisma/client";
+import { Prisma, JobStatus, JobAudience, PowertrainArea, CompanyTier, type Country } from "@prisma/client";
 import { buildTsQuery } from "@/lib/search-fts";
 
 export interface JobsFilter {
@@ -31,6 +31,24 @@ export interface JobsFilter {
   packKwhMin?: number;
   /** Minimum charger output (kW) the role designs / installs. */
   chargerKwMin?: number;
+  /**
+   * Country filter. Drives the per-country listings (/uk/jobs,
+   * /ae/jobs) AND the country chip on /jobs. When set, restricts
+   * results to jobs whose `country` matches; when combined with
+   * `includeRelocation: true`, ALSO surfaces openToRelocation
+   * jobs from OTHER countries (cross-border discovery — a UK
+   * candidate browsing /jobs?country=GB&includeRelocation=true
+   * sees UK jobs + every other-country job marked open-to-
+   * relocation).
+   */
+  country?: Country;
+  /**
+   * Pairs with `country` — when true and country is set, broadens
+   * the result set with cross-border relocation-flagged jobs. No
+   * effect when country is unset (the unfiltered view already
+   * includes everything).
+   */
+  includeRelocation?: boolean;
   page?: number;
   pageSize?: number;
 }
@@ -133,6 +151,22 @@ export async function searchJobs(filter: JobsFilter) {
   }
   if (filter.domain) {
     where.evDomains = { some: { evDomain: { slug: filter.domain } } };
+  }
+
+  // Country filter. Strict match by default — `?country=GB` shows
+  // UK-tagged jobs only. With `includeRelocation: true` we widen
+  // to ALSO include cross-border relocation-flagged jobs from
+  // other countries, so a UK candidate looking for "UK roles +
+  // anything visa-sponsored anywhere" gets both in one query.
+  if (filter.country) {
+    if (filter.includeRelocation) {
+      where.OR = [
+        { country: filter.country },
+        { openToRelocation: true },
+      ];
+    } else {
+      where.country = filter.country;
+    }
   }
 
   // ─── #29 EV facet filters ─────────────────────────────────────

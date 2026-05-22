@@ -22,6 +22,32 @@ enum Role {
   CANDIDATE
 }
 
+/// ISO 3166-1 alpha-2 country codes — the platform's "where in the
+/// world is this user / job / company" dimension. We intentionally
+/// model this as an enum (not free-text) so the routing layer,
+/// sitemap shards, currency formatter, hreflang generator, and GSC
+/// folder-target settings all agree on the SAME closed set of
+/// supported countries. Adding a country = add an enum value AND a
+/// row to lib/countries.ts AND a sitemap shard AND a GSC property.
+///
+/// IN is the default for backward compatibility — the ~50k existing
+/// users all backfill to India, which is correct for ~99% of them.
+/// Note: Existing String country fields on CandidateProfile,
+/// RecruitmentDrive, and Institution use ISO codes too but stay as
+/// String for now (no destructive migration). They'll converge with
+/// this enum in a follow-up PR once we've cleaned the underlying
+/// values.
+enum Country {
+  IN // India (default — existing user base)
+  AE // United Arab Emirates
+  AU // Australia
+  US // United States
+  GB // United Kingdom (ISO uses GB, NOT UK)
+  MY // Malaysia
+  BD // Bangladesh
+  NP // Nepal
+}
+
 enum AccountStatus {
   ACTIVE
   SUSPENDED
@@ -107,6 +133,33 @@ model User {
   /// tick reads this to auto-restore at expiry.
   suspendedUntil   DateTime?
   locale           String        @default("en")
+  /// User's "home" country — the dimension that drives default
+  /// currency, time-zone, GSC subfolder, hreflang routing, and the
+  /// "same country" lens on networking/discovery. Captured at signup
+  /// (pre-filled from IP), changeable later from /me/settings. IN
+  /// for all existing users via the backfill default.
+  country          Country       @default(IN)
+  /// Timestamp of the most recent EXPLICIT country choice. Stamped
+  /// when:
+  ///   • The user submitted the signup form (PR 1 — the dropdown
+  ///     was the deliberate signal)
+  ///   • They picked from the `ConfirmCountryBanner` (PR 6)
+  ///   • They changed it from `/me/settings`
+  ///
+  /// Null = never confirmed. Two populations match:
+  ///   1. The ~50k existing users whose `country` was backfilled to
+  ///      IN by PR 1 without their input. ~99% are correctly Indian
+  ///      but the 1% diaspora (Indians-abroad, returning expats)
+  ///      need the prompt.
+  ///   2. OAuth signups (Google + LinkedIn) that bypass the signup
+  ///      form's country dropdown — they default to IN regardless
+  ///      of their actual market.
+  ///
+  /// The banner reads `countryConfirmedAt IS NULL` and surfaces a
+  /// one-question nudge. After save, the column is non-null and the
+  /// banner never re-surfaces. Honours diaspora users without
+  /// annoying the 99% who are correctly defaulted.
+  countryConfirmedAt DateTime?
   phone            String?
   phoneVerifiedAt  DateTime?
   createdAt        DateTime      @default(now())
@@ -285,6 +338,9 @@ model User {
   companyEnrichmentProposalsReviewed CompanyEnrichmentProposal[] @relation("CompanyEnrichmentReviewed")
 
   @@index([role, status])
+  // Country segmentation — analytics (DAU per country), feed
+  // "same country" lens, signup geo distribution. Cheap to maintain.
+  @@index([country])
 }
 
 model Account {
@@ -899,6 +955,29 @@ model Company {
   companyType        CompanyType         @default(OTHER)
   teamSize           String?
   hqLocation         String?
+  /// HQ country — the company's "home market" dimension. Drives
+  /// the country directory at /companies?country=XX, the routing
+  /// of its company page in per-country sitemap shards, and the
+  /// default country filter when a recruiter from this company
+  /// posts a new job. Independent of `hqLocation` (free-text
+  /// "Bengaluru, India" string) so analytics can group cleanly.
+  hqCountry          Country         @default(IN)
+  /// Additional countries this company OPERATES in (beyond
+  /// `hqCountry`). True multi-region support — JLR is HQ'd in
+  /// GB but has a major India operation (Tata-owned design centre
+  /// in Pune); Tesla is HQ'd in US but operates in AU, GB; Bee'ah
+  /// is AE-HQ but partners across the Gulf. A company appears in
+  /// `/[cc]/companies` when EITHER `hqCountry === cc` OR
+  /// `operatesInCountries.contains(cc)`. JSON-LD `areaServed`
+  /// renders as a list when this array is non-empty.
+  ///
+  /// Empty by default — every existing company stays single-
+  /// country (the IN HQ default) until an admin explicitly flips
+  /// it via /admin/companies. Doesn't include the HQ — that's
+  /// always-implicit; the array is for ADDITIONAL markets only,
+  /// so the union (hqCountry ∪ operatesInCountries) is the full
+  /// "where do they operate" set.
+  operatesInCountries Country[]     @default([])
   foundedYear        Int?
   evDomains          String[]            @default([])
   techStack          String[]            @default([])
@@ -990,6 +1069,8 @@ model Company {
   enrichmentProposals CompanyEnrichmentProposal[] @relation("CompanyEnrichmentProposals")
 
   @@index([verificationStatus])
+  // Country directory — feeds /companies?country=XX listings.
+  @@index([hqCountry])
 }
 
 model EmployerProfile {
@@ -1106,11 +1187,33 @@ model JobPosting {
   workMode             WorkMode       @default(ONSITE)
   seniorityLevel       SeniorityLevel @default(MID)
   locations            String[]       @default([])
+  /// Country dimension for filter / routing / SEO. Independent of
+  /// `locations` (which is free-text city list) and `salaryCurrency`
+  /// (which is the recruiter's display unit, may diverge from
+  /// country for multinational pay bands quoted in USD).
+  country              Country        @default(IN)
   experienceMin        Int?
   experienceMax        Int?
   salaryMin            Decimal?       @db.Decimal(12, 2)
   salaryMax            Decimal?       @db.Decimal(12, 2)
   salaryCurrency       String         @default("INR")
+  /// Canonical USD-equivalent salary midpoint. Computed from
+  /// (salaryMin + salaryMax) / 2 converted via ExchangeRate. Lets us
+  /// rank/compare/filter jobs across countries without re-converting
+  /// on every query. Worker recomputes on salary edit or daily FX
+  /// refresh. Nullable for legacy rows + jobs with salary hidden.
+  salaryUsdCanonical   Float?
+  /// Cross-border hiring toggle — when true, this job appears in
+  /// `?relocation=true` queries from OTHER countries and carries a
+  /// "🌍 Open to relocation" badge in the listing UI. The job's
+  /// primary `country` still attributes it to its home market for
+  /// hreflang + sitemap + GSC purposes; this is the opt-in signal
+  /// that says "I'll consider candidates from anywhere." Default
+  /// false — every existing job is single-country until the
+  /// recruiter explicitly broadens it. Pairs with the "Open to
+  /// work" candidate-side toggle for symmetric cross-border supply
+  /// + demand discovery.
+  openToRelocation     Boolean        @default(false)
   // Period the salary band is quoted against. YEARLY is the
   // overwhelming majority case (full-time roles). MONTHLY lets
   // recruiters post internships / contract stipends naturally —
@@ -1193,6 +1296,10 @@ model JobPosting {
   @@index([companyId, status])
   @@index([profileMode, workMode])
   @@index([audience, status])
+  // Country filter — drives the /jobs?country=AE / per-country
+  // sitemap shards / hreflang alternates. Compound with `status`
+  // because every country query also wants only OPEN listings.
+  @@index([country, status])
 }
 
 model JobEVDomain {
@@ -4135,6 +4242,45 @@ model JobMatchCache {
   @@index([jobId, score])
 }
 
+// ─── Currency exchange-rate cache ─────────────────────────────
+//
+// Daily-refreshed FX table powering cross-country salary
+// comparison. The `JobPosting.salaryUsdCanonical` value is
+// computed from (salaryMin + salaryMax) / 2 converted via this
+// table; the display layer converts back to the viewer's local
+// currency on the way out. Why this exists:
+//
+//   • A UAE recruiter posts a job at AED 18,000-24,000/month.
+//     A UK candidate browsing /jobs?country=AE wants to see
+//     "£3,800-£5,100/month" in their feed — we need the FX rate
+//     to render that on the server without a client API call.
+//   • A multi-country employer wants to rank their pipeline by
+//     compensation across markets — `salaryUsdCanonical` gives
+//     them a single sortable dimension.
+//
+// One row per currency. The seed/refresh worker hits an FX
+// provider (e.g. https://api.frankfurter.app/, free + no key)
+// daily at 03:00 IST and upserts each row. `base = "USD"` always
+// — the schema reserves the column so we could switch to EUR or
+// INR base later without a migration.
+//
+// Why keyed on Country (not currency code): the platform thinks
+// in countries; currency is one of many country-derived
+// attributes (alongside timezone, language, etc.). Keying on
+// Country gives us a single FK type across the codebase and
+// avoids INR-vs-PKR confusion when we add new markets.
+model ExchangeRate {
+  /// Base currency for the rate. Always "USD" in v1; the column
+  /// exists so a future "let's denominate in EUR for European
+  /// expansion" doesn't require an ALTER.
+  base      String   @default("USD")
+  /// Country whose currency the `rate` quotes per 1 unit of `base`.
+  /// E.g. for India (INR), rate ≈ 83.5 means 1 USD = 83.5 INR.
+  quote     Country  @id
+  rate      Float
+  updatedAt DateTime @updatedAt
+}
+
 // ─── "Why this candidate" GPT explanation cache ───────────────
 //
 // Per-(job, candidate) cache of the GPT-4o-generated "why this
@@ -5033,6 +5179,13 @@ model Article {
   /// Free-text tags — same conceptual shape as Post.hashtags.
   /// Used for "related articles" + future tag-cloud surfaces.
   tags       String[]         @default([])
+  /// Countries this article targets — an array (not single value)
+  /// because most articles work across multiple markets (a "Top 10
+  /// EV employers" listicle covers UAE+UK+US simultaneously). The
+  /// per-country landing pages (/uae, /uk, etc.) filter their
+  /// "Related reading" rail on this; the country sitemap shards
+  /// also use it. Default [IN] preserves existing articles' scope.
+  targetCountries Country[]    @default([IN])
 
   // ─── Author ───────────────────────────────────────────────
   authorId String

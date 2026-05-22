@@ -44,6 +44,7 @@ function parseAndNormalizeQuestions(raw: string | undefined): ApplicationQuestio
 import { optionalUrl } from "@/lib/forms/zod-url";
 import {
   CompanyType,
+  Country,
   EmploymentType,
   WorkMode,
   SeniorityLevel,
@@ -134,6 +135,13 @@ const companySchema = z.object({
   ),
   teamSize: z.string().optional(),
   hqLocation: z.string().max(120).optional(),
+  /// Company HQ country — the foundation that downstream job
+  /// posts inherit by default. Pre-filled from `User.country`
+  /// (captured at signup); recruiter can override here at
+  /// company-create time. Required — every company has a country.
+  hqCountry: z.nativeEnum(Country, {
+    errorMap: () => ({ message: "Pick the country your company is based in." }),
+  }),
   designation: z.string().min(1).max(120),
 });
 
@@ -380,6 +388,20 @@ const jobSchema = z.object({
   /// composes this hidden input and the server normalises + persists.
   /// Empty / unset = no questions on this job (the default).
   applicationQuestionsJson: z.string().optional(),
+  /// Country this job is primarily for. Drives the country filter
+  /// on /jobs, the per-country sitemap shard the job appears in,
+  /// the JSON-LD `applicantLocationRequirements` Google for Jobs
+  /// reads, and the hreflang alternate target for the country-
+  /// prefixed /uk/jobs etc. routes. Defaults via the FORM
+  /// (`Company.hqCountry`) — recruiter can override per job.
+  country: z.nativeEnum(Country, {
+    errorMap: () => ({ message: "Pick the country this role is based in." }),
+  }),
+  /// Opt-in "🌍 Open to relocation" flag. When true, the job
+  /// surfaces in OTHER countries' feeds as a relocation-eligible
+  /// listing and carries a badge on the card. Primary `country`
+  /// stays the home market for SEO purposes.
+  openToRelocation: z.coerce.boolean().optional(),
 });
 
 /**
@@ -479,6 +501,18 @@ export async function createJob(
   // entire job-save flow (recruiter can fix it later).
   const normalizedQuestions = parseAndNormalizeQuestions(data.applicationQuestionsJson);
 
+  // Canonical USD midpoint — computed once at save time so the
+  // global "sort jobs by comp" + cross-country comparison queries
+  // are a single sortable column instead of N FX conversions per
+  // row. Null when salary is hidden or the band is empty.
+  const { computeSalaryUsdCanonical } = await import("@/lib/currency");
+  const salaryUsdCanonical = await computeSalaryUsdCanonical({
+    min: data.salaryMin ?? null,
+    max: data.salaryMax ?? null,
+    country: data.country,
+    salaryHidden: disclosure.salaryHidden,
+  });
+
   const job = await db.$transaction(
     async (tx) => {
       const created = await withUniqueSlug(`${data.title}-${employer.company.slug}`, (slug) =>
@@ -497,6 +531,8 @@ export async function createJob(
             workMode: data.workMode,
             seniorityLevel: data.seniorityLevel,
             locations,
+            country: data.country,
+            openToRelocation: Boolean(data.openToRelocation),
             experienceMin: data.experienceMin ?? null,
             experienceMax: data.experienceMax ?? null,
             salaryMin: data.salaryMin ? new Prisma.Decimal(data.salaryMin) : null,
@@ -504,6 +540,7 @@ export async function createJob(
             salaryCurrency: data.salaryCurrency,
             salaryPeriod: data.salaryPeriod,
             salaryHidden: disclosure.salaryHidden,
+            salaryUsdCanonical,
             audience: disclosure.audience,
             status: data.publishNow ? JobStatus.OPEN : JobStatus.DRAFT,
             publishedAt: data.publishNow ? new Date() : null,
@@ -674,6 +711,18 @@ export async function updateJob(
   const nextPublishedAt =
     willBePublished && !existing.publishedAt ? new Date() : existing.publishedAt;
 
+  // Recompute the canonical USD midpoint on every edit — salary
+  // could have changed, the country could have changed (multi-
+  // country recruiter switching the job's home market), or the
+  // hidden flag could have flipped. Same helper as createJob.
+  const { computeSalaryUsdCanonical } = await import("@/lib/currency");
+  const salaryUsdCanonical = await computeSalaryUsdCanonical({
+    min: data.salaryMin ?? null,
+    max: data.salaryMax ?? null,
+    country: data.country,
+    salaryHidden: disclosure.salaryHidden,
+  });
+
   await db.$transaction(
     async (tx) => {
       await tx.jobPosting.update({
@@ -689,6 +738,8 @@ export async function updateJob(
           workMode: data.workMode,
           seniorityLevel: data.seniorityLevel,
           locations,
+          country: data.country,
+          openToRelocation: Boolean(data.openToRelocation),
           experienceMin: data.experienceMin ?? null,
           experienceMax: data.experienceMax ?? null,
           salaryMin: data.salaryMin ? new Prisma.Decimal(data.salaryMin) : null,
@@ -696,6 +747,7 @@ export async function updateJob(
           salaryCurrency: data.salaryCurrency,
           salaryPeriod: data.salaryPeriod,
           salaryHidden: disclosure.salaryHidden,
+          salaryUsdCanonical,
           audience: disclosure.audience,
           status: nextStatus,
           publishedAt: nextPublishedAt,

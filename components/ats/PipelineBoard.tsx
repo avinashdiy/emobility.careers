@@ -98,11 +98,39 @@ export interface PipelineApp {
     // Wave B #27 — last-active timestamp (ISO string). Drives the
     // "Active 2h ago" / "Active 4d ago" / "Active 2mo ago" pill.
     lastActiveAt?: string | null;
+    /// Candidate's home country (ISO 3166-1 alpha-2). Drives the
+    /// cross-border badge below — when `candidate.country` differs
+    /// from the job's country, the card flags "🌍 Applied from XX"
+    /// so the recruiter knows up-front they're triaging an
+    /// international applicant (visa sponsorship / relocation
+    /// conversation needed). Optional + nullable — pre-PR-1
+    /// candidates without a confirmed country surface no badge.
+    country?: string | null;
   };
   // Wave B #17 — preview of the AI applicant summary (first 120
   // chars). Recruiter expanding the card sees the full summary;
   // collapsed row shows just the preview so dense lists stay tidy.
   aiSummaryPreview?: string | null;
+  /**
+   * Pre-computed cross-border flag — true when the candidate's
+   * country differs from the job's country. Computed once in the
+   * data-assembly step (so 7 stage columns rendering N cards
+   * each don't each re-derive it) and rendered as a `🌍 +{country}`
+   * chip on the kanban card.
+   *
+   * Why a separate flag (not derived inside the component):
+   *   • Keeps `PipelineApp` self-describing — the card knows from
+   *     its own props whether to render the chip, without needing
+   *     to also receive the job's country alongside.
+   *   • Makes the data contract explicit: parent computes once,
+   *     children read. Mirrors how `aiSummaryPreview` is pre-sliced.
+   */
+  isCrossBorder?: boolean;
+  /// The job's country — only set when `isCrossBorder` is true.
+  /// Used in the chip text: "Cross-border · UK → IN" tells the
+  /// recruiter the candidate's home AND where the role is, in one
+  /// glance.
+  jobCountry?: string;
 }
 
 export function PipelineBoard({
@@ -415,6 +443,21 @@ function Card({ app, jobId, selected, onToggle }: { app: PipelineApp; jobId: str
             )}
             {app.candidate.isDIYguruVerified && (
               <span title="DIYguru verified" className="text-emce-orange-deep">⭐</span>
+            )}
+            {/* Cross-border chip (PR 9). Surfaces when the
+                candidate's country differs from the job's — the
+                recruiter sees "🌍 IN → GB" at a glance and knows
+                this application needs the visa-sponsorship /
+                relocation conversation up-front. Pre-computed by
+                the parent page so the card stays a pure read of
+                its props. */}
+            {app.isCrossBorder && app.candidate.country && app.jobCountry && (
+              <span
+                title={`Cross-border applicant — based in ${app.candidate.country}, applying for a ${app.jobCountry} role`}
+                className="inline-flex items-center gap-0.5 font-bold text-emce-dark"
+              >
+                🌍 {app.candidate.country} → {app.jobCountry}
+              </span>
             )}
             {app.source === "AI_INVITED" && (
               <span title="AI invited" className="text-emce-mid-muted">✨</span>

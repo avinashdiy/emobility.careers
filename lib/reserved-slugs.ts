@@ -37,6 +37,13 @@ export const RESERVED_SLUGS: ReadonlySet<string> = new Set([
   "root", "system", "official", "verified", "moderator", "mod", "staff",
   "emobility", "emobilitycareers", "diy", "diyguru-official",
 
+  // Country landing pages — match the `subfolder` values declared in
+  // `lib/countries.ts` SUPPORTED_COUNTRIES. Reserving here prevents a
+  // user from claiming e.g. /ae as their username slug, which would
+  // shadow the UAE landing page route. India ("" subfolder) stays at
+  // root so isn't listed here.
+  "ae", "uk", "au", "us", "my", "bd", "np",
+
   // Falsy / weird strings
   "null", "undefined", "true", "false", "nan", "void",
 ]);

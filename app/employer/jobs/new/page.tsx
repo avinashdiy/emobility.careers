@@ -20,6 +20,10 @@ export default async function NewJobPage() {
   if (!session?.user) redirect(await signinNextUrl());
   const employer = await db.employerProfile.findUnique({
     where: { userId: session.user.id },
+    // Pull the company's HQ country so the job form's country
+    // dropdown pre-fills to it. Recruiter can override per job
+    // when posting cross-market roles.
+    include: { company: { select: { hqCountry: true } } },
   });
   if (!employer) redirect("/employer/onboarding");
 
@@ -46,7 +50,10 @@ export default async function NewJobPage() {
         </div>
 
         <Card className="mt-6 p-6">
-          <EmployerJobForm evDomains={evDomains} />
+          <EmployerJobForm
+            evDomains={evDomains}
+            defaultCountry={employer.company.hqCountry}
+          />
         </Card>
       </div>
     </EmployerShell>

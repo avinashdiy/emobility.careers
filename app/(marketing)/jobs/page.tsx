@@ -11,6 +11,10 @@ import { NativeSelect } from "@/components/ui/select";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AnimatedNumber } from "@/components/ui/animated-number";
 import { rankJobsForCandidate } from "@/server/matching/candidate-match";
+import { SUPPORTED_COUNTRY_LIST, isSupportedCountry } from "@/lib/countries";
+import { getViewerCountry } from "@/lib/viewer-country";
+import { prewarmRates } from "@/lib/currency";
+import type { Country } from "@prisma/client";
 
 export const metadata = {
   title: "Browse EV jobs",
@@ -32,6 +36,12 @@ export default async function JobsPage({
     credential?: string;
     packKwhMin?: string;
     chargerKwMin?: string;
+    /** Country filter — `?country=GB` shows UK jobs only. Validated
+     *  against the Country enum; junk values silently drop. */
+    country?: string;
+    /** Pairs with `country` — when "true", broadens to also include
+     *  cross-border relocation-flagged jobs from other countries. */
+    includeRelocation?: string;
     page?: string;
   }>;
 }) {
@@ -60,6 +70,15 @@ export default async function JobsPage({
       candidateProfileId = profile.id;
     }
   }
+  // Country filter — validate the URL param against the supported
+  // enum so a junk value (e.g. `?country=ZZ`) silently drops to
+  // "no filter" instead of returning zero rows or 500-ing.
+  const paramCountry = sp.country?.toUpperCase();
+  const countryFilter: Country | undefined = isSupportedCountry(paramCountry)
+    ? (paramCountry as Country)
+    : undefined;
+  const includeRelocation = sp.includeRelocation === "true";
+
   const filter = {
     q: sp.q,
     location: sp.location,
@@ -72,10 +91,17 @@ export default async function JobsPage({
     credential: sp.credential,
     packKwhMin: sp.packKwhMin ? Number(sp.packKwhMin) : undefined,
     chargerKwMin: sp.chargerKwMin ? Number(sp.chargerKwMin) : undefined,
+    country: countryFilter,
+    includeRelocation,
     viewerIsDIYguru,
     page: sp.page ? parseInt(sp.page) : 1,
   };
   const { jobs, total, page, pages } = await searchJobs(filter);
+  // Resolve viewer country + warm the FX cache once per page render
+  // so the 24+ JobCards below render local-currency salaries
+  // synchronously. See lib/currency.ts + lib/viewer-country.ts.
+  const viewerCountry = await getViewerCountry();
+  await prewarmRates([viewerCountry, ...jobs.map((j) => j.country)]);
   const [evDomains, credentials] = await Promise.all([
     db.eVDomain.findMany({ orderBy: { order: "asc" } }),
     db.credential.findMany({
@@ -213,7 +239,38 @@ export default async function JobsPage({
                   <option value="LEADERSHIP">Leadership</option>
                 </NativeSelect>
               </div>
+              {/* Country filter — restricts to one country's jobs.
+                  Default "Any" matches the existing root-jobs UX
+                  (show everything). Selecting a country becomes
+                  `?country=GB` which is the same URL the country-
+                  prefixed routes (/uk/jobs) link to under the hood. */}
+              <div className="sm:col-span-3">
+                <NativeSelect name="country" defaultValue={countryFilter ?? ""}>
+                  <option value="">🌍 Any country</option>
+                  {SUPPORTED_COUNTRY_LIST.map((c) => (
+                    <option key={c.code} value={c.code}>
+                      {c.flag} {c.name}
+                    </option>
+                  ))}
+                </NativeSelect>
+              </div>
             </div>
+            {/* Cross-border toggle — only meaningful when a country
+                filter is active. When checked, broadens the
+                country-filtered result set with relocation-flagged
+                jobs from other countries. */}
+            {countryFilter && (
+              <label className="mt-2 flex items-center gap-2 text-hint text-emce-text-sec">
+                <input
+                  type="checkbox"
+                  name="includeRelocation"
+                  value="true"
+                  defaultChecked={includeRelocation}
+                  className="h-4 w-4 accent-emce-dark"
+                />
+                <span>🌍 Also show roles open to relocation from other countries</span>
+              </label>
+            )}
           </details>
 
           {/* Wave C #29 — EV facet row. Sits on its own row below the
@@ -339,7 +396,7 @@ export default async function JobsPage({
           <ul className="emce-stagger space-y-2">
             {exactMatches.map(({ job, score }) => (
               <li key={job.id}>
-                <JobCard job={job} matchScore={score} />
+                <JobCard job={job} matchScore={score} viewerCountry={viewerCountry} />
               </li>
             ))}
           </ul>
@@ -362,7 +419,7 @@ export default async function JobsPage({
           <ul className="emce-stagger space-y-2">
             {strongMatches.map(({ job, score }) => (
               <li key={job.id}>
-                <JobCard job={job} matchScore={score} />
+                <JobCard job={job} matchScore={score} viewerCountry={viewerCountry} />
               </li>
             ))}
           </ul>
@@ -385,7 +442,7 @@ export default async function JobsPage({
           <ul className="emce-stagger space-y-2">
             {adjacentMatches.map(({ job, score }) => (
               <li key={job.id}>
-                <JobCard job={job} matchScore={score} />
+                <JobCard job={job} matchScore={score} viewerCountry={viewerCountry} />
               </li>
             ))}
           </ul>
@@ -408,7 +465,11 @@ export default async function JobsPage({
         <ul className="emce-stagger space-y-3">
           {jobs.map((j) => (
             <li key={j.id}>
-              <JobCard job={j} matchScore={scoreByJobId.get(j.id) ?? null} />
+              <JobCard
+                job={j}
+                matchScore={scoreByJobId.get(j.id) ?? null}
+                viewerCountry={viewerCountry}
+              />
             </li>
           ))}
         </ul>

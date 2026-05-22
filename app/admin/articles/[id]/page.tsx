@@ -153,6 +153,7 @@ export default async function AdminArticleEditPage({
             coverImageUrl: article.coverImageUrl,
             categoryId: article.categoryId,
             tags: article.tags,
+            targetCountries: article.targetCountries,
           }}
           categories={categories}
         />

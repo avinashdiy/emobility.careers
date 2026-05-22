@@ -1,6 +1,7 @@
-import type { Prisma } from "@prisma/client";
+import type { Country, Prisma } from "@prisma/client";
 import { env } from "@/lib/env";
 import { htmlOrFallback, stripHtml } from "@/lib/cms/job-sanitize";
+import { SUPPORTED_COUNTRIES } from "@/lib/countries";
 
 /**
  * JobPosting structured data conforming to Google for Jobs requirements.
@@ -47,6 +48,11 @@ export interface JobForSchema {
   workMode: string;
   seniorityLevel: string;
   locations: string[];
+  /// Country this job is based in (ISO 3166-1 alpha-2). Drives the
+  /// `addressCountry` on each Place + the `applicantLocationRequirements`
+  /// on remote roles. Optional only for type compatibility with the
+  /// pre-PR 1 dataset; new jobs always have it (Prisma default IN).
+  country?: Country | null;
   experienceMin: number | null;
   experienceMax: number | null;
   salaryMin: Prisma.Decimal | null;
@@ -94,21 +100,30 @@ export function jobPostingJsonLd(job: JobForSchema) {
 
   // Job location: structured PostalAddress for each city; for remote, also set
   // jobLocationType: "TELECOMMUTE" + applicantLocationRequirements.
+  //
+  // Country attribution comes from the job's own `country` column
+  // (set at post time, defaults to IN for legacy rows). Previously
+  // every job was hard-coded `addressCountry: "IN"` which Google
+  // for Jobs read as "India role" regardless of the actual market
+  // — a UK role would surface in Indian search results, not UK
+  // ones, costing us the GSC country-targeting boost. Now each
+  // job lands in the right country's Google for Jobs surface.
   const isRemote = job.workMode === "REMOTE";
+  const jobCountryCode: Country = (job.country ?? "IN") as Country;
   const jobLocation = job.locations.length > 0
     ? job.locations.map((loc) => ({
         "@type": "Place",
         address: {
           "@type": "PostalAddress",
           addressLocality: loc,
-          addressCountry: "IN",
+          addressCountry: jobCountryCode,
         },
       }))
     : isRemote
     ? undefined
     : [{
         "@type": "Place",
-        address: { "@type": "PostalAddress", addressCountry: "IN" },
+        address: { "@type": "PostalAddress", addressCountry: jobCountryCode },
       }];
 
   const skillsArr = (job.skills ?? []).map((s) => s.skill.name);
@@ -148,7 +163,11 @@ export function jobPostingJsonLd(job: JobForSchema) {
     schema.jobLocationType = "TELECOMMUTE";
     schema.applicantLocationRequirements = {
       "@type": "Country",
-      name: "India",
+      // Use the supported-country metadata so the name reads
+      // human ("United Arab Emirates", not just "AE"). Falls back
+      // to the ISO code for the (impossible-after-PR-1) case of a
+      // job whose country isn't in our supported set.
+      name: SUPPORTED_COUNTRIES[jobCountryCode]?.name ?? jobCountryCode,
     };
   }
 

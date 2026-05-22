@@ -30,6 +30,34 @@ export async function GET() {
     { loc: `${base}/sitemap-candidates.xml`, lastmod: now },
     { loc: `${base}/sitemap-posts.xml`, lastmod: now },
     { loc: `${base}/sitemap-tags.xml`, lastmod: now },
+    // Per-country jobs shards — see sitemap.xml for the
+    // submit-to-GSC-property mapping rationale.
+    { loc: `${base}/sitemap-jobs-in.xml`, lastmod: now },
+    { loc: `${base}/sitemap-jobs-ae.xml`, lastmod: now },
+    { loc: `${base}/sitemap-jobs-uk.xml`, lastmod: now },
+    { loc: `${base}/sitemap-jobs-au.xml`, lastmod: now },
+    { loc: `${base}/sitemap-jobs-us.xml`, lastmod: now },
+    { loc: `${base}/sitemap-jobs-my.xml`, lastmod: now },
+    { loc: `${base}/sitemap-jobs-bd.xml`, lastmod: now },
+    { loc: `${base}/sitemap-jobs-np.xml`, lastmod: now },
+    // Per-country companies shards (PR 5).
+    { loc: `${base}/sitemap-companies-in.xml`, lastmod: now },
+    { loc: `${base}/sitemap-companies-ae.xml`, lastmod: now },
+    { loc: `${base}/sitemap-companies-uk.xml`, lastmod: now },
+    { loc: `${base}/sitemap-companies-au.xml`, lastmod: now },
+    { loc: `${base}/sitemap-companies-us.xml`, lastmod: now },
+    { loc: `${base}/sitemap-companies-my.xml`, lastmod: now },
+    { loc: `${base}/sitemap-companies-bd.xml`, lastmod: now },
+    { loc: `${base}/sitemap-companies-np.xml`, lastmod: now },
+    // Per-country articles shards (PR 9).
+    { loc: `${base}/sitemap-articles-in.xml`, lastmod: now },
+    { loc: `${base}/sitemap-articles-ae.xml`, lastmod: now },
+    { loc: `${base}/sitemap-articles-uk.xml`, lastmod: now },
+    { loc: `${base}/sitemap-articles-au.xml`, lastmod: now },
+    { loc: `${base}/sitemap-articles-us.xml`, lastmod: now },
+    { loc: `${base}/sitemap-articles-my.xml`, lastmod: now },
+    { loc: `${base}/sitemap-articles-bd.xml`, lastmod: now },
+    { loc: `${base}/sitemap-articles-np.xml`, lastmod: now },
   ]);
 
   return new Response(xml, { status: 200, headers: xmlHeaders(3600) });

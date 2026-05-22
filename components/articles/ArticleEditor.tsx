@@ -1,7 +1,8 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { useRouter } from "next/navigation";
+import type { Country } from "@prisma/client";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,6 +18,7 @@ import {
 } from "@/server/articles/actions";
 import { emptyFormState } from "@/lib/form-state";
 import type { FormState } from "@/lib/form-state";
+import { SUPPORTED_COUNTRY_LIST } from "@/lib/countries";
 
 interface CategoryOption {
   id: string;
@@ -34,6 +36,10 @@ interface ArticleEditorProps {
     coverImageUrl: string | null;
     categoryId: string | null;
     tags: string[];
+    /// Initial target-country selection for the multi-select.
+    /// Defaults to `["IN"]` when missing (pre-PR-8 articles have
+    /// `[IN]` via the Prisma default).
+    targetCountries: Country[];
   };
   categories: CategoryOption[];
 }
@@ -56,6 +62,14 @@ export function ArticleEditor({
 }: ArticleEditorProps) {
   const router = useRouter();
   const isEdit = Boolean(articleId);
+  // Target-country multi-select state — kept client-side so the
+  // chip-add / chip-remove interaction stays snappy. On form submit
+  // we join into a hidden comma-separated input the server action
+  // parses via `parseTargetCountries`. Defaults to ["IN"] for fresh
+  // articles to match the Prisma default.
+  const [targetCountries, setTargetCountries] = useState<Country[]>(
+    initial?.targetCountries ?? ["IN"],
+  );
 
   const [state, formAction] = useActionState(
     async (prev: FormState & { articleId?: string; slug?: string }, fd: FormData) => {
@@ -171,6 +185,62 @@ export function ArticleEditor({
           <p className="mt-1 text-hint text-emce-text-muted">
             Comma- or newline-separated. Up to 10 tags. Lowercased; used
             for search + the tag-cloud at the bottom of each article.
+          </p>
+        </div>
+
+        {/* Target-country multi-select (PR 8). Drives which
+            per-country landing pages surface this article in
+            their "Related reading" rail and which per-country
+            sitemap shards include it. Default [IN] matches the
+            Prisma column default. Multi-select because most EV
+            content works across markets — a "Top 10 EV
+            employers" listicle naturally covers UAE + UK + US
+            simultaneously. */}
+        <div>
+          <Label optional>Target countries</Label>
+          <input
+            type="hidden"
+            name="targetCountriesRaw"
+            value={targetCountries.join(",")}
+          />
+          <div className="mt-1 flex flex-wrap gap-1.5">
+            {SUPPORTED_COUNTRY_LIST.map((c) => {
+              const checked = targetCountries.includes(c.code);
+              return (
+                <button
+                  key={c.code}
+                  type="button"
+                  aria-pressed={checked}
+                  onClick={() => {
+                    setTargetCountries((prev) => {
+                      if (prev.includes(c.code)) {
+                        // Don't allow emptying — keep at least one
+                        // country selected so per-country queries
+                        // always have a match. Default fallback is
+                        // handled server-side too (parseTargetCountries
+                        // returns [IN] on empty input).
+                        if (prev.length === 1) return prev;
+                        return prev.filter((x) => x !== c.code);
+                      }
+                      return [...prev, c.code];
+                    });
+                  }}
+                  className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold transition ${
+                    checked
+                      ? "border-emce-dark bg-emce-dark text-white"
+                      : "border-emce-border bg-white text-emce-text hover:border-emce-mid hover:bg-emce-light-soft"
+                  }`}
+                >
+                  <span aria-hidden>{c.flag}</span>
+                  <span>{c.name}</span>
+                </button>
+              );
+            })}
+          </div>
+          <p className="mt-1 text-hint text-emce-text-muted">
+            Tap to toggle. Articles surface on each tagged country&apos;s
+            landing page + sitemap. Defaults to India; add others when
+            the content is genuinely multi-market.
           </p>
         </div>
 

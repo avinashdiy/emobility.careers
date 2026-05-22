@@ -24,6 +24,12 @@ export const QueueNames = {
   WhatsAppDigest: "whatsapp-digest",
   NotificationMaintenance: "notification-maintenance",
   FairReminders: "fair-reminders",
+  /// Daily FX refresh — fetches latest USD→{IN,GB,AU,US,MY} rates
+  /// from a free FX API and upserts the ExchangeRate table.
+  /// Currencies the API doesn't cover (AED, BDT, NPR) keep their
+  /// hardcoded fallback values from lib/currency.ts. Ticks once
+  /// per day at ~03:00 IST.
+  ExchangeRates: "exchange-rates",
 } as const;
 
 export type ResumeParseJob = {
@@ -107,6 +113,20 @@ export const resumeDraftQueue = new Queue<ResumeDraftJob>(QueueNames.ResumeDraft
 });
 export const whatsappDigestQueue = new Queue<WhatsAppDigestJob>(QueueNames.WhatsAppDigest, baseOpts);
 export const fairRemindersQueue = new Queue<FairReminderJob>(QueueNames.FairReminders, baseOpts);
+
+export type ExchangeRatesJob = {
+  /// Marker payload — the worker doesn't need parameters; it
+  /// refreshes ALL supported currencies on every tick. Kept as a
+  /// typed object (not `void`) for symmetry with the other tick
+  /// workers + future extensibility (e.g. a manual admin trigger
+  /// could pass `{ force: true }` to bypass the rate-limit check).
+  tick: true;
+};
+
+export const exchangeRatesQueue = new Queue<ExchangeRatesJob>(
+  QueueNames.ExchangeRates,
+  baseOpts,
+);
 
 export const notificationMaintenanceQueue = new Queue<NotificationMaintenanceJob>(
   QueueNames.NotificationMaintenance,

@@ -49,6 +49,7 @@ export default async function TpoLayout({ children }: { children: React.ReactNod
             <nav className="flex items-center gap-1">
               <NavLink href="/tpo">Dashboard</NavLink>
               <NavLink href="/tpo/cohorts">Cohorts</NavLink>
+              <NavLink href="/tpo/programs">Programs</NavLink>
               <NavLink href="/tpo/unplaced">Unplaced</NavLink>
               <NavLink href="/tpo/import">Import</NavLink>
             </nav>

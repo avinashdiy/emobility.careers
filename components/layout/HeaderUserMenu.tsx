@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, LogOut, Settings, User as UserIcon, Briefcase, GraduationCap, Trophy, Eye, BarChart3, Building2, ArrowLeftRight } from "lucide-react";
+import type { Country } from "@prisma/client";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 
@@ -29,6 +30,11 @@ export interface UserMenuViewerData {
   hasEmployerProfile: boolean;
   /** Company shown next to the "Hiring" persona row. */
   employerCompany: { name: string; slug: string; logoUrl: string | null } | null;
+  /** User's home country — drives the CountrySelector trigger flag
+      in the header and (later) the default currency/time-zone for
+      every personalised surface. Captured at signup; defaults to
+      IN for legacy users. */
+  country: Country;
 }
 
 /**

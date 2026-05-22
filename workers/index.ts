@@ -14,6 +14,7 @@ import { startResumeDraftWorker } from "@/workers/processors/resume-draft";
 import { startWhatsAppDigestWorker } from "@/workers/processors/whatsapp-digest";
 import { startNotificationMaintenanceWorker } from "@/workers/processors/notification-maintenance";
 import { startFairRemindersWorker } from "@/workers/processors/fair-reminders";
+import { startExchangeRatesWorker } from "@/workers/processors/exchange-rates";
 
 const workers = [
   startResumeParseWorker(),
@@ -27,6 +28,11 @@ const workers = [
   startWhatsAppDigestWorker(),
   startNotificationMaintenanceWorker(),
   startFairRemindersWorker(),
+  // Daily FX-rate refresh — populates ExchangeRate table so the
+  // cross-currency salary formatter has fresh data. First tick
+  // fires immediately on worker start (seeds the table with
+  // hardcoded fallback values + tries the API), then daily.
+  startExchangeRatesWorker(),
 ];
 
 logger.info(`[worker] eMC worker process online (${workers.length} processors registered).`);

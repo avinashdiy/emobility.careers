@@ -1,37 +1,135 @@
 import Link from "next/link";
 import { db } from "@/lib/db";
-import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { NativeSelect } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeader } from "@/components/ui/page-header";
 import { AnimatedNumber } from "@/components/ui/animated-number";
+import { CompanyCard } from "@/components/companies/CompanyCard";
+import { SUPPORTED_COUNTRY_LIST, isSupportedCountry, SUPPORTED_COUNTRIES } from "@/lib/countries";
+import type { Country } from "@prisma/client";
 
 export const metadata = {
   title: "EV companies hiring",
   description:
-    "Browse verified EV companies hiring in India — OEMs, startups, charging operators, battery makers, and Tier-1 suppliers. Discover open roles and team pages.",
+    "Browse verified EV companies hiring across India, UAE, UK, Australia, and the US — OEMs, startups, charging operators, battery makers, and Tier-1 suppliers.",
 };
 
-export default async function CompaniesPage() {
+/**
+ * Top-level companies directory. Country dimension (added in PR 5)
+ * is an optional filter, not a partition — visitors land on the
+ * "global" view by default and narrow with the dropdown. The
+ * country-prefixed routes (`/uk/companies`, `/ae/companies`)
+ * render the same data set but locked to a single country for
+ * SEO purposes (their own canonical + hreflang cluster).
+ */
+export default async function CompaniesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ country?: string }>;
+}) {
+  const sp = await searchParams;
+  const paramCountry = sp.country?.toUpperCase();
+  const countryFilter: Country | undefined = isSupportedCountry(paramCountry)
+    ? (paramCountry as Country)
+    : undefined;
+
   const companies = await db.company.findMany({
-    where: { verificationStatus: "VERIFIED" },
+    where: {
+      verificationStatus: "VERIFIED",
+      // Country filter — union match across `hqCountry` AND the
+      // `operatesInCountries` array (PR 8). Lets multi-region
+      // employers (JLR UK + India, Tesla US + AU, etc.) surface
+      // in every market they actually operate in.
+      ...(countryFilter
+        ? {
+            OR: [
+              { hqCountry: countryFilter },
+              { operatesInCountries: { has: countryFilter } },
+            ],
+          }
+        : {}),
+    },
     include: { _count: { select: { jobs: { where: { status: "OPEN" } } } } },
     orderBy: { name: "asc" },
   });
+
+  // Distinct-count by country for the "Browse by region" rail —
+  // single groupBy gives counts per country for the chip badges.
+  // Cheap query; runs even when no country filter is active so the
+  // chips are always present and informative.
+  const countryCounts = await db.company.groupBy({
+    by: ["hqCountry"],
+    where: { verificationStatus: "VERIFIED" },
+    _count: { _all: true },
+  });
+  const countryCountMap = new Map(
+    countryCounts.map((g) => [g.hqCountry, g._count._all]),
+  );
 
   return (
     <div className="container py-10">
       <PageHeader
         eyebrow="Companies"
-        title={`EV companies hiring on emobility.careers`}
+        title={
+          countryFilter
+            ? `${SUPPORTED_COUNTRIES[countryFilter].flag} EV companies hiring in ${SUPPORTED_COUNTRIES[countryFilter].name}`
+            : "EV companies hiring on emobility.careers"
+        }
         accent="hiring"
         subtitle={
           <>
             <AnimatedNumber to={companies.length} />{" "}
-            verified EV-industry employers — from startups to OEMs to charging operators.
+            verified EV-industry employer{companies.length === 1 ? "" : "s"}
+            {countryFilter
+              ? ` in ${SUPPORTED_COUNTRIES[countryFilter].name}`
+              : " — from startups to OEMs to charging operators"}
+            .
           </>
         }
       />
+
+      {/* Country filter row — visible always so a visitor exploring
+          the global directory can narrow to their market in one
+          click. Pre-fills from the `?country=` URL param. Chip
+          badges show the per-country count so empty markets are
+          visible up-front instead of a frustrated dropdown click. */}
+      <Card className="mt-4 p-4">
+        <form className="flex flex-wrap items-end gap-3" method="GET">
+          <div className="flex-1 min-w-[200px]">
+            <label
+              htmlFor="country-filter"
+              className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-emce-text-muted"
+            >
+              Country
+            </label>
+            <NativeSelect
+              id="country-filter"
+              name="country"
+              defaultValue={countryFilter ?? ""}
+            >
+              <option value="">🌍 All countries</option>
+              {SUPPORTED_COUNTRY_LIST.map((c) => {
+                const n = countryCountMap.get(c.code) ?? 0;
+                return (
+                  <option key={c.code} value={c.code}>
+                    {c.flag} {c.name} {n > 0 ? `(${n})` : ""}
+                  </option>
+                );
+              })}
+            </NativeSelect>
+          </div>
+          <Button type="submit" size="sm">
+            Apply
+          </Button>
+          {countryFilter && (
+            <Button asChild size="sm" variant="ghost">
+              <Link href="/companies">Clear</Link>
+            </Button>
+          )}
+        </form>
+      </Card>
 
       {/* Prominent secondary nav to the A-Z directory. SEO-wise this
           also passes link equity to the per-letter pages. */}
@@ -54,40 +152,23 @@ export default async function CompaniesPage() {
         <EmptyState
           variant="mesh"
           icon="🏢"
-          title="No verified companies yet"
-          body="Check back soon — verified EV employers are landing every week."
+          title={
+            countryFilter
+              ? `No verified companies in ${SUPPORTED_COUNTRIES[countryFilter].name} yet`
+              : "No verified companies yet"
+          }
+          body={
+            countryFilter
+              ? "We're onboarding EV employers here now. If you run one, set up your hiring page below."
+              : "Check back soon — verified EV employers are landing every week."
+          }
           className="mt-6"
         />
       ) : (
         <ul className="emce-stagger mt-6 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
           {companies.map((c) => (
             <li key={c.id}>
-              <Link href={`/company/${c.slug}`}>
-                <Card variant="interactive" className="h-full">
-                  <div className="flex items-center gap-3">
-                    <div className="grid h-12 w-12 place-items-center overflow-hidden rounded-md bg-emce-light-soft text-base font-extrabold text-emce-dark">
-                      {c.logoUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={c.logoUrl} alt={c.name} className="h-full w-full object-cover" />
-                      ) : (
-                        c.name[0]?.toUpperCase()
-                      )}
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-emce-text">{c.name}</h3>
-                      <p className="text-hint text-emce-text-sec">
-                        {c.companyType} {c.hqLocation && `· ${c.hqLocation}`}
-                      </p>
-                    </div>
-                  </div>
-                  {c.description && (
-                    <p className="mt-3 line-clamp-2 text-body text-emce-text-sec">{c.description}</p>
-                  )}
-                  <div className="mt-3">
-                    <Badge variant="success">{c._count.jobs} open job{c._count.jobs === 1 ? "" : "s"}</Badge>
-                  </div>
-                </Card>
-              </Link>
+              <CompanyCard company={c} />
             </li>
           ))}
         </ul>

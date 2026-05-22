@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState } from "react";
+import type { Country } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,6 +11,7 @@ import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { JDAssistant } from "@/components/jobs/JDAssistant";
 import { ApplicationQuestionsEditor } from "@/components/employer/ApplicationQuestionsEditor";
 import type { ApplicationQuestion } from "@/server/jobs/application-questions";
+import { SUPPORTED_COUNTRY_LIST } from "@/lib/countries";
 import {
   createJob,
   updateJob,
@@ -39,6 +41,13 @@ export interface EmployerJobInitial {
   workMode?: string | null;
   audience?: string | null;
   locations?: string[] | null;
+  /// Country this role is based in (Prisma enum value). Pre-fills
+  /// the country dropdown — on edit mode from the saved row, on
+  /// create mode from `defaultCountry` below (= company's hqCountry).
+  country?: Country | string | null;
+  /// "🌍 Open to relocation" — whether the recruiter wants
+  /// candidates from outside `country` to surface this role.
+  openToRelocation?: boolean | null;
   experienceMin?: number | null;
   experienceMax?: number | null;
   salaryMin?: number | string | null;
@@ -58,6 +67,16 @@ interface Props {
   /// Present → edit mode (dispatches updateJob); absent → create mode.
   jobId?: string;
   initial?: EmployerJobInitial;
+  /**
+   * The country to pre-select in the country dropdown when no
+   * `initial.country` is present. Passed by the page wrapper from
+   * `Company.hqCountry` (the company's HQ market) — so a recruiter
+   * at an India-HQ company sees India pre-filled, a Bee'ah
+   * recruiter sees UAE pre-filled, etc. The recruiter can override
+   * per job (multi-country employers posting cross-market roles).
+   * Defaults to "IN" if the caller doesn't pass it.
+   */
+  defaultCountry?: Country;
 }
 
 /**
@@ -68,7 +87,12 @@ interface Props {
  *
  * The form sits inside an EmployerShell + Card on the page.
  */
-export function EmployerJobForm({ evDomains, jobId, initial }: Props) {
+export function EmployerJobForm({
+  evDomains,
+  jobId,
+  initial,
+  defaultCountry = "IN",
+}: Props) {
   const isEdit = Boolean(jobId);
   const [state, formAction] = useActionState(
     isEdit ? updateJob : createJob,
@@ -80,6 +104,22 @@ export function EmployerJobForm({ evDomains, jobId, initial }: Props) {
   // through to "".
   const v = state.prevValues ?? buildInitialPrev(initial);
   const e = state.fieldErrors ?? {};
+  // Country precedence: user's last typing (after a validation
+  // round-trip) → saved job's country (edit mode) → company's HQ
+  // country (create mode default). Always lands on a real Country
+  // value so the <select>'s `defaultValue` resolves a matching
+  // option rather than rendering blank.
+  const countryValue =
+    (v.country as string | undefined) ??
+    (initial?.country as string | undefined) ??
+    defaultCountry;
+  // Same pattern for the relocation toggle — the FormData round-trip
+  // captures "on" / "true" / undefined; we coerce to a boolean once
+  // here so the checkbox's `defaultChecked` is unambiguous.
+  const relocationValue =
+    v.openToRelocation === "on" ||
+    v.openToRelocation === "true" ||
+    (initial?.openToRelocation === true && v.openToRelocation === undefined);
 
   return (
     <>
@@ -183,14 +223,76 @@ export function EmployerJobForm({ evDomains, jobId, initial }: Props) {
           </NativeSelect>
         </div>
 
-        <div className="sm:col-span-2">
-          <Label htmlFor="locations">Locations (comma-separated)</Label>
+        {/* Country — required dropdown. Pre-filled from the
+            company's hqCountry (set during employer onboarding,
+            which itself defaults from the recruiter's User.country
+            captured at signup). Recruiter overrides per job when
+            posting cross-market (Tata HQ-India recruiter posting
+            a UK role, etc.). Drives the per-country sitemap shard
+            the job appears in, the country filter on /jobs, the
+            JSON-LD `applicantLocationRequirements` Google for
+            Jobs reads, and the hreflang alternate target for
+            /uk/jobs etc. */}
+        <div>
+          <Label htmlFor="country">Country</Label>
+          <NativeSelect
+            id="country"
+            name="country"
+            required
+            defaultValue={countryValue}
+            aria-invalid={!!e.country}
+          >
+            {SUPPORTED_COUNTRY_LIST.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.flag} {c.name}
+              </option>
+            ))}
+          </NativeSelect>
+          <FieldError error={e.country} />
+        </div>
+
+        {/* Cities — free text. We keep this loose (not a structured
+            address picker) because recruiters routinely type things
+            like "Bengaluru / Pune (hybrid)" or "Multiple Indian
+            cities" that no dropdown will cover cleanly. Country
+            above is the SEO-grade signal; this is recruiter prose. */}
+        <div>
+          <Label htmlFor="locations">Cities (comma-separated)</Label>
           <Input
             id="locations"
             name="locations"
             defaultValue={v.locations ?? ""}
             placeholder="e.g. Bengaluru, Pune, Chennai"
           />
+        </div>
+
+        {/* Open-to-relocation — opt-in cross-border discovery. When
+            checked, the job ALSO appears in OTHER countries' feeds
+            with a "🌍 Open to relocation" badge. Primary `country`
+            above stays the home market for hreflang + sitemap
+            purposes; this is just the secondary visibility signal.
+            Bottom-section because it's an advanced toggle, not a
+            required field. */}
+        <div className="sm:col-span-2">
+          <label className="flex items-start gap-2 rounded-md border border-emce-border bg-emce-light-soft/30 p-3 text-sm">
+            <input
+              type="checkbox"
+              name="openToRelocation"
+              defaultChecked={relocationValue}
+              className="mt-0.5 h-4 w-4 accent-emce-dark"
+            />
+            <span>
+              <span className="block font-bold text-emce-text">
+                🌍 Open to candidates from other countries
+              </span>
+              <span className="mt-0.5 block text-hint text-emce-text-sec">
+                Visa-sponsored / relocation roles only. The job will
+                surface in other countries&apos; feeds with a
+                relocation badge alongside its primary listing in your
+                home country.
+              </span>
+            </span>
+          </label>
         </div>
 
         <div>

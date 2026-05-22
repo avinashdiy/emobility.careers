@@ -459,6 +459,32 @@ export default async function AdminInstitutionsPage({
                             maxLength={80}
                           />
                         </div>
+                        {/* Country reclassification (PR 7). The
+                            existing `Institution.country` field
+                            was String-defaulted to "IN" for every
+                            seeded institution; multi-country
+                            launches need admins to flip this for
+                            non-Indian institutions (e.g. IIT-
+                            Bombay's overseas campus, MIT, etc.).
+                            Accepts ANY 2-letter ISO code (NOT
+                            just the supported-country enum) so
+                            admins can tag globally-mentioned
+                            institutions without restricting to
+                            our launch markets. */}
+                        <div>
+                          <Label htmlFor={`edit-country-${inst.id}`}>Country (ISO)</Label>
+                          <Input
+                            id={`edit-country-${inst.id}`}
+                            name="country"
+                            defaultValue={inst.country ?? "IN"}
+                            placeholder="e.g. IN, GB, AE"
+                            maxLength={2}
+                            minLength={2}
+                            required
+                            pattern="[A-Za-z]{2}"
+                            className="uppercase"
+                          />
+                        </div>
                         <div>
                           <Label htmlFor={`edit-website-${inst.id}`}>Website</Label>
                           <Input

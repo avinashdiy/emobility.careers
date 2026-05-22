@@ -80,7 +80,7 @@ export default async function ApplicationDetail({
       // applicationQuestions added for #2 — recruiter's prompts that
       // the candidate answered at apply time, surfaced alongside the
       // cover letter in the detail view.
-      job: { select: { id: true, title: true, companyId: true, applicationQuestions: true } },
+      job: { select: { id: true, title: true, companyId: true, country: true, openToRelocation: true, applicationQuestions: true } },
       candidate: {
         include: {
           experiences: { orderBy: { startDate: "desc" }, take: 5 },
@@ -372,6 +372,56 @@ export default async function ApplicationDetail({
               )}
             </div>
           </div>
+
+          {/* Cross-border applicant banner (PR 9). Surfaces when
+              the candidate's confirmed country differs from the
+              job's country. Gives the recruiter the visa /
+              relocation context up-front instead of discovering
+              it mid-interview. When `openToRelocation` is set on
+              the job, framing reads as "expected"; otherwise as
+              "consider whether you'll sponsor". */}
+          {c.country &&
+            application.job.country &&
+            c.country.toUpperCase() !== application.job.country && (
+              <div
+                role="region"
+                aria-label="Cross-border applicant"
+                className="mt-4 rounded-md border border-emce-dark/30 bg-gradient-to-r from-emce-light-bg to-white p-3"
+              >
+                <div className="flex items-start gap-2 text-sm">
+                  <span aria-hidden className="mt-0.5 text-base">
+                    🌍
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-bold text-emce-text">
+                      Cross-border applicant
+                    </p>
+                    <p className="mt-0.5 text-hint text-emce-text-sec">
+                      {fullName} is based in{" "}
+                      <strong className="text-emce-text">{c.country}</strong>{" "}
+                      and is applying for this{" "}
+                      <strong className="text-emce-text">{application.job.country}</strong>{" "}
+                      role.{" "}
+                      {application.job.openToRelocation ? (
+                        <>
+                          The job is flagged{" "}
+                          <span className="font-bold text-emce-dark">
+                            🌍 Open to relocation
+                          </span>{" "}
+                          — visa sponsorship is on the table.
+                        </>
+                      ) : (
+                        <>
+                          The job isn&apos;t flagged for relocation, so
+                          confirm visa eligibility / sponsorship intent
+                          before scheduling an interview.
+                        </>
+                      )}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
           {/* Wave B #17 — AI applicant summary. Lazily generated on
               first open; recruiter can refresh after a stage change

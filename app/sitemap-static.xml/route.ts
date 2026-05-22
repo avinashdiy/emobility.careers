@@ -49,6 +49,38 @@ export async function GET() {
     { path: "/about", priority: 0.5, changefreq: "weekly" },
     { path: "/signup", priority: 0.5, changefreq: "weekly" },
     { path: "/signin", priority: 0.5, changefreq: "weekly" },
+    // Per-country landing pages — the SEO entry point for each
+    // expansion market. High priority (0.9) so Google treats them
+    // as primary surfaces, comparable to /jobs. Daily changefreq
+    // because they pull live counts + recent jobs from the DB.
+    // India ("/" / IN) is the root and already covered above with
+    // priority 1.0; these are the additional country folders.
+    { path: "/ae", priority: 0.9, changefreq: "daily" },
+    { path: "/uk", priority: 0.9, changefreq: "daily" },
+    { path: "/au", priority: 0.9, changefreq: "daily" },
+    { path: "/us", priority: 0.9, changefreq: "daily" },
+    { path: "/my", priority: 0.9, changefreq: "daily" },
+    { path: "/bd", priority: 0.9, changefreq: "daily" },
+    { path: "/np", priority: 0.9, changefreq: "daily" },
+    // Country-prefixed jobs + companies routes (PR 3 + PR 5).
+    // Slightly lower priority than the landing pages (each is
+    // one of two surfaces under the country folder) but still
+    // high (0.8) so they get crawl attention. Daily because
+    // the underlying jobs / companies churn.
+    { path: "/ae/jobs", priority: 0.8, changefreq: "daily" },
+    { path: "/uk/jobs", priority: 0.8, changefreq: "daily" },
+    { path: "/au/jobs", priority: 0.8, changefreq: "daily" },
+    { path: "/us/jobs", priority: 0.8, changefreq: "daily" },
+    { path: "/my/jobs", priority: 0.8, changefreq: "daily" },
+    { path: "/bd/jobs", priority: 0.8, changefreq: "daily" },
+    { path: "/np/jobs", priority: 0.8, changefreq: "daily" },
+    { path: "/ae/companies", priority: 0.8, changefreq: "weekly" },
+    { path: "/uk/companies", priority: 0.8, changefreq: "weekly" },
+    { path: "/au/companies", priority: 0.8, changefreq: "weekly" },
+    { path: "/us/companies", priority: 0.8, changefreq: "weekly" },
+    { path: "/my/companies", priority: 0.8, changefreq: "weekly" },
+    { path: "/bd/companies", priority: 0.8, changefreq: "weekly" },
+    { path: "/np/companies", priority: 0.8, changefreq: "weekly" },
   ];
 
   const xml = renderUrlSet(

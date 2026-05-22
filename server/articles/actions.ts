@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { Country } from "@prisma/client";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
@@ -15,6 +16,7 @@ import {
 } from "@/lib/cms/job-sanitize";
 import type { FormState } from "@/lib/form-state";
 import { optionalUrl } from "@/lib/forms/zod-url";
+import { isSupportedCountry } from "@/lib/countries";
 
 /**
  * Server actions for the editorial Article CMS. Admin-only on every
@@ -69,6 +71,13 @@ const ArticleSchema = z.object({
   authorId: z.string().optional().or(z.literal("")),
   /// Comma- or newline-separated. We split + trim + dedupe + limit.
   tagsRaw: z.string().max(500).optional().or(z.literal("")),
+  /// Comma-separated list of ISO country codes — drives which
+  /// per-country landing pages surface this article in their
+  /// "Related reading" rail + which per-country sitemap shards
+  /// (future) include it. Multi-select on the editor UI, comma-
+  /// joined for transport. Empty / missing falls back to [IN] so
+  /// pre-PR-8 articles keep their existing scope.
+  targetCountriesRaw: z.string().max(120).optional().or(z.literal("")),
 });
 
 const ARTICLE_BODY_MIN_READABLE = 100;
@@ -84,6 +93,30 @@ function parseTags(raw: string | undefined): string[] {
     }
   }
   return out.slice(0, 10);
+}
+
+/**
+ * Parse the comma-joined target-country list from the form.
+ *
+ * Filters via `isSupportedCountry` so a tampered submission can't
+ * land an unsupported value in the array (Prisma would reject it
+ * anyway since the column is `Country[]`, but we want a friendly
+ * silent-drop here rather than a 500). Always returns at least
+ * `[IN]` so per-country landing pages have something to filter on
+ * — empty array means "globally targeted" today which we map to
+ * the default-market default.
+ */
+function parseTargetCountries(raw: string | undefined): Country[] {
+  if (!raw) return [Country.IN];
+  const seen = new Set<Country>();
+  const out: Country[] = [];
+  for (const code of raw.split(",").map((s) => s.trim().toUpperCase())) {
+    if (isSupportedCountry(code) && !seen.has(code as Country)) {
+      seen.add(code as Country);
+      out.push(code as Country);
+    }
+  }
+  return out.length > 0 ? out : [Country.IN];
 }
 
 export interface CreateArticleResult extends FormState {
@@ -151,6 +184,7 @@ export async function createArticle(
           // pick one — saves a click in the common case.
           authorId: parsed.data.authorId || session.user.id,
           tags: parseTags(parsed.data.tagsRaw ?? ""),
+          targetCountries: parseTargetCountries(parsed.data.targetCountriesRaw ?? ""),
           readingTimeMins: estimateReadingTime(bodyHtml),
           // Created as DRAFT; admin publishes via setArticleStatus.
           status: "DRAFT",
@@ -196,6 +230,7 @@ export async function updateArticle(
       categoryId: formData.get("categoryId") || "",
       authorId: formData.get("authorId") || "",
       tagsRaw: formData.get("tagsRaw") || "",
+      targetCountriesRaw: formData.get("targetCountriesRaw") || "",
     });
     if (!parsed.success) {
       return {
@@ -238,6 +273,7 @@ export async function updateArticle(
         // Keep the existing author if the form didn't override.
         ...(parsed.data.authorId ? { authorId: parsed.data.authorId } : {}),
         tags: parseTags(parsed.data.tagsRaw ?? ""),
+        targetCountries: parseTargetCountries(parsed.data.targetCountriesRaw ?? ""),
         readingTimeMins: estimateReadingTime(bodyHtml),
       },
     });

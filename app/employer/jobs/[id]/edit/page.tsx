@@ -28,6 +28,12 @@ export default async function EditJobPage({
 
   const employer = await db.employerProfile.findUnique({
     where: { userId: session.user.id },
+    // Pull `company.hqCountry` so the country dropdown has a
+    // sensible default for any future job posts kicked off from
+    // the edit-page flow (e.g. duplicate-job UI). Existing job's
+    // `country` overrides via the `initial` prop below — this is
+    // just the fallback.
+    include: { company: { select: { hqCountry: true } } },
   });
   if (!employer) redirect("/employer/onboarding");
 
@@ -70,6 +76,7 @@ export default async function EditJobPage({
           <EmployerJobForm
             evDomains={evDomains}
             jobId={job.id}
+            defaultCountry={employer.company.hqCountry}
             initial={{
               title: job.title,
               description: job.description,
@@ -82,6 +89,8 @@ export default async function EditJobPage({
               workMode: job.workMode,
               audience: job.audience,
               locations: job.locations,
+              country: job.country,
+              openToRelocation: job.openToRelocation,
               experienceMin: job.experienceMin,
               experienceMax: job.experienceMax,
               salaryMin: job.salaryMin ? job.salaryMin.toString() : null,

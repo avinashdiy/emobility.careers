@@ -18,15 +18,44 @@ import {
   tooFast,
   verifyTurnstile,
 } from "@/lib/anti-spam";
-import { Role } from "@prisma/client";
+import { Role, Country } from "@prisma/client";
 
 const signupSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters").max(120),
   email: z.string().email("Enter a valid email address").toLowerCase(),
   password: z.string().min(8, "Password must be at least 8 characters").max(120),
   role: z.enum(["CANDIDATE", "EMPLOYER"], { errorMap: () => ({ message: "Pick a role" }) }),
+  // Country captured at signup so currency / time zone / GSC
+  // subfolder / hreflang routing all work from session one. Form
+  // pre-fills via IP geolocation (see `app/(auth)/signup/page.tsx`)
+  // and falls back to IN if the header isn't present. The enum
+  // narrows to the closed set of supported markets.
+  country: z.nativeEnum(Country, { errorMap: () => ({ message: "Pick a country" }) }),
+  /// Post-signup destination — honoured when present so users
+  /// signing up via a "Create account" CTA from a deeper page
+  /// (e.g. /colleges/register's TPO flow, a job-detail apply
+  /// button) land back on their original intent instead of the
+  /// generic /onboarding. Same-origin-only validation in the
+  /// action body — junk values silently fall through to the
+  /// role-default redirect.
+  next: z.string().optional(),
   acceptTerms: z.literal("on", { errorMap: () => ({ message: "Please agree to the Terms" }) }),
 });
+
+/**
+ * Same-origin safety check for post-signup redirects. Honour ONLY
+ * relative paths that start with `/` and don't begin with `//` or
+ * `/\` (both of which are protocol-relative URLs that browsers
+ * resolve to external origins — open-redirect vulnerability).
+ * Anything else falls through to the caller's default.
+ */
+function safeRelativePath(input: string | undefined | null): string | null {
+  if (!input || typeof input !== "string") return null;
+  // Reject empty + non-relative + protocol-relative + javascript: etc.
+  if (!input.startsWith("/")) return null;
+  if (input.startsWith("//") || input.startsWith("/\\")) return null;
+  return input;
+}
 
 /**
  * The single rejection message we return for any anti-spam trip. Keeping
@@ -65,7 +94,8 @@ export async function signupAction(_prev: FormState, formData: FormData): Promis
       fieldErrors: zodErrorsToFieldErrors(parsed.error.flatten()),
     };
   }
-  const { name, email, password, role } = parsed.data;
+  const { name, email, password, role, country, next: nextRaw } = parsed.data;
+  const nextSafe = safeRelativePath(nextRaw);
 
   // ─── Layer 4: Disposable-email + spammy-name heuristic ───
   if (isDisposableEmail(email)) {
@@ -114,6 +144,14 @@ export async function signupAction(_prev: FormState, formData: FormData): Promis
         email,
         passwordHash,
         role: role as Role,
+        country,
+        // Stamp the explicit-choice marker — the form's country
+        // dropdown WAS a deliberate decision (pre-filled from IP
+        // but actively confirmed by hitting Submit). Skips the
+        // `ConfirmCountryBanner` for fresh form signups. OAuth
+        // signups don't hit this path → countryConfirmedAt stays
+        // null → banner prompts them on first /me visit.
+        countryConfirmedAt: new Date(),
         signupIp: ip,
         signupUserAgent: userAgent?.slice(0, 500) ?? null,
       },
@@ -133,6 +171,14 @@ export async function signupAction(_prev: FormState, formData: FormData): Promis
           firstName: firstName ?? name,
           lastName: rest.join(" ") || null,
           email,
+          // Mirror the signup-form country onto the personal
+          // profile so /me/profile renders the right CountryFlag
+          // immediately + the recruiter sees the candidate's
+          // location in the ATS without an onboarding step. The
+          // column is a String (legacy field), not the Country
+          // enum — but the enum's values are ISO codes so the
+          // string is the same shape.
+          country,
         },
       }),
     );
@@ -163,10 +209,18 @@ export async function signupAction(_prev: FormState, formData: FormData): Promis
     // Don't block signup — the user can request another from the dashboard banner.
   }
 
+  // Post-signup redirect precedence:
+  //   1. Explicit `?next=/safe-path` — wins because it carries user
+  //      intent (e.g. /colleges/register's TPO flow expects the user
+  //      to land back on its application form once signed in).
+  //   2. Role-default — EMPLOYER → /employer/onboarding,
+  //      everyone else → /onboarding.
+  const roleDefault =
+    role === "EMPLOYER" ? "/employer/onboarding" : "/onboarding";
   await signIn("credentials", {
     email,
     password,
-    redirectTo: role === "EMPLOYER" ? "/employer/onboarding" : "/onboarding",
+    redirectTo: nextSafe ?? roleDefault,
   });
   // signIn either redirects or throws; control should never reach here
   return { ok: true };
@@ -220,12 +274,18 @@ export async function signinAction(_prev: FormState, formData: FormData): Promis
     };
   }
 
-  const next = String(formData.get("next") ?? "/me");
+  // Same-origin validation on `next` — without it, a crafted
+  // ?next=//evil.com would bounce successful sign-ins to an
+  // external page (open-redirect / credential-phishing risk).
+  // safeRelativePath() rejects anything that isn't a clean
+  // relative path starting with a single `/`. Junk values fall
+  // through to /me (the home of every authenticated user).
+  const nextSafe = safeRelativePath(String(formData.get("next") ?? "")) ?? "/me";
   try {
     await signIn("credentials", {
       email,
       password: parsed.data.password,
-      redirectTo: next,
+      redirectTo: nextSafe,
     });
   } catch (e) {
     // NextAuth throws a redirect "error" on success — re-throw so Next.js can intercept

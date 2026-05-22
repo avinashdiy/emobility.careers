@@ -40,7 +40,11 @@ export async function getUserMenuViewerData(
     }),
     db.user.findUnique({
       where: { id: user.id },
-      select: { isPlacementOfficer: true },
+      // `country` joins the viewer payload so the header's
+      // CountrySelector can render the right flag in the trigger
+      // without a separate query. Cheap (User PK lookup, already
+      // in flight) — no extra round-trip cost.
+      select: { isPlacementOfficer: true, country: true },
     }),
     db.employerProfile.findUnique({
       where: { userId: user.id },
@@ -81,5 +85,6 @@ export async function getUserMenuViewerData(
           logoUrl: viewerEmployer.company.logoUrl,
         }
       : null,
+    country: viewerUser.country,
   };
 }

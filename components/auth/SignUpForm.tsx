@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
+import type { Country } from "@prisma/client";
 import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +11,7 @@ import { FieldError } from "@/components/ui/field-error";
 import { TurnstileWidget } from "@/components/auth/TurnstileWidget";
 import { signupAction, googleSignInWithNext, linkedinSignInWithNext } from "@/server/auth/actions";
 import { emptyFormState } from "@/lib/form-state";
+import { SUPPORTED_COUNTRY_LIST } from "@/lib/countries";
 
 interface SignUpLabels {
   whatBringsYou: string;
@@ -20,6 +22,8 @@ interface SignUpLabels {
   email: string;
   password: string;
   passwordHint: string;
+  country: string;
+  countryHint: string;
   tosPreamble: string;
   tosTerms: string;
   tosAnd: string;
@@ -33,11 +37,20 @@ interface SignUpLabels {
 
 export function SignUpForm({
   defaultRole,
+  defaultCountry,
   next,
   turnstileSiteKey,
   labels,
 }: {
   defaultRole: "CANDIDATE" | "EMPLOYER";
+  /**
+   * Pre-filled value for the country dropdown. The signup page
+   * resolves this server-side from the `CF-IPCountry` header (or
+   * its fallback) so a UAE visitor lands with "🇦🇪 UAE" already
+   * selected and only the 5% diaspora case needs to change it.
+   * Falls back to India when no signal is available.
+   */
+  defaultCountry: Country;
   next?: string;
   turnstileSiteKey: string | null;
   // Labels are pre-resolved server-side from the dict so this client
@@ -56,6 +69,8 @@ export function SignUpForm({
     email: "Work email",
     password: "Password",
     passwordHint: "Minimum 8 characters.",
+    country: "Where you work",
+    countryHint: "Drives your default currency, time zone, and the jobs we surface first. You can change this later from settings.",
     tosPreamble: "I agree to the",
     tosTerms: "Terms of Service",
     tosAnd: "and",
@@ -91,6 +106,13 @@ export function SignUpForm({
           </label>
         </div>
         <input type="hidden" name="startedAt" value={startedAt} />
+        {/* Post-signup destination — carries the `?next=…` URL
+            param into the form data so the server action can land
+            the user back on their original page (TPO college-
+            registration form, a specific job-apply, etc.) instead
+            of the generic /onboarding. Same-origin validation is
+            in the action body. */}
+        {next && <input type="hidden" name="next" value={next} />}
 
         <div>
           <p className="mb-1 text-xs font-bold text-emce-text">{L.whatBringsYou}</p>
@@ -170,6 +192,44 @@ export function SignUpForm({
             <FieldError id="password-err" error={state.fieldErrors.password} />
           ) : (
             <p id="password-hint" className="mt-1 text-hint text-emce-text-muted">{L.passwordHint}</p>
+          )}
+        </div>
+
+        {/* Country picker — pre-filled from IP geolocation (set
+            server-side via the `defaultCountry` prop). Drives the
+            entire downstream experience: currency display, time-zone
+            for fair scheduling, GSC subfolder for SEO attribution,
+            which "trending in your country" surface the feed uses.
+            Native <select> (no client library) so it works in every
+            browser + assistive tech. The list is intentionally short
+            — these are the markets emobility.careers is BUILT for,
+            with dedicated subfolders, sitemaps, and GSC properties.
+            A user from a non-supported market can still create an
+            account by picking the closest neighbour; they can refine
+            their actual location on their profile later. */}
+        <div>
+          <Label htmlFor="country">{L.country}</Label>
+          <select
+            id="country"
+            name="country"
+            defaultValue={defaultCountry}
+            required
+            aria-invalid={!!state.fieldErrors?.country}
+            aria-describedby={state.fieldErrors?.country ? "country-err" : "country-hint"}
+            className="h-10 w-full rounded-md border border-emce-border bg-white px-3 text-sm focus:border-emce-mid focus:outline-none"
+          >
+            {SUPPORTED_COUNTRY_LIST.map((c) => (
+              <option key={c.code} value={c.code}>
+                {c.flag} {c.name}
+              </option>
+            ))}
+          </select>
+          {state.fieldErrors?.country ? (
+            <FieldError id="country-err" error={state.fieldErrors.country} />
+          ) : (
+            <p id="country-hint" className="mt-1 text-hint text-emce-text-muted">
+              {L.countryHint}
+            </p>
           )}
         </div>
 

@@ -2,11 +2,13 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { MobileNav } from "@/components/layout/mobile-nav";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
+import { CountrySelector } from "@/components/layout/CountrySelector";
 import { HeaderSearch } from "@/components/layout/HeaderSearch";
 import { DiscoverMenu } from "@/components/layout/DiscoverMenu";
 import { HeaderUserMenu } from "@/components/layout/HeaderUserMenu";
 import { Logo } from "@/components/brand/Logo";
 import { CompleteProfileBanner } from "@/components/profile/CompleteProfileBanner";
+import { ConfirmCountryBanner } from "@/components/profile/ConfirmCountryBanner";
 import { RoleStaleBanner } from "@/components/auth/RoleStaleBanner";
 import { LiveNotificationBadge } from "@/components/layout/LiveNotificationBadge";
 import { env } from "@/lib/env";
@@ -184,6 +186,13 @@ export async function SiteHeader() {
           )}
 
           <div className="ml-1 flex items-center gap-2 border-l border-emce-border pl-2">
+            {/* Country selector — flags-and-globe dropdown that
+                jumps the visitor to the chosen country's landing
+                page AND cookies the choice for the next visit.
+                Sits next to the language switcher because both are
+                "what regional version of the site am I on" controls
+                and users expect them clustered. */}
+            <CountrySelector currentCountry={viewer?.country} />
             <LanguageSwitcher current={locale} variant="light" />
             {user && viewer ? (
               <HeaderUserMenu user={viewer} />
@@ -206,6 +215,12 @@ export async function SiteHeader() {
           reflects the old role. Component returns null in the common
           case (DB role === session role). */}
       <RoleStaleBanner />
+      {/* Country-confirmation banner — one-question nudge for the
+          ~50k existing users who were defaulted to IN by PR 1's
+          backfill + every OAuth (Google / LinkedIn) signup that
+          bypasses the form's country dropdown. Short-circuits
+          when countryConfirmedAt is non-null. */}
+      <ConfirmCountryBanner />
       {/* Profile-completeness reminder strip — short-circuits server-side
           when the user is signed-out / on auth routes / already ≥ 90%. */}
       <CompleteProfileBanner />

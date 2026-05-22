@@ -48,6 +48,16 @@ export default async function EmployerOnboarding({
   const sp = await searchParams;
   const wantsCreate = sp.create === "1";
 
+  // Pull the user's signup-captured country so the company-create
+  // form pre-fills `HQ country` to it. Recruiter can override if
+  // they're setting up a company in a different jurisdiction than
+  // their personal account, but the default matches 95% of cases.
+  const userRecord = await db.user.findUnique({
+    where: { id: session.user.id },
+    select: { country: true },
+  });
+  const userCountry = userRecord?.country ?? "IN";
+
   return (
     <div className="min-h-screen bg-emce-light-bg">
       <main className="container max-w-2xl py-12">
@@ -73,7 +83,10 @@ export default async function EmployerOnboarding({
                 ← Back to search
               </Link>
             </div>
-            <CreateCompanyForm initialName={sp.name ?? ""} />
+            <CreateCompanyForm
+              initialName={sp.name ?? ""}
+              defaultCountry={userCountry}
+            />
           </Card>
         ) : (
           <CompanySearchOnboarding />

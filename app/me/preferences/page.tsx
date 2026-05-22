@@ -4,7 +4,12 @@ import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/select";
+import { ToastFromSearchParams } from "@/components/ui/toast-from-params";
 import { saveNotificationPrefs } from "@/server/preferences/actions";
+import { confirmCountry } from "@/server/account/country-actions";
+import { SUPPORTED_COUNTRY_LIST, SUPPORTED_COUNTRIES } from "@/lib/countries";
+import { relativeTime } from "@/lib/utils";
 
 export const metadata = { title: "Notification preferences" };
 
@@ -43,22 +48,92 @@ export default async function PreferencesPage() {
   const session = await auth();
   if (!session?.user) redirect("/signin?next=/me/preferences");
 
-  const prefs = await db.notificationPreference.findUnique({
-    where: { userId: session.user.id },
-  }) ?? {
+  const [prefs, user] = await Promise.all([
+    db.notificationPreference.findUnique({
+      where: { userId: session.user.id },
+    }),
+    db.user.findUnique({
+      where: { id: session.user.id },
+      select: { country: true, countryConfirmedAt: true },
+    }),
+  ]);
+  const effectivePrefs = prefs ?? {
     applicationUpdatesEmail: true, applicationUpdatesSMS: false,
     messagesEmail: true, messagesSMS: false,
     interviewsEmail: true, interviewsSMS: true,
     jobAlertsEmail: true, jobAlertsSMS: false,
     marketingEmail: false,
   };
+  const currentCountry = user?.country ?? "IN";
 
   return (
     <div className="container max-w-3xl py-10">
+      <ToastFromSearchParams />
       <div className="flex items-center justify-between">
-        <h1 className="text-dashboard text-emce-text">Notification preferences</h1>
+        <h1 className="text-dashboard text-emce-text">Account preferences</h1>
         <Button asChild variant="outline" size="sm"><Link href="/me">Dashboard →</Link></Button>
       </div>
+      <p className="mt-1 text-sm text-emce-text-sec">
+        Country, language, and notification settings for your account.
+      </p>
+
+      {/* ── Country card (PR 7) ──
+          User-facing version of the ConfirmCountryBanner — lets
+          them change country AFTER the initial confirmation
+          without needing to wait for a banner to re-appear. Uses
+          the same `confirmCountry` server action so writes the
+          same columns (User.country + User.countryConfirmedAt +
+          emce_country cookie) and the rest of the platform
+          (currency display, GSC routing, "trending in your
+          country" feed lens) honours it consistently. */}
+      <Card className="mt-6 p-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-section text-emce-text">
+              <span aria-hidden className="mr-1">
+                {SUPPORTED_COUNTRIES[currentCountry].flag}
+              </span>
+              Country
+            </h2>
+            <p className="mt-1 text-hint text-emce-text-sec">
+              Drives currency display on jobs, default time-zone for
+              interviews, and the "same country" lens on People &
+              Companies discovery. Changing this also updates the
+              country chip in the header on your next page load.
+            </p>
+            {user?.countryConfirmedAt && (
+              <p className="mt-1 text-[11px] text-emce-text-muted">
+                Last confirmed {relativeTime(user.countryConfirmedAt)}.
+              </p>
+            )}
+          </div>
+        </div>
+        <form action={confirmCountry} className="mt-4 flex flex-wrap items-end gap-2">
+          <input type="hidden" name="returnTo" value="/me/preferences" />
+          <div className="min-w-[200px] flex-1">
+            <label
+              htmlFor="country"
+              className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-emce-text-muted"
+            >
+              Your country
+            </label>
+            <NativeSelect
+              id="country"
+              name="country"
+              defaultValue={currentCountry}
+            >
+              {SUPPORTED_COUNTRY_LIST.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.flag} {c.name}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <Button type="submit">Save country</Button>
+        </form>
+      </Card>
+
+      <h2 className="mt-10 text-section text-emce-text">Notification preferences</h2>
       <p className="mt-1 text-sm text-emce-text-sec">
         Choose how we reach you. In-app notifications always show in your inbox.
       </p>
@@ -75,8 +150,8 @@ export default async function PreferencesPage() {
             </thead>
             <tbody className="divide-y divide-emce-border">
               {ROWS.map((r) => {
-                const emailKey = r.emailField as keyof typeof prefs;
-                const smsKey = r.smsField as keyof typeof prefs;
+                const emailKey = r.emailField as keyof typeof effectivePrefs;
+                const smsKey = r.smsField as keyof typeof effectivePrefs;
                 return (
                   <tr key={r.key}>
                     <td className="p-3">
@@ -87,7 +162,7 @@ export default async function PreferencesPage() {
                       <input
                         type="checkbox"
                         name={r.emailField}
-                        defaultChecked={Boolean(prefs[emailKey])}
+                        defaultChecked={Boolean(effectivePrefs[emailKey])}
                         className="h-4 w-4 accent-emce-mid"
                       />
                     </td>
@@ -95,7 +170,7 @@ export default async function PreferencesPage() {
                       <input
                         type="checkbox"
                         name={r.smsField}
-                        defaultChecked={Boolean(prefs[smsKey])}
+                        defaultChecked={Boolean(effectivePrefs[smsKey])}
                         className="h-4 w-4 accent-emce-mid"
                       />
                     </td>
@@ -111,7 +186,7 @@ export default async function PreferencesPage() {
                   <input
                     type="checkbox"
                     name="marketingEmail"
-                    defaultChecked={prefs.marketingEmail}
+                    defaultChecked={effectivePrefs.marketingEmail}
                     className="h-4 w-4 accent-emce-mid"
                   />
                 </td>

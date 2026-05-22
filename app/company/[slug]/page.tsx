@@ -268,6 +268,15 @@ export default async function PublicCompanyPage({
     logoUrl: company.logoUrl,
     description: company.description,
     hqLocation: company.hqLocation,
+    // Pass the company's HQ country so JSON-LD `address.addressCountry`
+    // + `areaServed` reflect the real market. Before PR 7 the schema
+    // hard-coded "IN" for every company — Google's Knowledge Graph
+    // would have JLR / Tesla / Lucid tagged as Indian organisations.
+    hqCountry: company.hqCountry,
+    // Additional markets the company operates in (PR 8). Drives
+    // `areaServed` becoming a list — Google sees JLR as
+    // "operates in GB AND IN" instead of just GB.
+    operatesInCountries: company.operatesInCountries,
     foundedYear: company.foundedYear,
   });
   const breadcrumbLd = breadcrumbJsonLd([
