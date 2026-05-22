@@ -1,6 +1,32 @@
 import type { Country } from "@prisma/client";
 import { SUPPORTED_COUNTRIES } from "@/lib/countries";
-import { env } from "@/lib/env";
+
+/**
+ * Read NEXT_PUBLIC_APP_URL directly from `process.env` instead of via
+ * `@/lib/env`.
+ *
+ * Why: this module is imported by `components/layout/CountrySelector.tsx`,
+ * which is a "use client" component rendered inside `SiteHeader` on every
+ * page. Importing `@/lib/env` from a client-bundled module pulls the
+ * full zod-validated env schema into the browser. The browser only sees
+ * `NEXT_PUBLIC_*` vars (everything else is undefined), so validation
+ * throws at module load with "Invalid environment configuration" —
+ * which trips React's error boundary on EVERY page render. Production
+ * outage cause; see commit history around PR 2.
+ *
+ * `NEXT_PUBLIC_APP_URL` is statically inlined by Next.js at build time
+ * (that's the whole purpose of the `NEXT_PUBLIC_` prefix), so reading
+ * it via `process.env` directly works in both server and client
+ * contexts without dragging the validation module along.
+ *
+ * The fallback to "https://emobility.careers" covers the edge case
+ * where the env var is missing at build time (dev shells, CI without
+ * a configured env). Production builds set NEXT_PUBLIC_APP_URL
+ * explicitly so the fallback is just safety against a 500.
+ */
+const BASE_URL = (
+  process.env.NEXT_PUBLIC_APP_URL ?? "https://emobility.careers"
+).replace(/\/$/, "");
 
 /**
  * Builds the `alternates.languages` map for Next's `Metadata` API
