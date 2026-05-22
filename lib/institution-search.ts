@@ -1,3 +1,5 @@
+import "server-only";
+
 import { db } from "@/lib/db";
 import { Prisma } from "@prisma/client";
 import { buildTsQuery } from "@/lib/search-fts";

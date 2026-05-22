@@ -1,3 +1,5 @@
+import "server-only";
+
 /**
  * Logo.dev fetcher — pulls a company logo by domain and persists it
  * into our S3/MinIO `logos` bucket, returning the public URL.

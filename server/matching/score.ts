@@ -1,5 +1,6 @@
 import { db } from "@/lib/db";
 import { embed, jobEmbeddingText, profileEmbeddingText } from "@/lib/ai/embeddings";
+import { logger } from "@/lib/logger";
 
 export interface MatchedCandidate {
   candidateId: string;
@@ -58,7 +59,15 @@ export async function matchCandidatesForJob(opts: MatchOptions): Promise<Matched
     if (process.env.OPENAI_API_KEY) {
       jobVector = await embed(jobText);
     }
-  } catch {
+  } catch (err) {
+    // Silent fallback used to be a one-liner — `jobVector = null` and move
+    // on. Problem: when `embed()` started failing (rate-limit, model
+    // deprecated, API key rotated) the matching page kept rendering
+    // results scored ONLY on skill+domain overlap (50% weight gone). No
+    // alert, no log, just quietly worse rankings — until a recruiter
+    // noticed the candidate quality dropped. Log it so the watcher fires
+    // before the user-facing degradation does.
+    logger.warn({ err, jobId: opts.jobId }, "[matching] embed() failed; vectorScore will be 0 for all candidates");
     jobVector = null;
   }
 
@@ -99,7 +108,13 @@ export async function matchCandidatesForJob(opts: MatchOptions): Promise<Matched
         LIMIT 500
       `;
       vectorScores = new Map(rows.map((r) => [r.id, Number(r.score)]));
-    } catch {
+    } catch (err) {
+      // Same silent-fallback story as the embed() catch above. If
+      // pgvector errors (HNSW index rebuilding, dimension mismatch after
+      // a model swap, extension uninstalled) the candidate ranking
+      // silently loses its 50%-weight vector signal. Warn so an admin
+      // can see the regression before the recruiter does.
+      logger.warn({ err, jobId: opts.jobId }, "[matching] pgvector query failed; vectorScore will be 0 for all candidates");
       vectorScores = new Map();
     }
   }

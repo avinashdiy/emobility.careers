@@ -1,3 +1,5 @@
+import "server-only";
+
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { s3, buckets, type BucketName } from "@/lib/storage";
 

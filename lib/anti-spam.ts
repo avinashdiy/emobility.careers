@@ -1,3 +1,5 @@
+import "server-only";
+
 import { headers } from "next/headers";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";

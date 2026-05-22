@@ -1,3 +1,5 @@
+import "server-only";
+
 import { db } from "@/lib/db";
 import { cookies } from "next/headers";
 import { unstable_cache } from "next/cache";

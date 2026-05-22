@@ -1,3 +1,5 @@
+import "server-only";
+
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { Prisma, type DeliveryChannel, type DeliveryEventKind } from "@prisma/client";

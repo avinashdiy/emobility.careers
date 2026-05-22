@@ -1,3 +1,5 @@
+import "server-only";
+
 import crypto from "crypto";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";

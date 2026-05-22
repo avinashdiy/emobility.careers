@@ -1,3 +1,5 @@
+import "server-only";
+
 import { Queue, type QueueOptions } from "bullmq";
 import { redis } from "@/lib/redis";
 

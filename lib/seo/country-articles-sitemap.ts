@@ -1,3 +1,5 @@
+import "server-only";
+
 import type { Country } from "@prisma/client";
 import { db } from "@/lib/db";
 import { env } from "@/lib/env";
