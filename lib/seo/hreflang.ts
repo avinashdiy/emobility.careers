@@ -82,10 +82,9 @@ export interface HreflangOptions {
  *   countryUrl("AE", "/companies")  → "https://emobility.careers/ae/companies"
  */
 export function countryUrl(country: Country, pathTail: string = ""): string {
-  const base = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
   const sub = SUPPORTED_COUNTRIES[country].subfolder;
   const prefix = sub ? `/${sub}` : "";
-  return `${base}${prefix}${pathTail}`;
+  return `${BASE_URL}${prefix}${pathTail}`;
 }
 
 /**
