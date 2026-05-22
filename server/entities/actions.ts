@@ -71,19 +71,32 @@ export async function searchCompanies(q: string): Promise<CompanyMatch[]> {
   const tsq = buildTsQuery(q);
   if (!tsq) return [];
   const slugCandidate = q.toLowerCase().replace(/\s+/g, "-");
-  const fts = await db.$queryRaw<CompanyMatch[]>`
-    SELECT id, slug, name, "logoUrl", "hqLocation", "verificationStatus"::text
-    FROM "Company"
-    WHERE ("searchTsv" @@ to_tsquery('simple', ${tsq})
-        OR slug = ${slugCandidate})
-      AND "verificationStatus" <> 'REJECTED'
-    ORDER BY
-      ts_rank("searchTsv", to_tsquery('simple', ${tsq}))
-        + CASE WHEN "verificationStatus" = 'VERIFIED' THEN 0.1 ELSE 0 END
-        DESC,
-      name ASC
-    LIMIT 10
-  `;
+  // Wrap FTS in try/catch so a missing `searchTsv` column (setup-fts.sql
+  // not yet run on this DB) falls through to the ILIKE branch below
+  // instead of throwing an uncaught error to the user. Previously only
+  // EMPTY results triggered the fallback — a thrown error from a
+  // missing column crashed the company autocomplete entirely.
+  let fts: CompanyMatch[] = [];
+  try {
+    fts = await db.$queryRaw<CompanyMatch[]>`
+      SELECT id, slug, name, "logoUrl", "hqLocation", "verificationStatus"::text
+      FROM "Company"
+      WHERE ("searchTsv" @@ to_tsquery('simple', ${tsq})
+          OR slug = ${slugCandidate})
+        AND "verificationStatus" <> 'REJECTED'
+      ORDER BY
+        ts_rank("searchTsv", to_tsquery('simple', ${tsq}))
+          + CASE WHEN "verificationStatus" = 'VERIFIED' THEN 0.1 ELSE 0 END
+          DESC,
+        name ASC
+      LIMIT 10
+    `;
+  } catch (err) {
+    console.warn(
+      "[searchCompanies] FTS path failed, falling back to ILIKE. Run scripts/setup-fts.sql on the DB.",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
   if (fts.length > 0) return fts;
   // Fallback — when searchTsv is NULL on every row (typically because
   // scripts/setup-fts.sql wasn't run after `prisma db push` on a
@@ -207,19 +220,29 @@ export async function searchInstitutions(q: string): Promise<InstitutionMatch[]>
   const tsq = buildTsQuery(q);
   if (!tsq) return [];
   const slugCandidate = q.toLowerCase().replace(/\s+/g, "-");
-  const fts = await db.$queryRaw<InstitutionMatch[]>`
-    SELECT id, slug, name, type::text, city, "logoUrl", "verificationStatus"::text
-    FROM "Institution"
-    WHERE ("searchTsv" @@ to_tsquery('simple', ${tsq})
-        OR slug = ${slugCandidate})
-      AND "verificationStatus" <> 'REJECTED'
-    ORDER BY
-      ts_rank("searchTsv", to_tsquery('simple', ${tsq}))
-        + CASE WHEN "verificationStatus" = 'VERIFIED' THEN 0.1 ELSE 0 END
-        DESC,
-      name ASC
-    LIMIT 10
-  `;
+  // Same defensive wrap as searchCompanies — missing column falls
+  // through to ILIKE rather than crashing the institution picker.
+  let fts: InstitutionMatch[] = [];
+  try {
+    fts = await db.$queryRaw<InstitutionMatch[]>`
+      SELECT id, slug, name, type::text, city, "logoUrl", "verificationStatus"::text
+      FROM "Institution"
+      WHERE ("searchTsv" @@ to_tsquery('simple', ${tsq})
+          OR slug = ${slugCandidate})
+        AND "verificationStatus" <> 'REJECTED'
+      ORDER BY
+        ts_rank("searchTsv", to_tsquery('simple', ${tsq}))
+          + CASE WHEN "verificationStatus" = 'VERIFIED' THEN 0.1 ELSE 0 END
+          DESC,
+        name ASC
+      LIMIT 10
+    `;
+  } catch (err) {
+    console.warn(
+      "[searchInstitutions/entities] FTS path failed, falling back to ILIKE. Run scripts/setup-fts.sql on the DB.",
+      err instanceof Error ? err.message : String(err),
+    );
+  }
   if (fts.length > 0) return fts;
   // ILIKE fallback — see searchCompanies for rationale. Kept in
   // lock-step so neither entity-picker degrades silently when FTS

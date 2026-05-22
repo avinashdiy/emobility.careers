@@ -46,18 +46,35 @@ export default async function PeoplePage({
   if (sp.q) {
     const tsq = buildTsQuery(sp.q);
     if (tsq) {
-      const matches = await db.$queryRaw<{ id: string }[]>`
-        SELECT id FROM "CandidateProfile"
-        WHERE "searchTsv" @@ to_tsquery('simple', ${tsq})
-        LIMIT 1000
-      `;
-      if (matches.length === 0) {
-        // No FTS hits → render an empty results page rather than
-        // running a `WHERE id IN ()` round-trip.
-        where.id = { in: [] };
-      } else {
-        where.id = { in: matches.map((r) => r.id) };
+      // Wrap FTS in try/catch — if `searchTsv` doesn't exist on
+      // CandidateProfile (setup-fts.sql not yet run), the raw
+      // query throws and crashes the /people page for any search.
+      // Falling through to "no text filter applied" renders the
+      // unfiltered list — better than a 500.
+      let matches: { id: string }[] | null = null;
+      try {
+        matches = await db.$queryRaw<{ id: string }[]>`
+          SELECT id FROM "CandidateProfile"
+          WHERE "searchTsv" @@ to_tsquery('simple', ${tsq})
+          LIMIT 1000
+        `;
+      } catch (err) {
+        console.warn(
+          "[/people] FTS path failed, ignoring text filter. Run scripts/setup-fts.sql on the DB.",
+          err instanceof Error ? err.message : String(err),
+        );
       }
+      if (matches !== null) {
+        if (matches.length === 0) {
+          // No FTS hits → render an empty results page rather than
+          // running a `WHERE id IN ()` round-trip.
+          where.id = { in: [] };
+        } else {
+          where.id = { in: matches.map((r) => r.id) };
+        }
+      }
+      // matches === null → FTS broken; leave `where.id` unset so
+      // the other facet filters (type, domain) narrow naturally.
     }
   }
   if (sp.type) where.personType = sp.type as Prisma.CandidateProfileWhereInput["personType"];

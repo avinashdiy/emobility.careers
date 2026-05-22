@@ -117,22 +117,44 @@ export async function searchJobs(filter: JobsFilter) {
   if (filter.q) {
     const tsq = buildTsQuery(filter.q);
     if (tsq) {
-      const matches = await db.$queryRaw<{ id: string }[]>`
-        SELECT j.id
-        FROM "JobPosting" j
-        LEFT JOIN "Company" c ON j."companyId" = c.id
-        WHERE (j."searchTsv" @@ to_tsquery('simple', ${tsq})
-            OR c."searchTsv" @@ to_tsquery('simple', ${tsq}))
-        LIMIT 1000
-      `;
-      // Empty-result short-circuit: if the FTS pass found nothing,
-      // skip Prisma entirely and return an empty page. Otherwise we'd
-      // run a `WHERE id IN ()` which Postgres optimises but is wasted
-      // round-trip.
-      if (matches.length === 0) {
-        return { jobs: [], total: 0, page, pageSize, pages: 0 };
+      // Wrap FTS in try/catch — if `searchTsv` doesn't exist on
+      // JobPosting OR Company (setup-fts.sql not run), the join
+      // throws and crashes /jobs for any text query. Falling
+      // through to "no text filter applied" is a graceful
+      // degradation: the page renders the unfiltered list, the
+      // other facet filters (location, workMode, etc.) still work,
+      // and the user sees results rather than a 500.
+      let matches: { id: string }[] | null = null;
+      try {
+        matches = await db.$queryRaw<{ id: string }[]>`
+          SELECT j.id
+          FROM "JobPosting" j
+          LEFT JOIN "Company" c ON j."companyId" = c.id
+          WHERE (j."searchTsv" @@ to_tsquery('simple', ${tsq})
+              OR c."searchTsv" @@ to_tsquery('simple', ${tsq}))
+          LIMIT 1000
+        `;
+      } catch (err) {
+        console.warn(
+          "[searchJobs] FTS path failed, ignoring text filter. Run scripts/setup-fts.sql on the DB.",
+          err instanceof Error ? err.message : String(err),
+        );
       }
-      where.id = { in: matches.map((r) => r.id) };
+      if (matches !== null) {
+        // Empty-result short-circuit: if the FTS pass found nothing,
+        // skip Prisma entirely and return an empty page. Otherwise we'd
+        // run a `WHERE id IN ()` which Postgres optimises but is wasted
+        // round-trip. (Only short-circuits on a SUCCESSFUL FTS query
+        // that returned 0 rows — not on a thrown error, which we
+        // already handled above by leaving the filter off.)
+        if (matches.length === 0) {
+          return { jobs: [], total: 0, page, pageSize, pages: 0 };
+        }
+        where.id = { in: matches.map((r) => r.id) };
+      }
+      // matches === null → FTS broken; let the rest of the filters
+      // narrow the result naturally. User gets "best-effort" results
+      // for their query rather than a server error.
     } else {
       // tsq null = empty/sanitised-away input. Treat as no filter.
     }

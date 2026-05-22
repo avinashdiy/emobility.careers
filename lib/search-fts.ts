@@ -165,10 +165,35 @@ export async function findFtsIds(
   // Whitelist check is the type system; Prisma.raw is safe here
   // because the union of allowed values is closed.
   const tableIdent = Prisma.raw(`"${table}"`);
-  const rows = await db.$queryRaw<{ id: string }[]>`
-    SELECT id FROM ${tableIdent}
-    WHERE "searchTsv" @@ to_tsquery('simple', ${tsq})
-    LIMIT ${Prisma.raw(String(limit))}
-  `;
-  return rows.map((r) => r.id);
+  try {
+    const rows = await db.$queryRaw<{ id: string }[]>`
+      SELECT id FROM ${tableIdent}
+      WHERE "searchTsv" @@ to_tsquery('simple', ${tsq})
+      LIMIT ${Prisma.raw(String(limit))}
+    `;
+    return rows.map((r) => r.id);
+  } catch (err) {
+    // The most likely error here is "column 'searchTsv' does not
+    // exist" — meaning scripts/setup-fts.sql hasn't been applied
+    // to this database (typically a fresh deploy or a Prisma
+    // db push that dropped the GENERATED column as "drift").
+    // Return null so callers treat it as "no text-filter
+    // applied" and render the unfiltered (full) result set
+    // rather than crashing the whole page with a 500. The pages
+    // /articles, /search, /people all check `=== null` for the
+    // no-filter branch already — they just need to never see
+    // an uncaught throw.
+    //
+    // We don't import logger here to avoid pulling extra
+    // dependencies into the FTS helper — Prisma's own log layer
+    // already surfaces the SQL error at the `query` log level,
+    // and a degraded-but-functional search page is louder than
+    // any log line anyway. (If the team wants explicit alerting
+    // on FTS-degraded state, wire Sentry into the catch.)
+    console.warn(
+      `[findFtsIds] FTS query failed for table=${table}, falling back to no-filter (full results). Run scripts/setup-fts.sql on the DB to restore search.`,
+      err instanceof Error ? err.message : String(err),
+    );
+    return null;
+  }
 }
