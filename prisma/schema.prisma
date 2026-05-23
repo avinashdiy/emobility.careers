@@ -337,6 +337,12 @@ model User {
   /// company Y".
   companyEnrichmentProposalsReviewed CompanyEnrichmentProposal[] @relation("CompanyEnrichmentReviewed")
 
+  // Academy integration (Phase 1.10 outbox webhook). Rows written by
+  // /api/v1/sync/academy when academy POSTs lesson/course/cert/quiz
+  // events. Cascade-on-delete: a user removal wipes their learning
+  // history on careers; the source-of-truth rows remain on academy.
+  learningCredentials LearningCredential[]
+
   @@index([role, status])
   // Country segmentation — analytics (DAU per country), feed
   // "same country" lens, signup geo distribution. Cheap to maintain.
@@ -7066,4 +7072,83 @@ model JobDescriptionTemplate {
   @@index([functionalArea])
   @@index([evDomainId])
   @@index([viewCount])
+}
+
+/// Kind of a `LearningCredential`. Drives which section of the
+/// candidate profile renders the row and whether it shows by default.
+///   • LESSON_COMPLETION — granular per-lesson activity; not surfaced
+///     on the public profile (too noisy), kept for analytics + the
+///     activity feed.
+///   • COURSE_COMPLETION — "Completed: <Course>" line on the
+///     Verified Learning section.
+///   • CERTIFICATE — PDF + public verify link rendered with a
+///     deep-link "Verify →" button.
+///   • QUIZ_PASSED / QUIZ_FAILED — pass-only by default; the failed
+///     row is still here for analytics + retake prompts.
+///   • PROJECT — graded assignment.
+///   • PLACEMENT_SESSION — attendance of a placement-team session.
+enum LearningCredentialKind {
+  LESSON_COMPLETION
+  COURSE_COMPLETION
+  CERTIFICATE
+  QUIZ_PASSED
+  QUIZ_FAILED
+  PROJECT
+  PLACEMENT_SESSION
+}
+
+/// Learning achievements imported from the academy app (or other
+/// external systems in the future). Written by the outbox-webhook
+/// receiver at /api/v1/sync/academy on a per-event basis — the
+/// (`sourceEventId`) unique constraint makes replay-safe upserts:
+/// academy can resend the same OutboxEvent.id and the second write
+/// is a no-op.
+///
+/// Rendered on the candidate profile as the "Verified Learning"
+/// section. The certificate kind carries the public verify code so
+/// recruiters can deep-link to academy's /verify/<code> page for
+/// one-click validation.
+model LearningCredential {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Identifies the system that minted this row. Today: "academy".
+  /// Reserved for future third-party MOOC integrations.
+  sourceSystem String
+
+  /// Opaque ID of the source row in the source system. For a course
+  /// completion that's the academy Course.id; for a quiz it's
+  /// "<courseId>:<quizId>"; for a certificate it's the publicCode.
+  /// Composite with `sourceEventId` is the dedup signal, but most
+  /// queries use `sourceEventId` alone (it's the unique key).
+  sourceId String
+
+  /// The originating OutboxEvent.id on academy. UNIQUE so academy
+  /// retries on transient careers errors are idempotent here —
+  /// second-delivery webhook upsert is a no-op.
+  sourceEventId String @unique
+
+  kind  LearningCredentialKind
+  title String
+
+  /// 0-100 score for quiz/project credentials; null for others.
+  scorePct Float?
+
+  /// Only set when `kind = CERTIFICATE`. Profile UI deep-links to
+  /// https://emobility.academy/verify/<code> via a "Verify →" button.
+  publicVerificationCode String?
+  pdfUrl                 String?
+
+  /// For corporate-sponsored completions careers shows "Sponsored
+  /// by <name>". Stores the academy Tenant.id (Organisations were
+  /// collapsed into Tenant.kind=CORPORATE on academy, per Phase 1.2).
+  /// Display-name resolution is a careers-side concern.
+  sponsorTenantId String?
+
+  completedAt DateTime
+  createdAt   DateTime @default(now())
+
+  @@index([userId, kind])
+  @@index([userId, completedAt])
 }
