@@ -79,6 +79,7 @@
     "date-fns": "^4.1.0",
     "fast-xml-parser": "^5.7.2",
     "ioredis": "^5.4.1",
+    "jose": "^6.2.3",
     "lucide-react": "^0.453.0",
     "mammoth": "^1.8.0",
     "mysql2": "^3.22.3",
