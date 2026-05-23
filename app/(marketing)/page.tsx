@@ -19,6 +19,8 @@ import {
 } from "@/lib/salary-compass";
 import { Avatar } from "@/components/ui/avatar";
 import { FeaturedFairsRail } from "@/components/recruitment-drives/FeaturedFairsRail";
+import { FeaturedCompaniesGallery } from "@/components/marketing/FeaturedCompaniesGallery";
+import { getFeaturedPartnersWithSlugs } from "@/lib/featured-companies";
 
 /**
  * Home page — framed as a daily snapshot of the EV industry rather
@@ -130,6 +132,7 @@ export default async function HomePage() {
     hotSkills,
     recentHires,
     wallCompanies,
+    featuredPartners,
   ] = await Promise.all([
     getLocale(),
     getPulseCounters(),
@@ -142,6 +145,11 @@ export default async function HomePage() {
     // Same shape as top-hiring; we pull a wider slice for the logo
     // wall so the "everyone is here" feel scales with the platform.
     getTopHiringCompanies(40),
+    // Hand-curated partner-logo gallery (footer.html → emobility.careers
+    // port). Returns the static FEATURED_PARTNERS list with each entry's
+    // careers Company.slug filled in where a name match exists, so the
+    // gallery's logos link to /company/[slug] when possible.
+    getFeaturedPartnersWithSlugs(),
   ]);
 
   const dateStr = todayInIST();
@@ -258,6 +266,13 @@ export default async function HomePage() {
       <section className="container py-10">
         <FeaturedFairsRail />
       </section>
+
+      {/* ─── Featured hiring partners — dark-section logo gallery ───
+          Ported from the DIYguru footer's OEM-partners treatment.
+          Sits ABOVE the live-data text wall below: this one is the
+          eye-catcher with actual logos; the text wall is the
+          accurate "who's hiring this week" companion. */}
+      <FeaturedCompaniesGallery partners={featuredPartners} />
 
       {/* ─── Logo wall — typography-first, "everyone is here" ─── */}
       {wallCompanies.length > 0 && (
