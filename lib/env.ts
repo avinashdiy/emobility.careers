@@ -126,6 +126,36 @@ const envSchema = z.object({
   // Used by the company-enrichment worker. Without it, the worker
   // skips the logo fetch and the proposal is descriptions-only.
   LOGO_DEV_TOKEN: z.string().optional(),
+
+  // ─── emobility.academy integration (Phase 1.x) ──────────────
+  // Shared secrets + URLs for the cross-app integration. All 5 are
+  // REQUIRED in production — the matching wire-up on the academy
+  // side already ships with these values configured.
+  //
+  // HANDOFF_TOKEN_SECRET — HS256 secret for the cross-domain SSO
+  // JWT (Phase 1.4). Must be byte-identical on both sides; rotate
+  // on both at once with `openssl rand -base64 32`. Distinct from
+  // AUTH_SECRET — that one stays scoped to careers' Auth.js session.
+  HANDOFF_TOKEN_SECRET: z.string().min(32),
+  // Public origin of the academy app for the issue-handoff redirect
+  // target. After M3 the en. subdomain collapses to bare apex.
+  ACADEMY_PUBLIC_URL: z.string().url(),
+  // HMAC secret for the inbound POST /api/v1/sync/academy webhook
+  // (Phase 1.10). Same byte value as ACADEMY_API_SECRET below —
+  // two names, one rotation. See careers-patch/README.md.
+  SYNC_WEBHOOK_SECRET: z.string().min(32),
+  // HMAC secret for the outbound transcript fetcher (Phase 1.11) —
+  // careers → academy. Byte-identical to SYNC_WEBHOOK_SECRET; kept
+  // as a separate name purely for readability at call sites.
+  ACADEMY_API_SECRET: z.string().min(32),
+  // Internal URL for the transcript pull. Both apps live on the
+  // same Hetzner box; production points at the localhost port.
+  // NO default — matches the DATABASE_URL / REDIS_URL / S3_* pattern
+  // for intra-cluster infrastructure URLs. Silently defaulting to
+  // localhost on a production .env miss would mask config drift
+  // (every transcript request would 404 against a non-existent
+  // service and the profile section would just go missing).
+  ACADEMY_API_URL: z.string().url(),
 });
 
 const parsed = envSchema.safeParse(process.env);
