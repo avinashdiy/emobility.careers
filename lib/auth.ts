@@ -12,6 +12,7 @@ import { authConfig } from "@/lib/auth.config";
 import { sendMail } from "@/lib/mail";
 import { logger } from "@/lib/logger";
 import { getSettings } from "@/lib/settings";
+import { claimNonce, verifyHandoff } from "@/lib/handoff";
 import type { Role } from "@prisma/client";
 
 declare module "next-auth" {
@@ -273,6 +274,70 @@ export const { handlers, auth, signIn, signOut, unstable_update } = NextAuth(asy
             lockedUntil: null,
           },
         });
+
+        return {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          image: user.image,
+          role: user.role,
+        };
+      },
+    }),
+    // Cross-domain handoff provider (Phase 1.x academy ⇆ careers). Lets
+    // academy redirect a signed-in user into careers without a re-login,
+    // by exchanging a single-use 60-second JWT for an Auth.js session.
+    // Signature verify + nonce claim run atomically in authorize() — if
+    // either fails, sign-in returns null and the consume route redirects
+    // to /signin?error=Handoff.
+    //
+    // Distinct from the email/password Credentials provider above by
+    // explicit `id: "handoff"` — the consume route invokes it via
+    // `signIn("handoff", { token, redirectTo: next })`, so neither
+    // provider's authorize() can be reached from the other's flow.
+    Credentials({
+      id: "handoff",
+      name: "Cross-domain handoff",
+      credentials: {
+        token: { label: "Handoff token", type: "text" },
+      },
+      async authorize(raw) {
+        const token = typeof raw?.token === "string" ? raw.token : null;
+        if (!token) return null;
+
+        // Verify before claiming the nonce — a malformed/expired token
+        // shouldn't burn the nonce slot.
+        let payload: Awaited<ReturnType<typeof verifyHandoff>>;
+        try {
+          payload = await verifyHandoff({
+            token,
+            // We are careers. Accept tokens addressed TO us, issued FROM academy.
+            expectedAudience: "careers",
+            expectedIssuer: "academy",
+          });
+        } catch {
+          return null;
+        }
+
+        // Atomic single-use nonce claim. Replays fail here.
+        const claimed = await claimNonce(payload.nonce);
+        if (!claimed) return null;
+
+        // Look up the user. Token's `sub` is the shared public.User.id —
+        // careers and academy back the same User table in the emce DB.
+        const user = await db.user.findUnique({
+          where: { id: payload.userId },
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            image: true,
+            role: true,
+            status: true,
+          },
+        });
+        if (!user) return null;
+        if (user.status !== "ACTIVE") return null;
 
         return {
           id: user.id,
