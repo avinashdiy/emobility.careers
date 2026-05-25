@@ -156,6 +156,12 @@ const envSchema = z.object({
   // (every transcript request would 404 against a non-existent
   // service and the profile section would just go missing).
   ACADEMY_API_URL: z.string().url(),
+  // Shared secret for the inbound POST /api/webhooks/academy-placement
+  // webhook (B5b placement integration). Byte-identical value lives in
+  // academy's ecosystem.config.js as the same name. Required ≥32 chars
+  // to keep the secret-search space large; `openssl rand -hex 32`
+  // produces a 64-char hex string which satisfies it.
+  ACADEMY_PLACEMENT_WEBHOOK_SECRET: z.string().min(32),
 });
 
 const parsed = envSchema.safeParse(process.env);
