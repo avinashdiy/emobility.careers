@@ -85,6 +85,13 @@ export default async function EmployerMessageThread({
                 m.senderId === session.user.id
                   ? m.readAt?.toISOString() ?? null
                   : (m.readAt ?? readAt).toISOString(),
+              // Message.attachments is a JSON column on the schema —
+              // shape `{ key, name, contentType, size }[]`. Pass it
+              // through as-is; ChatThread renders attachment pills and
+              // resolves presigned download URLs on click.
+              attachments: Array.isArray(m.attachments)
+                ? (m.attachments as { key: string; name: string; contentType: string; size: number }[])
+                : undefined,
             }))}
             pusherKey={env.NEXT_PUBLIC_SOKETI_KEY}
             pusherHost={env.NEXT_PUBLIC_SOKETI_HOST}

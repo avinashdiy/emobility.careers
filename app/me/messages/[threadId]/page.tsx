@@ -96,6 +96,12 @@ export default async function MessageThreadPage({
               m.senderId === session.user.id
                 ? m.readAt?.toISOString() ?? null
                 : (m.readAt ?? readAt).toISOString(),
+            // Message.attachments is a JSON column — shape
+            // `{ key, name, contentType, size }[]`. ChatThread renders
+            // the pills + resolves presigned download URLs on click.
+            attachments: Array.isArray(m.attachments)
+              ? (m.attachments as { key: string; name: string; contentType: string; size: number }[])
+              : undefined,
           }))}
           pusherKey={env.NEXT_PUBLIC_SOKETI_KEY}
           pusherHost={env.NEXT_PUBLIC_SOKETI_HOST}

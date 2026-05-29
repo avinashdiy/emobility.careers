@@ -4,8 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import PusherClient from "pusher-js";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { sendMessage } from "@/server/messaging/actions";
+import { sendMessage, presignAttachmentDownload } from "@/server/messaging/actions";
 import { draftInMail } from "@/server/messaging/draft";
+
+/** Per-attachment metadata stored on Message.attachments (JSON). */
+export interface ChatAttachment {
+  key: string;
+  name: string;
+  contentType: string;
+  size: number;
+}
 
 export interface ChatMessage {
   id: string;
@@ -17,6 +25,34 @@ export interface ChatMessage {
       outgoing messages. Null on messages the recipient hasn't yet
       viewed. The thread page marks incoming-unread → read on load. */
   readAt: string | null;
+  attachments?: ChatAttachment[];
+}
+
+const MAX_ATTACHMENTS_PER_MESSAGE = 5;
+const MAX_TOTAL_BYTES_PER_MESSAGE = 10 * 1024 * 1024; // 10 MB
+const ATTACHMENT_ACCEPT = [
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  "application/pdf",
+  ".doc",
+  ".docx",
+  ".xls",
+  ".xlsx",
+  ".csv",
+  ".txt",
+  ".zip",
+].join(",");
+
+function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(0)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isImage(mime: string): boolean {
+  return mime.startsWith("image/");
 }
 
 interface Props {
@@ -53,6 +89,12 @@ export function ChatThread({
   // rather than wonder why nothing happened.
   const [drafting, setDrafting] = useState(false);
   const [draftError, setDraftError] = useState<string | null>(null);
+  // Files staged for upload on the next send. The hidden <input
+  // type="file"> + the visible "Attach" button both feed this state;
+  // the form action appends them to FormData as `attachment` entries.
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -78,7 +120,13 @@ export function ChatThread({
         // Default readAt to null for live-arrived messages (recipient
         // hasn't opened the thread on the other end yet — the server's
         // mark-as-read pass runs on page load, not on every push).
-        const incoming: ChatMessage = { ...m, readAt: m.readAt ?? null };
+        // attachments preserved as-is so the live render shows pills
+        // immediately rather than waiting for a refresh.
+        const incoming: ChatMessage = {
+          ...m,
+          readAt: m.readAt ?? null,
+          attachments: Array.isArray(m.attachments) ? m.attachments : undefined,
+        };
         setMessages((prev) => (prev.find((x) => x.id === incoming.id) ? prev : [...prev, incoming]));
       });
       // When the OTHER side opens the thread, the server fires a
@@ -119,13 +167,27 @@ export function ChatThread({
               const mine = m.senderId === selfUserId;
               return (
                 <li key={m.id} className={mine ? "ml-auto max-w-[75%]" : "max-w-[75%]"}>
-                  <div
-                    className={`rounded-lg p-3 text-body ${
-                      mine ? "bg-emce-dark text-emce-light" : "bg-emce-light-soft text-emce-text"
-                    }`}
-                  >
-                    {m.body}
-                  </div>
+                  {m.body.length > 0 && (
+                    <div
+                      className={`rounded-lg p-3 text-body ${
+                        mine ? "bg-emce-dark text-emce-light" : "bg-emce-light-soft text-emce-text"
+                      }`}
+                    >
+                      {m.body}
+                    </div>
+                  )}
+                  {m.attachments && m.attachments.length > 0 && (
+                    <div className={`${m.body.length > 0 ? "mt-2" : ""} flex flex-col gap-2`}>
+                      {m.attachments.map((att) => (
+                        <AttachmentTile
+                          key={att.key}
+                          attachment={att}
+                          threadId={threadId}
+                          mine={mine}
+                        />
+                      ))}
+                    </div>
+                  )}
                   <div className={`mt-1 flex items-center gap-1 text-hint text-emce-text-muted ${mine ? "justify-end" : ""}`}>
                     <span>{new Date(m.createdAt).toLocaleString()}</span>
                     {/* WhatsApp-style status indicator — only on
@@ -157,8 +219,16 @@ export function ChatThread({
         action={async (fd) => {
           setSending(true);
           fd.append("threadId", threadId);
+          // Append staged files. The server action reads them via
+          // formData.getAll("attachment"), so each gets the same key.
+          for (const f of pendingFiles) {
+            fd.append("attachment", f);
+          }
           await sendMessage(fd);
           setDraft("");
+          setPendingFiles([]);
+          setAttachmentError(null);
+          if (fileInputRef.current) fileInputRef.current.value = "";
           setSending(false);
         }}
         className="border-t border-emce-border p-3"
@@ -168,10 +238,42 @@ export function ChatThread({
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           rows={3}
-          placeholder="Type a message..."
-          required
+          placeholder={pendingFiles.length > 0 ? "Add a message (optional)…" : "Type a message..."}
           maxLength={4000}
         />
+        {/* Staged-attachments preview row. Each chip shows the name,
+            size, and an ✕ to remove. Removing clears the file from
+            local state only — nothing has been uploaded yet at this
+            point; uploads happen inside sendMessage. */}
+        {pendingFiles.length > 0 && (
+          <ul className="mt-2 flex flex-wrap gap-2">
+            {pendingFiles.map((f, i) => (
+              <li
+                key={`${f.name}-${i}`}
+                className="flex items-center gap-2 rounded-full border border-emce-border bg-emce-light-soft/60 py-1 pl-3 pr-1 text-hint text-emce-text"
+              >
+                <span aria-hidden>{isImage(f.type) ? "🖼" : "📎"}</span>
+                <span className="max-w-[160px] truncate font-bold" title={f.name}>{f.name}</span>
+                <span className="text-emce-text-muted">{formatBytes(f.size)}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingFiles((prev) => prev.filter((_, idx) => idx !== i));
+                    setAttachmentError(null);
+                  }}
+                  className="grid h-5 w-5 place-items-center rounded-full text-emce-text-sec hover:bg-emce-border hover:text-emce-text"
+                  aria-label={`Remove ${f.name}`}
+                  disabled={sending}
+                >
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {attachmentError && (
+          <p className="mt-1 text-hint text-emce-red-deep" role="alert">⚠ {attachmentError}</p>
+        )}
         {/* Live region for AI-draft status + errors. Both the "Drafting…"
             transition and the "Couldn't draft" failure are otherwise
             silent for screen-reader users — the button label flips but
@@ -182,48 +284,223 @@ export function ChatThread({
         {draftError && (
           <p className="mt-1 text-hint text-emce-red-deep" role="alert">⚠ {draftError}</p>
         )}
+        {/* Hidden file input — the visible "Attach" button proxies
+            clicks to it via the ref. multiple + accept= constrain the
+            picker dialog on the OS side; we still re-validate
+            client-side below before staging, and the server validates
+            again on submit (defence in depth). */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          multiple
+          accept={ATTACHMENT_ACCEPT}
+          className="hidden"
+          onChange={(e) => {
+            const incoming = Array.from(e.target.files ?? []);
+            if (incoming.length === 0) return;
+            const combined = [...pendingFiles, ...incoming];
+            if (combined.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+              setAttachmentError(`Up to ${MAX_ATTACHMENTS_PER_MESSAGE} files per message.`);
+              // Reset the input so re-selecting the same file fires onChange again.
+              if (fileInputRef.current) fileInputRef.current.value = "";
+              return;
+            }
+            const total = combined.reduce((s, f) => s + f.size, 0);
+            if (total > MAX_TOTAL_BYTES_PER_MESSAGE) {
+              setAttachmentError("Attachments total over 10 MB. Compress or split into multiple messages.");
+              if (fileInputRef.current) fileInputRef.current.value = "";
+              return;
+            }
+            setAttachmentError(null);
+            setPendingFiles(combined);
+            // Reset so picking the same file twice in a row still fires onChange.
+            if (fileInputRef.current) fileInputRef.current.value = "";
+          }}
+        />
         <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
           {/* Wave B #18 — AI draft button. Replaces the textarea
               contents (after a confirm if the recruiter already
               started typing) with a personalised first-touch the
               recruiter can review + tweak. Server action infers
               role + company + candidate from the threadId. */}
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            disabled={drafting || sending}
-            aria-busy={drafting || undefined}
-            onClick={async () => {
-              if (draft.trim().length > 0) {
-                const ok = window.confirm("Replace your current draft with an AI-generated message?");
-                if (!ok) return;
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={sending || pendingFiles.length >= MAX_ATTACHMENTS_PER_MESSAGE}
+              onClick={() => fileInputRef.current?.click()}
+              aria-label="Attach files"
+              title={
+                pendingFiles.length >= MAX_ATTACHMENTS_PER_MESSAGE
+                  ? `Up to ${MAX_ATTACHMENTS_PER_MESSAGE} files`
+                  : "Attach files"
               }
-              setDrafting(true);
-              setDraftError(null);
-              try {
-                const fd = new FormData();
-                fd.append("threadId", threadId);
-                const res = await draftInMail(fd);
-                if (res.ok && res.body) {
-                  setDraft(res.body);
-                } else {
-                  setDraftError(res.error ?? "Couldn't draft — try again.");
+            >
+              📎 Attach
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={drafting || sending}
+              aria-busy={drafting || undefined}
+              onClick={async () => {
+                if (draft.trim().length > 0) {
+                  const ok = window.confirm("Replace your current draft with an AI-generated message?");
+                  if (!ok) return;
                 }
-              } catch {
-                setDraftError("Couldn't draft — try again.");
-              } finally {
-                setDrafting(false);
-              }
-            }}
+                setDrafting(true);
+                setDraftError(null);
+                try {
+                  const fd = new FormData();
+                  fd.append("threadId", threadId);
+                  const res = await draftInMail(fd);
+                  if (res.ok && res.body) {
+                    setDraft(res.body);
+                  } else {
+                    setDraftError(res.error ?? "Couldn't draft — try again.");
+                  }
+                } catch {
+                  setDraftError("Couldn't draft — try again.");
+                } finally {
+                  setDrafting(false);
+                }
+              }}
+            >
+              {drafting ? "Drafting…" : "✨ Draft with AI"}
+            </Button>
+          </div>
+          <Button
+            type="submit"
+            disabled={sending || (!draft.trim() && pendingFiles.length === 0)}
           >
-            {drafting ? "Drafting…" : "✨ Draft with AI"}
-          </Button>
-          <Button type="submit" disabled={!draft.trim() || sending}>
             {sending ? "Sending…" : "Send"}
           </Button>
         </div>
       </form>
+    </div>
+  );
+}
+
+/**
+ * Single attachment in a rendered message. Images render as an inline
+ * thumbnail; everything else as a pill with icon + name + size. On
+ * click, we ask the server for a 5-minute presigned URL (since we
+ * never bake URLs into the page HTML — see presignAttachmentDownload's
+ * comment block). Failures land a short inline error.
+ */
+function AttachmentTile({
+  attachment,
+  threadId,
+  mine,
+}: {
+  attachment: ChatAttachment;
+  threadId: string;
+  mine: boolean;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState(false);
+  const [openError, setOpenError] = useState<string | null>(null);
+
+  // For images, fetch the presigned URL once on first render so the
+  // thumbnail shows inline. Non-images defer to click — no point
+  // burning a presign every page load on files no one opens.
+  useEffect(() => {
+    if (!isImage(attachment.contentType) || previewUrl || previewError) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await presignAttachmentDownload(threadId, attachment.key);
+        if (cancelled) return;
+        if (res.url) setPreviewUrl(res.url);
+        else setPreviewError(true);
+      } catch {
+        if (!cancelled) setPreviewError(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [attachment.contentType, attachment.key, previewUrl, previewError, threadId]);
+
+  const open = async () => {
+    setLoading(true);
+    setOpenError(null);
+    try {
+      const res = await presignAttachmentDownload(threadId, attachment.key);
+      if (res.url) {
+        window.open(res.url, "_blank", "noopener,noreferrer");
+      } else {
+        setOpenError("Can't open this file.");
+      }
+    } catch {
+      setOpenError("Can't open this file.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (isImage(attachment.contentType)) {
+    return (
+      <div className="flex flex-col gap-1">
+        <button
+          type="button"
+          onClick={open}
+          disabled={loading}
+          className="block overflow-hidden rounded-lg border border-emce-border bg-emce-light-soft/40 transition hover:border-emce-mid"
+          title={`${attachment.name} · ${formatBytes(attachment.size)}`}
+        >
+          {previewUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={previewUrl}
+              alt={attachment.name}
+              className="max-h-60 w-auto object-cover"
+              loading="lazy"
+            />
+          ) : previewError ? (
+            <div className="grid h-32 w-full place-items-center text-hint text-emce-text-muted">
+              Preview unavailable — click to open
+            </div>
+          ) : (
+            <div className="grid h-32 w-full place-items-center text-hint text-emce-text-muted">
+              Loading preview…
+            </div>
+          )}
+        </button>
+        {openError && (
+          <p className="text-hint text-emce-red-deep" role="alert">{openError}</p>
+        )}
+      </div>
+    );
+  }
+
+  // Non-image — pill with icon + filename + size + click to open.
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        onClick={open}
+        disabled={loading}
+        className={`flex items-center gap-2 rounded-lg border border-emce-border p-3 text-left transition hover:border-emce-mid ${
+          mine ? "bg-emce-dark/10" : "bg-emce-light-soft/60"
+        }`}
+        title={attachment.name}
+      >
+        <span aria-hidden className="text-xl">📄</span>
+        <div className="min-w-0 flex-1">
+          <div className="line-clamp-1 text-sm font-bold text-emce-text">{attachment.name}</div>
+          <div className="text-hint text-emce-text-muted">{formatBytes(attachment.size)}</div>
+        </div>
+        <span aria-hidden className="text-hint font-bold text-emce-dark">
+          {loading ? "…" : "↓"}
+        </span>
+      </button>
+      {openError && (
+        <p className="text-hint text-emce-red-deep" role="alert">{openError}</p>
+      )}
     </div>
   );
 }

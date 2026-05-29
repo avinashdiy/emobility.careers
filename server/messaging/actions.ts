@@ -11,6 +11,7 @@ import { rateLimitOrThrow } from "@/lib/rate-limit";
 import { requireEmailVerified, EmailNotVerifiedError } from "@/lib/anti-spam";
 import { logger } from "@/lib/logger";
 import { isRouterControlError } from "@/lib/server-action-errors";
+import { putObject, presignDownload, objectKey } from "@/lib/storage";
 
 async function ensureThreadAccess(threadId: string, userId: string, role: string) {
   const thread = await db.messageThread.findUnique({
@@ -205,9 +206,66 @@ export async function startThreadFromApplication(formData: FormData) {
   redirect(role === "CANDIDATE" ? `/me/messages/${thread.id}` : `/employer/messages/${thread.id}`);
 }
 
+// ─── Attachments ────────────────────────────────────────────
+//
+// Stored as a JSON array on Message.attachments. Per-attachment shape:
+//   { key, name, contentType, size }
+// where `key` is the S3 object key in the `docs` (private) bucket.
+//
+// Display is gated through `presignAttachmentDownload` so a thread
+// participant can pull a 5-minute presigned GET URL on click. We do
+// NOT bake URLs into the page render — that would either leak in HTML
+// for non-participants who got the URL out-of-band, or expire after
+// 5min on long-scrolled history. On-click presign is the safer pattern.
+//
+// Limits chosen to match careers' existing serverActions.bodySizeLimit
+// of 10MB (see next.config.*) — the limit is per-request, so 5 attachments
+// × ~2MB or 1 attachment up to ~9MB are both fine. Tighter per-file caps
+// would just push users to compress on their end first; leaving it loose.
+
+const MAX_ATTACHMENTS_PER_MESSAGE = 5;
+const MAX_TOTAL_BYTES_PER_MESSAGE = 10 * 1024 * 1024; // 10 MB
+const ALLOWED_ATTACHMENT_MIME = new Set<string>([
+  // Images
+  "image/jpeg",
+  "image/png",
+  "image/gif",
+  "image/webp",
+  // Documents
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  // Text / data
+  "text/plain",
+  "text/csv",
+  // Archives
+  "application/zip",
+  "application/x-zip-compressed",
+]);
+
+export interface MessageAttachment {
+  key: string;
+  name: string;
+  contentType: string;
+  size: number;
+}
+
+function extFromName(filename: string): string {
+  const dot = filename.lastIndexOf(".");
+  if (dot < 0 || dot === filename.length - 1) return "bin";
+  const ext = filename.slice(dot + 1).toLowerCase();
+  // Strip anything weird — prevents `..` / `/` showing up in the
+  // object key path.
+  return /^[a-z0-9]{1,8}$/.test(ext) ? ext : "bin";
+}
+
 const sendSchema = z.object({
   threadId: z.string(),
-  body: z.string().min(1).max(4000),
+  // body is now optional — a message can be attachments-only. Either
+  // body or attachments must be present; that's enforced after parse.
+  body: z.string().max(4000).optional().default(""),
 });
 
 export async function sendMessage(formData: FormData) {
@@ -247,7 +305,13 @@ export async function sendMessage(formData: FormData) {
     );
   }
 
-  const parsed = sendSchema.safeParse(Object.fromEntries(formData));
+  // Parse text fields. We pull the threadId + body out and ignore
+  // file fields here — Files don't survive Object.fromEntries the way
+  // strings do, and we want to validate them separately anyway.
+  const parsed = sendSchema.safeParse({
+    threadId: formData.get("threadId"),
+    body: formData.get("body") ?? "",
+  });
   if (!parsed.success) {
     const firstError =
       Object.values(parsed.error.flatten().fieldErrors).flat()[0] ??
@@ -259,14 +323,96 @@ export async function sendMessage(formData: FormData) {
     redirect(`${threadHref}?error=` + encodeURIComponent(firstError));
   }
 
+  // Pull attachment files (input name="attachment", multiple). FormData
+  // exposes `getAll(name)` which collects every entry with that key,
+  // so the client uses one name and we get the whole list here.
+  const rawFiles = formData.getAll("attachment");
+  const files: File[] = [];
+  let totalBytes = 0;
+  for (const item of rawFiles) {
+    if (!(item instanceof File)) continue;
+    if (item.size === 0) continue; // browser sometimes attaches empty placeholders
+    files.push(item);
+    totalBytes += item.size;
+  }
+
+  // A message must have either text or at least one attachment. The
+  // schema's body.optional() allows attachment-only messages, but
+  // body-empty AND no-attachment is just an accidental submit.
+  if (parsed.data.body.trim().length === 0 && files.length === 0) {
+    redirect(`${threadHref}?error=` + encodeURIComponent("Type a message or attach a file before sending."));
+  }
+
+  // Attachment validation. All-or-nothing — if ANY file fails, the
+  // whole message is rejected (vs. silently dropping bad files). Keeps
+  // the sender's mental model honest about what landed on the wire.
+  if (files.length > MAX_ATTACHMENTS_PER_MESSAGE) {
+    redirect(
+      `${threadHref}?error=` +
+        encodeURIComponent(`Up to ${MAX_ATTACHMENTS_PER_MESSAGE} files per message.`),
+    );
+  }
+  if (totalBytes > MAX_TOTAL_BYTES_PER_MESSAGE) {
+    redirect(
+      `${threadHref}?error=` +
+        encodeURIComponent("Attachments total over 10 MB. Compress or split into multiple messages."),
+    );
+  }
+  for (const f of files) {
+    if (!ALLOWED_ATTACHMENT_MIME.has(f.type)) {
+      redirect(
+        `${threadHref}?error=` +
+          encodeURIComponent(`"${f.name}" type ${f.type || "unknown"} isn't allowed.`),
+      );
+    }
+  }
+
   const thread = await ensureThreadAccess(parsed.data.threadId, session.user.id, session.user.role);
   if (!thread) redirect("/403");
+
+  // Upload all attachments BEFORE writing the Message row, so a write
+  // failure doesn't leave orphan S3 objects with no DB pointer. The
+  // reverse (write then upload) would leave a Message with attachment
+  // metadata pointing at non-existent objects if any upload errored —
+  // worse UX (the recipient sees a 404 on click).
+  const attachments: MessageAttachment[] = [];
+  for (const f of files) {
+    try {
+      const buffer = Buffer.from(await f.arrayBuffer());
+      const key = objectKey(`messages/${thread.id}`, extFromName(f.name));
+      await putObject("docs", key, buffer, f.type);
+      attachments.push({
+        key,
+        name: f.name,
+        contentType: f.type,
+        size: f.size,
+      });
+    } catch (err) {
+      logger.error(
+        { err, threadId: thread.id, filename: f.name },
+        "[sendMessage] attachment upload failed",
+      );
+      redirect(
+        `${threadHref}?error=` +
+          encodeURIComponent(`Couldn't upload "${f.name}". Try again.`),
+      );
+    }
+  }
 
   const message = await db.message.create({
     data: {
       threadId: thread.id,
       senderId: session.user.id,
       body: parsed.data.body,
+      // Prisma's Json column type doesn't accept our interface array
+      // directly because TS doesn't see the implicit string-index
+      // signature on a typed object. Cast through unknown — runtime
+      // shape is the same; we just lose static narrowing at the
+      // boundary (which we don't need; we own both sides).
+      attachments:
+        attachments.length > 0
+          ? (attachments as unknown as object[])
+          : undefined,
     },
   });
 
@@ -275,13 +421,17 @@ export async function sendMessage(formData: FormData) {
     data: { lastMessageAt: new Date() },
   });
 
-  // Realtime push
+  // Realtime push — include attachments JSON so live receivers can
+  // render the attachment pills without waiting for the next page
+  // load. Presigned download URLs are still resolved on click (not
+  // baked in here) so they don't expire before the recipient clicks.
   try {
     await realtime.trigger(channels.thread(thread.id), events.message, {
       id: message.id,
       threadId: thread.id,
       senderId: session.user.id,
       body: message.body,
+      attachments,
       createdAt: message.createdAt.toISOString(),
     });
   } catch {
@@ -296,11 +446,20 @@ export async function sendMessage(formData: FormData) {
       ? thread.employerUserId
       : null;
   if (recipientUserId) {
+    // Notification body — when the message is attachments-only the
+    // empty text is misleading ("New message: "), so synthesise a
+    // short summary instead.
+    const notifBody =
+      parsed.data.body.trim().length > 0
+        ? parsed.data.body.slice(0, 140)
+        : attachments.length === 1
+          ? `📎 ${attachments[0].name}`
+          : `📎 ${attachments.length} attachments`;
     await dispatchNotification({
       userId: recipientUserId,
       type: "message.new",
       title: "New message",
-      body: parsed.data.body.slice(0, 140),
+      body: notifBody,
       link: session.user.role === "CANDIDATE" ? `/employer/messages/${thread.id}` : `/me/messages/${thread.id}`,
       channels: ["IN_APP", "EMAIL"],
     });
@@ -308,6 +467,49 @@ export async function sendMessage(formData: FormData) {
 
   revalidatePath(`/me/messages/${thread.id}`);
   revalidatePath(`/employer/messages/${thread.id}`);
+}
+
+/**
+ * Resolve a presigned GET URL for an attachment in this thread.
+ * Called when the recipient clicks a pill — keeps the URL out of the
+ * page HTML (and out of any logs/screenshots taken before they
+ * clicked). Verifies thread access; non-participants get null and
+ * the client surfaces a generic error.
+ *
+ * URL is good for 5 minutes which is plenty for a click → tab-open
+ * round-trip; downloads in progress aren't affected by expiry once
+ * the GET has started.
+ */
+export async function presignAttachmentDownload(
+  threadId: string,
+  attachmentKey: string,
+): Promise<{ url: string | null }> {
+  const session = await auth();
+  if (!session?.user) return { url: null };
+  const thread = await ensureThreadAccess(threadId, session.user.id, session.user.role);
+  if (!thread) return { url: null };
+
+  // Confirm the key actually belongs to a message in THIS thread —
+  // protects against someone who's a participant on thread A trying
+  // to fetch a key from thread B by guessing/scraping. Single query
+  // over attachments-bearing messages in this thread (typically a
+  // small slice).
+  const owners = await db.message.findMany({
+    where: { threadId, NOT: { attachments: { equals: undefined } } },
+    select: { attachments: true },
+  });
+  const keyExists = owners.some((m) => {
+    const list = m.attachments as unknown as MessageAttachment[] | null;
+    return Array.isArray(list) && list.some((a) => a?.key === attachmentKey);
+  });
+  if (!keyExists) return { url: null };
+
+  // Use inline disposition for images so clicking shows them in a tab
+  // rather than triggering a download. Non-images keep the stored
+  // disposition (which defaults to attachment on most S3-compatible
+  // servers, fine for "view in browser then download" flow).
+  const url = await presignDownload("docs", attachmentKey, 60 * 5);
+  return { url };
 }
 
 // ─── Share post via DM ───────────────────────────────────────

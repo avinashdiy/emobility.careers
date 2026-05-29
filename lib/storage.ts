@@ -130,6 +130,32 @@ export async function deleteObject(bucket: BucketName, key: string): Promise<voi
   await s3.send(new DeleteObjectCommand({ Bucket: buckets[bucket], Key: key }));
 }
 
+/**
+ * Server-side direct upload to MinIO. Used by server actions that
+ * receive a file via FormData and want to persist it without the
+ * presigned-PUT dance (presigned PUT is the right pattern when the
+ * browser uploads a large file directly to MinIO bypassing the web
+ * container; for small <10MB files arriving inside a server action's
+ * body we just stream them through). Returns the stored key so the
+ * caller can save it in a Message/Application/etc.
+ */
+export async function putObject(
+  bucket: BucketName,
+  key: string,
+  body: Buffer | Uint8Array,
+  contentType: string,
+): Promise<{ key: string }> {
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: buckets[bucket],
+      Key: key,
+      Body: body,
+      ContentType: contentType,
+    }),
+  );
+  return { key };
+}
+
 export function objectKey(prefix: string, ext: string): string {
   const random = crypto.randomBytes(8).toString("hex");
   const date = new Date().toISOString().slice(0, 10);
