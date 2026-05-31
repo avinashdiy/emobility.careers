@@ -641,15 +641,29 @@ export default async function ApplicationDetail({
                     </Button>
                   </div>
                 ) : (
-                  // PDF (or assumed PDF). The presigned URL forces
-                  // `Content-Disposition: inline` + `Content-Type:
-                  // application/pdf` so Chrome's built-in PDF viewer
-                  // renders inside the iframe. If MinIO returns
-                  // anything else (legacy upload with wrong stored
-                  // content-type), the iframe will go gray — the
-                  // "Open in new tab →" link above always works.
+                  // PDF iframe — pointed at our own proxy route, NOT a
+                  // presigned MinIO URL. The proxy streams the file
+                  // through Node with hard-coded
+                  // `Content-Type: application/pdf` + `Content-Disposition:
+                  // inline` headers, sidestepping the previous bug where
+                  // MinIO/Caddy didn't honour the response-content-*
+                  // query overrides on presigned URLs (which left the
+                  // iframe gray-boxed because the file came back as an
+                  // attachment).
+                  //
+                  // Auth is enforced inside the route — same rules as
+                  // getResumeDownloadUrl (admin / candidate / recruiter
+                  // on the posting company). 404 on every failure so the
+                  // route doesn't leak permission state.
+                  //
+                  // If the iframe still goes gray after this change, the
+                  // file in MinIO isn't really a PDF (or is corrupt). The
+                  // "Open in new tab →" link above always works because
+                  // it hits the original presigned URL with a top-level
+                  // navigation, which handles attachment-disposition
+                  // cleanly (the browser triggers a download).
                   <iframe
-                    src={resumeHref}
+                    src={`/api/applications/${application.id}/resume-preview`}
                     title="Resume preview"
                     className="h-[640px] w-full rounded-md border border-emce-border bg-emce-light-soft"
                   />

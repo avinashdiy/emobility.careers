@@ -1,7 +1,14 @@
 import type { NextConfig } from "next";
 
 const securityHeaders = [
-  { key: "X-Frame-Options", value: "DENY" },
+  // SAMEORIGIN (not DENY) so careers pages can embed their own
+  // routes in iframes — specifically the application-detail page
+  // embeds the resume-preview proxy route to show a PDF inline.
+  // DENY blocks ALL framing including same-origin; SAMEORIGIN only
+  // blocks cross-origin framing, which is the real clickjacking
+  // threat. Internal iframes are by definition trusted (the framing
+  // page is our own code).
+  { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
   { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
