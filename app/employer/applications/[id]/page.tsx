@@ -121,6 +121,13 @@ export default async function ApplicationDetail({
   const c = application.candidate;
   const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ");
   const resumeHref = c.resumeUrl ? await getResumeDownloadUrl({ applicationId: application.id }) : null;
+  // Detect Word-doc resumes so we don't try to iframe-preview them
+  // (Chrome can't render .docx inline → would show a gray box).
+  // Snapshot URL wins because that's the actual file the recruiter
+  // is looking at; fall back to the candidate's current resume.
+  const storedResumeKey =
+    application.resumeSnapshotUrl ?? c.resumeUrl ?? "";
+  const isWordResume = /\.docx?($|\?)/i.test(storedResumeKey);
 
   // Wave B #17 — lazy-generate the AI applicant summary the first
   // time a recruiter opens the application. Bounded latency via
@@ -611,11 +618,42 @@ export default async function ApplicationDetail({
                     Open in new tab →
                   </a>
                 </div>
-                <iframe
-                  src={resumeHref}
-                  title="Resume preview"
-                  className="h-[640px] w-full rounded-md border border-emce-border bg-emce-light-soft"
-                />
+                {isWordResume ? (
+                  // Word docs don't preview in iframes — Chrome refuses
+                  // to render .docx inline regardless of disposition
+                  // headers. Render a clear CTA + Office Web Viewer
+                  // link instead so the recruiter has a one-click path
+                  // to view the document.
+                  <div className="grid place-items-center gap-3 rounded-md border border-emce-border bg-emce-light-soft/40 p-10 text-center">
+                    <div aria-hidden className="text-4xl">📄</div>
+                    <p className="text-sm font-bold text-emce-text">
+                      Word document — preview not available inline
+                    </p>
+                    <p className="text-hint text-emce-text-sec">
+                      The candidate uploaded a .doc / .docx file. Browsers can&apos;t
+                      preview Word documents in an embedded panel — open it in a
+                      new tab to view.
+                    </p>
+                    <Button asChild size="sm">
+                      <a href={resumeHref} target="_blank" rel="noopener noreferrer">
+                        Open resume →
+                      </a>
+                    </Button>
+                  </div>
+                ) : (
+                  // PDF (or assumed PDF). The presigned URL forces
+                  // `Content-Disposition: inline` + `Content-Type:
+                  // application/pdf` so Chrome's built-in PDF viewer
+                  // renders inside the iframe. If MinIO returns
+                  // anything else (legacy upload with wrong stored
+                  // content-type), the iframe will go gray — the
+                  // "Open in new tab →" link above always works.
+                  <iframe
+                    src={resumeHref}
+                    title="Resume preview"
+                    className="h-[640px] w-full rounded-md border border-emce-border bg-emce-light-soft"
+                  />
+                )}
               </Card>
             )}
 

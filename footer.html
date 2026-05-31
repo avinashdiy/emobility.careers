@@ -1,0 +1,734 @@
+<!-- DIYguru Combined: OEM Partners + Trust Footer + Contact Form -->
+<!-- Paste into Elementor HTML widget (Full Width, no padding) -->
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&family=Space+Grotesk:wght@600;700&family=Sora:wght@400;500;600;700;800&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+<style>
+html{scroll-behavior:smooth}
+#apply{scroll-margin-top:80px}
+/* ══════════════════════════════════════════
+   SECTION 1: OEM + ACCREDITATIONS
+   ══════════════════════════════════════════ */
+.dg-oem-wrap{
+  position:relative;
+  width:100vw;
+  left:50%;
+  right:50%;
+  margin-left:-50vw;
+  margin-right:-50vw;
+  background:#0a2f26;
+  padding:80px 0;
+  font-family:'Manrope',sans-serif;
+}
+.dg-oem-wrap *{box-sizing:border-box;margin:0;padding:0}
+.dg-oem-inner{max-width:1200px;margin:0 auto;padding:0 24px;position:relative;z-index:1}
+.dg-oem-header{text-align:center;margin-bottom:48px}
+.dg-oem-tag{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#10b981;margin-bottom:10px}
+.dg-oem-tag .line{width:24px;height:2px;background:#10b981;border-radius:2px}
+.dg-oem-title{font-family:'Space Grotesk',sans-serif!important;font-size:clamp(1.6rem,3vw,2.2rem);font-weight:700;color:#ffffff;line-height:1.2;margin-bottom:12px}
+.dg-oem-sub{font-size:15px;color:#94a3b8;max-width:560px;margin:0 auto;line-height:1.7}
+.dg-oem-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:14px}
+.dg-oem-card{background:rgba(255,255,255,0.07);border:1.5px solid rgba(255,255,255,0.12);border-radius:12px;padding:18px 14px;display:flex;align-items:center;justify-content:center;height:86px;transition:all .3s ease;flex-shrink:0}
+.dg-oem-card:hover{border-color:#10b981;background:rgba(255,255,255,0.12);box-shadow:0 6px 20px rgba(0,0,0,.25);transform:translateY(-2px)}
+.dg-oem-card img{max-height:46px;max-width:120px;width:auto;height:auto;object-fit:contain;opacity:0.85;filter:brightness(1.1);transition:all .3s ease}
+.dg-oem-card:hover img{transform:scale(1.05);opacity:1}
+.dg-oem-count{text-align:center;margin-top:28px;font-size:13px;color:#64748b}
+.dg-oem-count strong{color:#10b981;font-weight:700}
+.dg-swipe-hint{display:none;text-align:center;margin-top:16px;font-size:12px;color:#64748b;gap:6px;align-items:center;justify-content:center}
+.dg-swipe-hint svg{width:16px;height:16px;animation:dg-swipe 1.5s ease-in-out infinite}
+@keyframes dg-swipe{0%,100%{transform:translateX(0)}50%{transform:translateX(6px)}}
+.dg-oem-divider{width:80px;height:2px;background:rgba(16,185,129,0.3);margin:56px auto 48px;border-radius:2px}
+.dg-accr-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:14px}
+.dg-accr-card{background:#ffffff;border:none;border-radius:12px;padding:16px 18px;display:flex;align-items:center;justify-content:center;height:90px;transition:all .3s ease;flex-shrink:0}
+.dg-accr-card:hover{box-shadow:0 8px 24px rgba(0,0,0,.3);transform:translateY(-2px)}
+.dg-accr-card img{max-height:50px;max-width:160px;width:auto;height:auto;object-fit:contain;opacity:1;filter:none;transition:all .3s ease}
+.dg-accr-card:hover img{transform:scale(1.05)}
+
+/* ══════════════════════════════════════════
+   SECTION 2: TRUST FOOTER (Press + YouTube)
+   ══════════════════════════════════════════ */
+.dg-tf *,.dg-tf *::before,.dg-tf *::after{margin:0;padding:0;box-sizing:border-box}
+.dg-tf{background:#0a2f26;color:#fff!important;font-family:'DM Sans',system-ui,sans-serif!important;-webkit-font-smoothing:antialiased;overflow:hidden}
+.dg-tf a{color:inherit!important;text-decoration:none}
+.dg-tf ::selection{background:rgba(16,185,129,0.25)}
+.dg-tf p,.dg-tf span,.dg-tf div,.dg-tf a{font-family:'DM Sans',system-ui,sans-serif!important;color:#fff!important}
+.dg-tf h3,.dg-tf h4{font-family:'Sora',sans-serif!important;color:#fff!important}
+.dg-tf .dg-tf-label,.dg-tf .dg-tf-press-src,.dg-tf .dg-tf-press-arrow,.dg-tf .dg-tf-yt-sub,.dg-tf .dg-tf-yt-tag,.dg-tf .dg-lg-htag,.dg-tf-stat-lbl,.dg-lg-field label{font-family:'JetBrains Mono',monospace!important}
+.dg-tf .dg-tf-stat-num{font-family:'Sora',sans-serif!important}
+.dg-tf-stats{background:linear-gradient(90deg,#0d3d30 0%,#0a2f26 50%,#0d3d30 100%);border-bottom:1px solid rgba(255,255,255,0.06);padding:28px}
+.dg-tf-stats-inner{max-width:1100px;margin:0 auto;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+.dg-tf-stat{text-align:center;flex:1;min-width:100px}
+.dg-tf-stat-num{font-size:28px;font-weight:800;color:#10b981!important;line-height:1}
+.dg-tf-stat-lbl{font-size:11px;color:rgba(255,255,255,0.5)!important;margin-top:4px;letter-spacing:0.3px}
+.dg-tf-divider{width:1px;height:36px;background:rgba(255,255,255,0.08)}
+.dg-tf-section{max-width:1100px;margin:0 auto;padding:44px 28px}
+.dg-tf-label{font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:#10b981!important;margin-bottom:8px;display:flex;align-items:center;gap:8px}
+.dg-tf-label::before{content:'';width:16px;height:2px;background:#10b981;border-radius:2px}
+.dg-tf h3{font-size:24px;font-weight:700;line-height:1.2;margin-bottom:20px;color:#fff!important}
+.dg-tf-hscroll{display:flex;gap:12px;overflow-x:auto;padding-bottom:8px;scroll-snap-type:x mandatory;scrollbar-width:none;-ms-overflow-style:none;cursor:grab}
+.dg-tf-hscroll::-webkit-scrollbar{display:none}
+.dg-tf-media{border-bottom:1px solid rgba(255,255,255,0.06)}
+.dg-tf-press-card{flex-shrink:0;width:260px;background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.06);border-radius:12px;padding:16px 18px;scroll-snap-align:start;transition:all 0.3s ease;display:flex;flex-direction:column;gap:6px}
+.dg-tf-press-card:hover{border-color:#10b981;background:rgba(16,185,129,0.05);transform:translateY(-2px)}
+.dg-tf-press-src{font-size:9px;font-weight:600;letter-spacing:1.2px;text-transform:uppercase;color:#10b981!important;padding:2px 8px;background:rgba(16,185,129,0.12);border-radius:4px;width:fit-content}
+.dg-tf-press-ttl{font-size:13px;font-weight:500;line-height:1.45;color:rgba(255,255,255,0.85)!important;flex-grow:1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dg-tf-press-arrow{font-size:11px;color:rgba(255,255,255,0.3)!important;transition:all 0.3s}
+.dg-tf-press-card:hover .dg-tf-press-arrow{color:#10b981!important;letter-spacing:1px}
+.dg-tf-yt{border-bottom:1px solid rgba(255,255,255,0.06)}
+.dg-tf-yt-head{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:20px;gap:16px;flex-wrap:wrap}
+.dg-tf-yt-sub{display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:600;color:#10b981!important;border:1px solid rgba(16,185,129,0.3);padding:6px 14px;border-radius:8px;transition:all 0.3s}
+.dg-tf-yt-sub:hover{background:rgba(16,185,129,0.1);border-color:rgba(16,185,129,0.5)}
+.dg-tf-yt-sub svg{width:14px;height:14px}
+.dg-tf-yt-card{flex-shrink:0;width:280px;background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.06);border-radius:12px;overflow:hidden;scroll-snap-align:start;transition:all 0.3s;cursor:pointer}
+.dg-tf-yt-card:hover{border-color:#10b981;transform:translateY(-3px);box-shadow:0 8px 24px rgba(0,0,0,0.3)}
+.dg-tf-yt-thumb{position:relative;aspect-ratio:16/9;overflow:hidden}
+.dg-tf-yt-thumb img{width:100%;height:100%;object-fit:cover;transition:transform 0.4s}
+.dg-tf-yt-card:hover .dg-tf-yt-thumb img{transform:scale(1.06)}
+.dg-tf-yt-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.15);transition:background 0.3s}
+.dg-tf-yt-card:hover .dg-tf-yt-play{background:rgba(0,0,0,0.3)}
+.dg-tf-yt-play svg{width:40px;height:40px;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.4));transition:transform 0.3s}
+.dg-tf-yt-card:hover .dg-tf-yt-play svg{transform:scale(1.1)}
+.dg-tf-yt-info{padding:12px 14px}
+.dg-tf-yt-tag{font-size:9px;font-weight:600;letter-spacing:1px;text-transform:uppercase;color:#10b981!important;margin-bottom:4px}
+.dg-tf-yt-title{font-size:13px;font-weight:500;line-height:1.4;color:rgba(255,255,255,0.85)!important;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.dg-tf-cta{background:linear-gradient(135deg,#10b981 0%,#059669 100%);padding:28px;text-align:center}
+.dg-tf-cta-inner{max-width:1100px;margin:0 auto;display:flex;align-items:center;justify-content:center;gap:24px;flex-wrap:wrap}
+.dg-tf-cta p{font-family:'Sora',sans-serif!important;font-size:17px;font-weight:600;color:#fff!important}
+.dg-tf-cta a.dg-tf-cta-btn{font-family:'JetBrains Mono',monospace!important;font-size:12px;font-weight:600;letter-spacing:0.5px;color:#0a2f26!important;background:#fff;padding:10px 24px;border-radius:8px;transition:all 0.3s}
+.dg-tf-cta a.dg-tf-cta-btn:hover{transform:translateY(-2px);box-shadow:0 4px 16px rgba(0,0,0,0.2)}
+
+/* ══════════════════════════════════════════
+   SECTION 3: CONTACT FORM
+   ══════════════════════════════════════════ */
+.dg-contact-wrap{
+  position:relative;
+  width:100vw;
+  left:50%;
+  right:50%;
+  margin-left:-50vw;
+  margin-right:-50vw;
+  background:#f8faf9;
+  padding:80px 0;
+  font-family:'Manrope',sans-serif!important;
+}
+.dg-contact-wrap *{box-sizing:border-box;margin:0;padding:0}
+.dg-contact-inner{
+  max-width:1200px;
+  margin:0 auto;
+  padding:0 24px;
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:48px;
+  align-items:start;
+}
+
+/* Left: Image + Text */
+.dg-contact-left{}
+.dg-contact-img{
+  width:100%;
+  border-radius:16px;
+  overflow:hidden;
+  margin-bottom:28px;
+  box-shadow:0 12px 40px rgba(10,47,38,0.12);
+}
+.dg-contact-img img{
+  width:100%;
+  height:auto;
+  display:block;
+  object-fit:cover;
+}
+.dg-contact-txt h2{
+  font-family:'Space Grotesk',sans-serif!important;
+  font-size:clamp(1.5rem,2.5vw,2rem);
+  font-weight:700;
+  color:#0a2f26;
+  line-height:1.25;
+  margin-bottom:14px;
+}
+.dg-contact-txt p{
+  font-size:15px;
+  color:#475569;
+  line-height:1.7;
+  margin-bottom:14px;
+}
+.dg-contact-txt p strong{color:#0a2f26}
+.dg-contact-txt .dg-contact-whychoose{margin-top:20px}
+.dg-contact-txt .dg-contact-whychoose h4{
+  font-family:'Space Grotesk',sans-serif!important;
+  font-size:16px;
+  font-weight:700;
+  color:#0a2f26;
+  margin-bottom:12px;
+}
+.dg-contact-txt .dg-contact-whychoose ul{
+  list-style:none;
+  padding:0;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.dg-contact-txt .dg-contact-whychoose li{
+  font-size:14px;
+  color:#334155;
+  line-height:1.5;
+  padding-left:22px;
+  position:relative;
+}
+.dg-contact-txt .dg-contact-whychoose li::before{
+  content:'✓';
+  position:absolute;
+  left:0;
+  color:#10b981;
+  font-weight:700;
+}
+.dg-contact-reach{
+  margin-top:28px;
+  padding-top:20px;
+  border-top:1px solid #e2e8f0;
+}
+.dg-contact-reach p{font-size:13px;color:#64748b;margin-bottom:6px}
+.dg-contact-reach a{
+  font-size:14px;
+  color:#0a2f26;
+  font-weight:600;
+  text-decoration:none;
+  transition:color 0.2s;
+}
+.dg-contact-reach a:hover{color:#10b981}
+
+/* Right: Form Card */
+.dg-contact-form-card{
+  background:#ffffff;
+  border-radius:16px;
+  padding:36px 32px;
+  box-shadow:0 8px 32px rgba(10,47,38,0.08);
+  border:1px solid #e2ede8;
+  position:sticky;
+  top:24px;
+}
+.dg-contact-form-card h3{
+  font-family:'Space Grotesk',sans-serif!important;
+  font-size:22px;
+  font-weight:700;
+  color:#0a2f26;
+  text-align:center;
+  margin-bottom:6px;
+}
+.dg-contact-form-card .dg-cf-sub{
+  font-size:14px;
+  color:#64748b;
+  text-align:center;
+  margin-bottom:28px;
+  line-height:1.5;
+}
+.dg-cf-field{margin-bottom:16px}
+.dg-cf-field label{
+  display:block;
+  font-family:'Manrope',sans-serif!important;
+  font-size:13px;
+  font-weight:600;
+  color:#334155;
+  margin-bottom:6px;
+}
+.dg-cf-field label span{color:#ef4444}
+.dg-cf-field input,
+.dg-cf-field textarea,
+.dg-cf-field select{
+  width:100%;
+  border:1.5px solid #e2ede8;
+  border-radius:10px;
+  padding:0 14px;
+  font-family:'DM Sans',sans-serif!important;
+  font-size:14px;
+  color:#0a2f26;
+  transition:border-color 0.2s,box-shadow 0.2s;
+  outline:none;
+  background:#f8faf9;
+}
+.dg-cf-field input{height:48px}
+.dg-cf-field textarea{padding:12px 14px;min-height:100px;resize:vertical}
+.dg-cf-field input:focus,
+.dg-cf-field textarea:focus,
+.dg-cf-field select:focus{
+  border-color:#10b981;
+  background:#fff;
+  box-shadow:0 0 0 3px rgba(16,185,129,0.1);
+}
+.dg-cf-field input::placeholder,
+.dg-cf-field textarea::placeholder{color:#94a3b8}
+.dg-cf-row{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.dg-cf-submit{
+  width:100%;
+  height:52px;
+  background:#0a2f26;
+  color:#fff;
+  border:none;
+  border-radius:10px;
+  font-family:'Sora',sans-serif!important;
+  font-size:14px;
+  font-weight:700;
+  cursor:pointer;
+  transition:all 0.3s;
+  margin-top:8px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+}
+.dg-cf-submit:hover{
+  background:#10b981;
+  transform:translateY(-1px);
+  box-shadow:0 4px 16px rgba(16,185,129,0.3);
+}
+.dg-cf-secure{
+  text-align:center;
+  margin-top:14px;
+  font-size:11px;
+  color:#94a3b8;
+}
+
+/* Lead Gate Modal */
+.dg-lg-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);backdrop-filter:blur(6px);z-index:9999;display:none;align-items:center;justify-content:center;padding:20px}
+.dg-lg-overlay.show{display:flex}
+.dg-lg-modal{background:#fff;border-radius:16px;max-width:420px;width:100%;box-shadow:0 24px 64px rgba(0,0,0,0.3);overflow:hidden;animation:dgLgUp 0.3s ease;position:relative;font-family:'DM Sans',system-ui,sans-serif!important;color:#333}
+@keyframes dgLgUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+.dg-lg-close{position:absolute;top:14px;right:14px;width:32px;height:32px;background:rgba(0,0,0,0.06);border:none;border-radius:8px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background 0.2s;z-index:2}
+.dg-lg-close:hover{background:rgba(0,0,0,0.12)}
+.dg-lg-close svg{width:16px;height:16px;stroke:#666}
+.dg-lg-header{background:linear-gradient(135deg,#0a2f26,#10b981);padding:24px 24px 20px;color:#fff}
+.dg-lg-htag{font-family:'JetBrains Mono',monospace!important;font-size:9px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:rgba(255,255,255,0.6);margin-bottom:6px}
+.dg-lg-header h4{font-family:'Sora',sans-serif!important;font-size:18px;font-weight:700;line-height:1.3;color:#fff!important}
+.dg-lg-header p{font-size:13px;color:rgba(255,255,255,0.7);margin-top:6px;line-height:1.4}
+.dg-lg-preview{display:flex;align-items:center;gap:10px;margin-top:14px;padding:10px 12px;background:rgba(255,255,255,0.1);border-radius:10px}
+.dg-lg-preview img{width:80px;height:45px;object-fit:cover;border-radius:6px;flex-shrink:0}
+.dg-lg-preview span{font-size:12px;font-weight:500;color:rgba(255,255,255,0.9);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.35}
+.dg-lg-body{padding:24px}
+.dg-lg-field{margin-bottom:14px}
+.dg-lg-field label{display:block;font-family:'JetBrains Mono',monospace!important;font-size:10px;font-weight:600;letter-spacing:0.8px;text-transform:uppercase;color:#555!important;margin-bottom:5px}
+.dg-lg-field input{width:100%;height:48px;border:1.5px solid #e2ede8;border-radius:10px;padding:0 14px;font-family:'DM Sans',sans-serif!important;font-size:14px;color:#0a2f26!important;transition:border-color 0.2s;outline:none;background:#f8faf9}
+.dg-lg-field input:focus{border-color:#10b981;background:#fff}
+.dg-lg-field input::placeholder{color:#aaa!important}
+.dg-lg-submit{width:100%;height:52px;background:#0a2f26;color:#fff!important;border:none;border-radius:10px;font-family:'Sora',sans-serif!important;font-size:14px;font-weight:700;cursor:pointer;transition:all 0.3s;display:flex;align-items:center;justify-content:center;gap:8px;margin-top:4px}
+.dg-lg-submit:hover{background:#10b981;transform:translateY(-1px);box-shadow:0 4px 16px rgba(16,185,129,0.3)}
+.dg-lg-submit:disabled{opacity:0.6;cursor:not-allowed;transform:none;box-shadow:none}
+.dg-lg-spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,0.3);border-top-color:#fff;border-radius:50%;animation:dgSpin 0.6s linear infinite;display:none}
+@keyframes dgSpin{to{transform:rotate(360deg)}}
+.dg-lg-submit.loading .dg-lg-spinner{display:block}
+.dg-lg-submit.loading .dg-lg-stxt{display:none}
+.dg-lg-foot{text-align:center;padding:0 24px 18px}
+.dg-lg-foot p{font-size:11px;color:#999!important;line-height:1.4}
+.dg-lg-err{font-size:12px;color:#ef4444!important;margin-top:8px;display:none;text-align:center}
+.dg-lg-err.show{display:block}
+
+/* ══════════════════════════════════════════
+   RESPONSIVE
+   ══════════════════════════════════════════ */
+@media(max-width:768px){
+  .dg-oem-wrap{padding:56px 0}
+  .dg-oem-inner{padding:0 16px}
+  .dg-oem-header{margin-bottom:32px}
+  .dg-oem-grid{display:flex;flex-direction:column;flex-wrap:wrap;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;gap:10px;padding-bottom:8px;height:166px;align-content:flex-start;scrollbar-width:none;-ms-overflow-style:none}
+  .dg-oem-grid::-webkit-scrollbar{display:none}
+  .dg-oem-card{width:130px;min-width:130px;height:78px;padding:14px 10px;scroll-snap-align:start;border-radius:10px}
+  .dg-oem-card img{max-height:38px;max-width:100px}
+  .dg-swipe-hint{display:flex}
+  .dg-oem-divider{margin:40px auto 36px}
+  .dg-accr-grid{display:flex;flex-direction:column;flex-wrap:wrap;overflow-x:auto;scroll-snap-type:x mandatory;-webkit-overflow-scrolling:touch;gap:10px;padding-bottom:8px;height:166px;align-content:flex-start;scrollbar-width:none;-ms-overflow-style:none}
+  .dg-accr-grid::-webkit-scrollbar{display:none}
+  .dg-accr-card{width:150px;min-width:150px;height:78px;padding:14px 12px;scroll-snap-align:start;border-radius:10px}
+  .dg-accr-card img{max-height:40px;max-width:120px}
+
+  .dg-tf-stats-inner{justify-content:center}
+  .dg-tf-stat{min-width:70px}
+  .dg-tf-stat-num{font-size:22px}
+  .dg-tf-divider{display:none}
+  .dg-tf-section{padding:36px 20px}
+  .dg-tf h3{font-size:20px}
+  .dg-tf-cta-inner{flex-direction:column;gap:14px}
+  .dg-tf-yt-head{flex-direction:column;align-items:flex-start}
+  .dg-tf-yt-card{width:240px}
+  .dg-tf-press-card{width:230px}
+  .dg-lg-modal{max-width:360px}
+
+  .dg-contact-wrap{padding:48px 0}
+  .dg-contact-inner{grid-template-columns:1fr;gap:32px;padding:0 16px}
+  .dg-contact-form-card{position:static;padding:28px 20px}
+  .dg-cf-row{grid-template-columns:1fr}
+}
+@media(max-width:480px){
+  .dg-oem-card{width:120px;min-width:120px;height:72px}
+  .dg-oem-grid{height:154px}
+  .dg-oem-card img{max-height:34px;max-width:90px}
+  .dg-accr-card{width:135px;min-width:135px;height:72px}
+  .dg-accr-grid{height:154px}
+  .dg-accr-card img{max-height:36px;max-width:110px}
+}
+</style>
+
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  SECTION 1: OEM + ACCREDITATIONS        ║
+     ╚══════════════════════════════════════════╝ -->
+<div class="dg-oem-wrap">
+  <div class="dg-oem-inner">
+
+    <div class="dg-oem-header">
+      <div class="dg-oem-tag"><span class="line"></span> Our Clients <span class="line"></span></div>
+      <h2 class="dg-oem-title">Trusted by 528+ Companies & OEMs</h2>
+      <p class="dg-oem-sub">From global automotive OEMs and Tier-1 suppliers to EV startups, government bodies, and Fortune 500 companies.</p>
+    </div>
+
+    <div class="dg-oem-grid">
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/Hyundai-1.png" alt="Hyundai" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/3.png" alt="Bosch" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/5.png" alt="Honda" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/25.png" alt="Maruti Suzuki" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/59.png" alt="Infineon" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/48.png" alt="ITL" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/60.png" alt="Rockman" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/29.png" alt="Nexzu" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/30.png" alt="BGauss" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/47.png" alt="Support Lines" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/45.png" alt="Kia Motors" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/31.png" alt="Ather Energy" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/32.png" alt="XBattery" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/34.png" alt="Revolt Energy" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/33.png" alt="Sonalika" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/35.png" alt="Yulu" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/36.png" alt="Inverted Energy" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/27.png" alt="Ola Electric" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/28.png" alt="Tata EV" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/55.png" alt="Ampere Electric Vehicles" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/43.png" alt="Daimler" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/40.png" alt="TCS" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/39.png" alt="John Deere" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/38.png" alt="L&amp;T Energy" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/42.png" alt="Eaton" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/53.png" alt="WPG Holdings" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/52.png" alt="Kazam" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/Logos-New-Website-1.png" alt="EVI Technologies" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/17-1.png" alt="Tadpole" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/51.png" alt="Junphenix Energy" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/50.png" alt="Komaki EV" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/49.png" alt="Midwest Energy" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/46.png" alt="iXEnergy" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/58.png" alt="Simple Energy" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/44.png" alt="HL Mando" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/41.png" alt="Partner" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/61.png" alt="Partner" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/57.png" alt="Partner" loading="lazy"></div>
+      <div class="dg-oem-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/56.png" alt="Partner" loading="lazy"></div>
+    </div>
+
+    <div class="dg-swipe-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Swipe to see more partners</div>
+    <p class="dg-oem-count">Showing <strong>39</strong> of <strong>528+</strong> corporate training partners</p>
+
+    <div class="dg-oem-divider"></div>
+
+    <div class="dg-oem-header">
+      <div class="dg-oem-tag"><span class="line"></span> Accreditations <span class="line"></span></div>
+      <h2 class="dg-oem-title">Programs Recognised by Govt. Bodies & Industries</h2>
+      <p class="dg-oem-sub" style="max-width:720px">DIYguru is recognized and endorsed by major educational and governmental organizations including the Ministry of Education, NITI Aayog, and NEAT AICTE for its commitment to upskilling in automotive and EV technologies. The institute also collaborates with industry leaders like TATA Technologies and the Ola Mobility Institute to ensure the relevance and practicality of its training programs.</p>
+    </div>
+
+    <div class="dg-accr-grid">
+      <div class="dg-accr-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/6.png" alt="ASDC" loading="lazy"></div>
+      <div class="dg-accr-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/7.png" alt="AICTE NEAT" loading="lazy"></div>
+      <div class="dg-accr-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/Logos-New-Website.png" alt="Ministry of Education" loading="lazy"></div>
+      <div class="dg-accr-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/10.png" alt="SIMOPS Saudi Arabia" loading="lazy"></div>
+      <div class="dg-accr-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/22.png" alt="DSD Malaysia" loading="lazy"></div>
+      <div class="dg-accr-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/21.png" alt="UK Government" loading="lazy"></div>
+      <div class="dg-accr-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/18.png" alt="UACH Chihuahua" loading="lazy"></div>
+      <div class="dg-accr-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/11.png" alt="Tata Technologies iGET IT" loading="lazy"></div>
+      <div class="dg-accr-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/13.png" alt="Ajeenkya DY Patil University" loading="lazy"></div>
+      <div class="dg-accr-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/24.png" alt="Udyoga Karnataka" loading="lazy"></div>
+      <div class="dg-accr-card"><img src="https://diyguru.org/wp-content/uploads/2025/12/20.png" alt="Ola Mobility Institute" loading="lazy"></div>
+    </div>
+
+    <div class="dg-swipe-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg> Swipe to see more accreditations</div>
+
+  </div>
+</div>
+
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  SECTION 2: TRUST FOOTER                ║
+     ╚══════════════════════════════════════════╝ -->
+<div class="dg-tf">
+
+  <div class="dg-tf-section dg-tf-media">
+    <div class="dg-tf-label">In The Media</div>
+    <h3>DIYguru in the Press</h3>
+    <div class="dg-tf-hscroll" id="pressScroll">
+      <a href="https://www.aninews.in/news/business/iit-jammu-enters-into-collaboration-with-diyguru-to-launch-certificate-programs-in-ev-sector20260206133404/" target="_blank" rel="noopener" class="dg-tf-press-card"><div class="dg-tf-press-src">ANI News</div><div class="dg-tf-press-ttl">IIT Jammu Enters Into Collaboration With DIYguru To Launch Certificate Programs in EV Sector</div><span class="dg-tf-press-arrow">Read →</span></a>
+      <a href="https://www.ptinews.com/press-release/tata-technologies-partners-with-diyguru-to-empower-students--professionals-with-igetitled-industry-relevant-e-mobility-hybrid-learning-programs/2811174" target="_blank" rel="noopener" class="dg-tf-press-card"><div class="dg-tf-press-src">PTI News</div><div class="dg-tf-press-ttl">Tata Technologies Partners With DIYguru for Industry-Relevant E-Mobility Programs</div><span class="dg-tf-press-arrow">Read →</span></a>
+      <a href="https://theprint.in/ani-press-releases/diyguru-partners-with-lt-edutech-for-e-mobility-training-in-indian-universities-launches-hardware-enabled-pg-certification-program/2144505/" target="_blank" rel="noopener" class="dg-tf-press-card"><div class="dg-tf-press-src">The Print</div><div class="dg-tf-press-ttl">DIYguru Partners With L&T Edutech for E-Mobility Training — Hardware-Enabled PG Program</div><span class="dg-tf-press-arrow">Read →</span></a>
+      <a href="https://timesofindia.indiatimes.com/education/diyguru-and-adypu-launch-m-tech-program-in-electric-vehicle/articleshow/108070451.cms" target="_blank" rel="noopener" class="dg-tf-press-card"><div class="dg-tf-press-src">Times of India</div><div class="dg-tf-press-ttl">DIYguru and ADYPU Launch M.Tech Program in Electric Vehicle</div><span class="dg-tf-press-arrow">Read →</span></a>
+      <a href="https://economictimes.indiatimes.com/industry/services/education/diyguru-and-ajeenkya-dy-patil-university-to-launch-integrated-pg-m-tech-in-ev/articleshow/107946598.cms" target="_blank" rel="noopener" class="dg-tf-press-card"><div class="dg-tf-press-src">Economic Times</div><div class="dg-tf-press-ttl">DIYguru and Ajeenkya DY Patil University To Launch Integrated PG, M.Tech in EV</div><span class="dg-tf-press-arrow">Read →</span></a>
+      <a href="https://indiaeducationdiary.in/aicte-diyguru-mou-to-provide-jobs-to-one-million-electric-vehicle-workforce-by-2025/" target="_blank" rel="noopener" class="dg-tf-press-card"><div class="dg-tf-press-src">India Education Diary</div><div class="dg-tf-press-ttl">AICTE–DIYguru MOU To Provide Jobs To One Million EV Workforce</div><span class="dg-tf-press-arrow">Read →</span></a>
+      <a href="https://www.autocarpro.in/news-national/asdc--diyguru-launch-nanodegree-program-to-upskill-engineering-students-in-ev-technology-78146" target="_blank" rel="noopener" class="dg-tf-press-card"><div class="dg-tf-press-src">Autocar Professional</div><div class="dg-tf-press-ttl">ASDC & DIYguru Launch Nanodegree Program To Upskill Students in EV Technology</div><span class="dg-tf-press-arrow">Read →</span></a>
+      <a href="https://www.siliconindia.com/news/business/tata-technologies--diyguru-join-forces-to-power-indias-nextgen-emobility-talent-nid-237317-cid-3.html" target="_blank" rel="noopener" class="dg-tf-press-card"><div class="dg-tf-press-src">SiliconIndia</div><div class="dg-tf-press-ttl">Tata Technologies & DIYguru Join Forces To Power India's Next-Gen eMobility Talent</div><span class="dg-tf-press-arrow">Read →</span></a>
+      <a href="https://www.tv9hindi.com/knowledge/diyguru-started-course-electric-vehicle-engineering-course-now-you-can-make-good-money-after-this-course-554827.html" target="_blank" rel="noopener" class="dg-tf-press-card"><div class="dg-tf-press-src">TV9 Hindi</div><div class="dg-tf-press-ttl">इलेक्ट्रिक कारों के मैकेनिक की बढ़ रही मांग — DIYguru से बना सकते हैं करियर</div><span class="dg-tf-press-arrow">Read →</span></a>
+      <a href="https://zeenews.india.com/kannada/photo-gallery/electric-vehicle-how-to-become-electric-car-mechanic-electric-car-mechanic-income-and-electric-car-mechanic-training-course-42154" target="_blank" rel="noopener" class="dg-tf-press-card"><div class="dg-tf-press-src">Zee News</div><div class="dg-tf-press-ttl">Great Opportunity To Earn in the World of Electric Vehicles — Training & Method</div><span class="dg-tf-press-arrow">Read →</span></a>
+      <a href="https://nationalskillsnetwork.in/roundtable-on-skill-development-for-electric-vehicles-organized-by-dfid-asdc-and-ssou/" target="_blank" rel="noopener" class="dg-tf-press-card"><div class="dg-tf-press-src">National Skills Network</div><div class="dg-tf-press-ttl">Roundtable on Skill Development for Electric Vehicles — DFID, ASDC & SSOU</div><span class="dg-tf-press-arrow">Read →</span></a>
+      <a href="https://www.livehindustan.com/career/story-you-can-take-online-training-with-diyguru-for-electric-cars-opportunities-to-earn-millions-3874587.html" target="_blank" rel="noopener" class="dg-tf-press-card"><div class="dg-tf-press-src">Hindustan</div><div class="dg-tf-press-ttl">DIYguru से हार्डवेयर सक्षमता के साथ EV बिजनेस और इंजीनियरिंग सीखें</div><span class="dg-tf-press-arrow">Read →</span></a>
+    </div>
+  </div>
+
+  <div class="dg-tf-section dg-tf-yt">
+    <div class="dg-tf-yt-head">
+      <div>
+        <div class="dg-tf-label">Watch DIYguru</div>
+        <h3 style="margin-bottom:0">Lab Tours, Placements & Real Stories</h3>
+      </div>
+      <a href="https://www.youtube.com/diyguruin" target="_blank" rel="noopener" class="dg-tf-yt-sub">
+        <svg viewBox="0 0 24 24" fill="#FF0000"><path d="M23.5 6.2a3 3 0 0 0-2.1-2.1C19.5 3.5 12 3.5 12 3.5s-7.5 0-9.4.6A3 3 0 0 0 .5 6.2 31.5 31.5 0 0 0 0 12a31.5 31.5 0 0 0 .5 5.8 3 3 0 0 0 2.1 2.1c1.9.6 9.4.6 9.4.6s7.5 0 9.4-.6a3 3 0 0 0 2.1-2.1c.5-1.9.5-5.8.5-5.8s0-3.9-.5-5.8zM9.5 15.6V8.4l6.3 3.6-6.3 3.6z"/></svg>
+        Subscribe · 16.8K →
+      </a>
+    </div>
+    <div class="dg-tf-hscroll" id="ytScroll">
+      <div class="dg-tf-yt-card" data-yt="https://www.youtube.com/watch?v=Xd6lSRlKkXg" data-title="EV Hands-on Training in Pune on Tata Tiago EV"><div class="dg-tf-yt-thumb"><img src="https://img.youtube.com/vi/Xd6lSRlKkXg/mqdefault.jpg" alt="EV Training Pune" loading="lazy" width="320" height="180"><div class="dg-tf-yt-play"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#FF0000" opacity=".9"/><polygon points="20,16 34,24 20,32" fill="#FFF"/></svg></div></div><div class="dg-tf-yt-info"><div class="dg-tf-yt-tag">🔧 Hands-On</div><div class="dg-tf-yt-title">EV Hands-on Training in Pune on Tata Tiago EV 🚘🔧</div></div></div>
+      <div class="dg-tf-yt-card" data-yt="https://www.youtube.com/watch?v=lxwJl5qhaIE" data-title="Build Your Career Like Prabhat Gautam"><div class="dg-tf-yt-thumb"><img src="https://img.youtube.com/vi/lxwJl5qhaIE/mqdefault.jpg" alt="Prabhat Gautam" loading="lazy" width="320" height="180"><div class="dg-tf-yt-play"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#FF0000" opacity=".9"/><polygon points="20,16 34,24 20,32" fill="#FFF"/></svg></div></div><div class="dg-tf-yt-info"><div class="dg-tf-yt-tag">🎓 Placement</div><div class="dg-tf-yt-title">Build Your Career in the EV Industry Like Prabhat Gautam!</div></div></div>
+      <div class="dg-tf-yt-card" data-yt="https://www.youtube.com/watch?v=2OFZSgU7Oic" data-title="DIYguru Lab Tour"><div class="dg-tf-yt-thumb"><img src="https://img.youtube.com/vi/2OFZSgU7Oic/mqdefault.jpg" alt="Lab Tour" loading="lazy" width="320" height="180"><div class="dg-tf-yt-play"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#FF0000" opacity=".9"/><polygon points="20,16 34,24 20,32" fill="#FFF"/></svg></div></div><div class="dg-tf-yt-info"><div class="dg-tf-yt-tag">🏭 Lab Tour</div><div class="dg-tf-yt-title">DIYguru Lab Tour — E-Mobility Hardware Lab</div></div></div>
+      <div class="dg-tf-yt-card" data-yt="https://www.youtube.com/watch?v=Ya6viWbOExc" data-title="Ultimate EV Training Kit"><div class="dg-tf-yt-thumb"><img src="https://img.youtube.com/vi/Ya6viWbOExc/mqdefault.jpg" alt="EV Kit" loading="lazy" width="320" height="180"><div class="dg-tf-yt-play"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#FF0000" opacity=".9"/><polygon points="20,16 34,24 20,32" fill="#FFF"/></svg></div></div><div class="dg-tf-yt-info"><div class="dg-tf-yt-tag">🔩 Hardware</div><div class="dg-tf-yt-title">Introducing the Ultimate EV Training Kit by DIYguru & EVI Technologies</div></div></div>
+      <div class="dg-tf-yt-card" data-yt="https://www.youtube.com/watch?v=OCzmanpm68w" data-title="Nitin Agarwal's Journey"><div class="dg-tf-yt-thumb"><img src="https://img.youtube.com/vi/OCzmanpm68w/mqdefault.jpg" alt="Nitin Agarwal" loading="lazy" width="320" height="180"><div class="dg-tf-yt-play"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#FF0000" opacity=".9"/><polygon points="20,16 34,24 20,32" fill="#FFF"/></svg></div></div><div class="dg-tf-yt-info"><div class="dg-tf-yt-tag">🌟 Alumni</div><div class="dg-tf-yt-title">Empowering Futures: Nitin Agarwal's Journey with DIYguru in EV</div></div></div>
+      <div class="dg-tf-yt-card" data-yt="https://www.youtube.com/watch?v=RC7WZfZh7bI" data-title="Welcome to DIYguru"><div class="dg-tf-yt-thumb"><img src="https://img.youtube.com/vi/RC7WZfZh7bI/mqdefault.jpg" alt="Welcome" loading="lazy" width="320" height="180"><div class="dg-tf-yt-play"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#FF0000" opacity=".9"/><polygon points="20,16 34,24 20,32" fill="#FFF"/></svg></div></div><div class="dg-tf-yt-info"><div class="dg-tf-yt-tag">🚀 About Us</div><div class="dg-tf-yt-title">Welcome to DIYguru — India's #1 E-Mobility & FutureTech Platform</div></div></div>
+      <div class="dg-tf-yt-card" data-yt="https://www.youtube.com/watch?v=ZsiK7cOetwg" data-title="Placement Spotlight"><div class="dg-tf-yt-thumb"><img src="https://img.youtube.com/vi/ZsiK7cOetwg/mqdefault.jpg" alt="Placement" loading="lazy" width="320" height="180"><div class="dg-tf-yt-play"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#FF0000" opacity=".9"/><polygon points="20,16 34,24 20,32" fill="#FFF"/></svg></div></div><div class="dg-tf-yt-info"><div class="dg-tf-yt-tag">📊 Placement</div><div class="dg-tf-yt-title">Placement Spotlight: A Journey of Skills, Sustainability & Smart Choices</div></div></div>
+      <div class="dg-tf-yt-card" data-yt="https://www.youtube.com/watch?v=PAx2eRu8Ym4" data-title="When Learning Meets Purpose"><div class="dg-tf-yt-thumb"><img src="https://img.youtube.com/vi/PAx2eRu8Ym4/mqdefault.jpg" alt="Story" loading="lazy" width="320" height="180"><div class="dg-tf-yt-play"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#FF0000" opacity=".9"/><polygon points="20,16 34,24 20,32" fill="#FFF"/></svg></div></div><div class="dg-tf-yt-info"><div class="dg-tf-yt-tag">💬 Story</div><div class="dg-tf-yt-title">This Is More Than a Career Story — When Learning Meets Purpose</div></div></div>
+      <div class="dg-tf-yt-card" data-yt="https://www.youtube.com/watch?v=DMImOMueW44" data-title="Mustafa From North Africa"><div class="dg-tf-yt-thumb"><img src="https://img.youtube.com/vi/DMImOMueW44/mqdefault.jpg" alt="Mustafa" loading="lazy" width="320" height="180"><div class="dg-tf-yt-play"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#FF0000" opacity=".9"/><polygon points="20,16 34,24 20,32" fill="#FFF"/></svg></div></div><div class="dg-tf-yt-info"><div class="dg-tf-yt-tag">🌍 International</div><div class="dg-tf-yt-title">Mustafa From North Africa 🔥🔥 — Global EV Training</div></div></div>
+      <div class="dg-tf-yt-card" data-yt="https://www.youtube.com/watch?v=JkTW5EU3mpo" data-title="Fast Track to EV Career by Avinash Singh"><div class="dg-tf-yt-thumb"><img src="https://img.youtube.com/vi/JkTW5EU3mpo/mqdefault.jpg" alt="Masterclass" loading="lazy" width="320" height="180"><div class="dg-tf-yt-play"><svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="24" fill="#FF0000" opacity=".9"/><polygon points="20,16 34,24 20,32" fill="#FFF"/></svg></div></div><div class="dg-tf-yt-info"><div class="dg-tf-yt-tag">🎤 Masterclass</div><div class="dg-tf-yt-title">THE FAST TRACK TO AN EV CAREER — Masterclass by Avinash Singh</div></div></div>
+    </div>
+  </div>
+
+  <div class="dg-tf-cta">
+    <div class="dg-tf-cta-inner">
+      <p>Ready to build your EV career? Talk to our counsellors today.</p>
+      <a href="https://wa.me/919910918719?text=Hi!%20I%20want%20to%20know%20about%20DIYguru%20EV%20courses." target="_blank" rel="noopener" class="dg-tf-cta-btn">BOOK FREE CONSULTATION →</a>
+    </div>
+  </div>
+</div>
+
+
+<!-- ╔══════════════════════════════════════════╗
+     ║  SECTION 3: CONTACT FORM                ║
+     ╚══════════════════════════════════════════╝ -->
+<div class="dg-contact-wrap" id="apply">
+  <div class="dg-contact-inner">
+
+    <!-- Left Column: Image + About -->
+    <div class="dg-contact-left">
+      <div class="dg-contact-img">
+        <img src="https://diyguru.org/wp-content/uploads/2025/12/DIyguru-Image-1.jpg" alt="DIYguru EV Hands-on Training" loading="lazy">
+      </div>
+
+      <div class="dg-contact-txt">
+        <h2>Your journey starts here.</h2>
+        <p>DIYguru is India's leading AICTE-approved platform, equipping engineers, graduates, and professionals with the <strong>future-ready skills</strong> needed in <strong>Electric Vehicles (EVs), Battery Technology, Solar Energy, Green Hydrogen, and Clean Mobility</strong>.</p>
+        <p>Whether you're starting out or shifting your career toward sustainability — your journey begins here.</p>
+
+        <div class="dg-contact-whychoose">
+          <h4>Why Choose DIYguru?</h4>
+          <ul>
+            <li><strong>AICTE-Approved Certifications</strong></li>
+            <li><strong>Industry-Curated Courses</strong> (EV, Battery Design, Solar, Embedded Systems, BMS, MATLAB & more)</li>
+            <li><strong>Project-Based Learning</strong> using real case studies from Tesla, Tata Motors, Ather, and others</li>
+            <li><strong>Global Opportunities</strong> – Connect with 300+ hiring partners and international universities</li>
+            <li><strong>Work on Real-World Tools</strong> like MATLAB, SolidWorks, Python, Simulink, Ansys</li>
+          </ul>
+        </div>
+
+        <div class="dg-contact-reach">
+          <p>OR REACH US AT:</p>
+          <p><a href="tel:+919910918719">T: +91-99109-18719</a></p>
+          <p><a href="mailto:mail@diyguru.org">E: mail@diyguru.org</a></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right Column: Form -->
+    <div class="dg-contact-form-card">
+      <h3>Your journey starts here.</h3>
+      <p class="dg-cf-sub">Ready to Begin? Drop your info, and we'll help you get there!</p>
+
+      <form id="dgContactForm" novalidate>
+        <div class="dg-cf-field">
+          <label>Name <span>*</span></label>
+          <input type="text" name="name" placeholder="Enter your full name" required>
+        </div>
+
+        <div class="dg-cf-row">
+          <div class="dg-cf-field">
+            <label>Email <span>*</span></label>
+            <input type="email" name="email" placeholder="you@example.com" required>
+          </div>
+          <div class="dg-cf-field">
+            <label>Phone number <span>*</span></label>
+            <input type="tel" name="phone" placeholder="+91 XXXXX XXXXX" required>
+          </div>
+        </div>
+
+        <div class="dg-cf-field">
+          <label>Company Name <span>*</span></label>
+          <input type="text" name="company" placeholder="Enter your company or institution name">
+        </div>
+
+        <div class="dg-cf-field">
+          <label>City <span>*</span></label>
+          <input type="text" name="city" placeholder="Where are you from?">
+        </div>
+
+        <div class="dg-cf-field">
+          <label>Profession <span>*</span></label>
+          <input type="text" name="profession" placeholder="Are you a student or working professional?">
+        </div>
+
+        <div class="dg-cf-field">
+          <label>Education <span>*</span></label>
+          <input type="text" name="education" placeholder="What is your highest educational qualification?">
+        </div>
+
+        <div class="dg-cf-field">
+          <label>What would you like to achieve through DIYguru?</label>
+          <textarea name="goals" placeholder="Write in min. 50 characters."></textarea>
+        </div>
+
+        <button type="submit" class="dg-cf-submit">Submit →</button>
+      </form>
+
+      <p class="dg-cf-secure">🔒 Your information is secure and will never be shared.</p>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- LEAD GATE MODAL -->
+<div class="dg-lg-overlay" id="dgLeadGate">
+  <div class="dg-lg-modal">
+    <button class="dg-lg-close" id="dgLgClose"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    <div class="dg-lg-header">
+      <div class="dg-lg-htag">🎬 Unlock This Video</div>
+      <h4>Enter your details to watch</h4>
+      <p>Get instant access + free EV career guidance from our counsellors.</p>
+      <div class="dg-lg-preview"><img id="dgLgThumb" src="" alt="Video preview"><span id="dgLgTitle"></span></div>
+    </div>
+    <div class="dg-lg-body">
+      <div class="dg-lg-field"><label for="dgLgName">Full Name *</label><input type="text" id="dgLgName" placeholder="Enter your full name" required autocomplete="name"></div>
+      <div class="dg-lg-field"><label for="dgLgEmail">Email Address *</label><input type="email" id="dgLgEmail" placeholder="you@example.com" required autocomplete="email"></div>
+      <div class="dg-lg-field"><label for="dgLgPhone">Phone Number *</label><input type="tel" id="dgLgPhone" placeholder="+91 XXXXX XXXXX" required autocomplete="tel"></div>
+      <button class="dg-lg-submit" id="dgLgSubmit"><span class="dg-lg-stxt">▶ Watch Video Now</span><span class="dg-lg-spinner"></span></button>
+      <div class="dg-lg-err" id="dgLgError">Please fill all fields correctly.</div>
+    </div>
+    <div class="dg-lg-foot"><p>🔒 Your data is secure. We'll send you free EV career resources.</p></div>
+  </div>
+</div>
+
+
+<script>
+(function(){
+  /* Drag-to-scroll */
+  function enableDrag(el){
+    if(!el)return;var d=false,sx=0,sl=0;
+    el.addEventListener('mousedown',function(e){d=true;sx=e.pageX-el.offsetLeft;sl=el.scrollLeft;el.style.cursor='grabbing'});
+    el.addEventListener('mouseleave',function(){d=false;el.style.cursor='grab'});
+    el.addEventListener('mouseup',function(){d=false;el.style.cursor='grab'});
+    el.addEventListener('mousemove',function(e){if(!d)return;e.preventDefault();el.scrollLeft=sl-(e.pageX-el.offsetLeft-sx)*1.5});
+    el.style.cursor='grab';
+  }
+  enableDrag(document.getElementById('pressScroll'));
+  enableDrag(document.getElementById('ytScroll'));
+
+  /* HubSpot Lead Gate */
+  var HS_PORTAL='7279403',HS_FORM='701386d8-2b8e-4edf-bce8-3f8c81dc0ca0';
+  var HS_URL='https://api.hsforms.com/submissions/v3/integration/submit/'+HS_PORTAL+'/'+HS_FORM;
+  var KEY='dg_yt_lead_captured';
+  var overlay=document.getElementById('dgLeadGate'),closeBtn=document.getElementById('dgLgClose');
+  var submitBtn=document.getElementById('dgLgSubmit'),errEl=document.getElementById('dgLgError');
+  var thumbEl=document.getElementById('dgLgThumb'),titleEl=document.getElementById('dgLgTitle');
+  var nameIn=document.getElementById('dgLgName'),emailIn=document.getElementById('dgLgEmail'),phoneIn=document.getElementById('dgLgPhone');
+  var pendingUrl='';
+  function isCaptured(){try{return localStorage.getItem(KEY)==='true'}catch(e){return false}}
+  function markCaptured(){try{localStorage.setItem(KEY,'true')}catch(e){}}
+  function getVidId(url){var m=url.match(/[?&]v=([^&#]+)/);return m?m[1]:''}
+  function openGate(url,title){
+    if(isCaptured()){window.open(url,'_blank');return}
+    pendingUrl=url;thumbEl.src='https://img.youtube.com/vi/'+getVidId(url)+'/mqdefault.jpg';
+    titleEl.textContent=title||'DIYguru Video';errEl.classList.remove('show');
+    submitBtn.classList.remove('loading');submitBtn.disabled=false;
+    overlay.classList.add('show');document.body.style.overflow='hidden';
+    setTimeout(function(){nameIn.focus()},300);
+  }
+  function closeGate(){overlay.classList.remove('show');document.body.style.overflow='';pendingUrl=''}
+  closeBtn.addEventListener('click',closeGate);
+  overlay.addEventListener('click',function(e){if(e.target===overlay)closeGate()});
+  document.addEventListener('keydown',function(e){if(e.key==='Escape'&&overlay.classList.contains('show'))closeGate()});
+  submitBtn.addEventListener('click',function(){
+    var name=nameIn.value.trim(),email=emailIn.value.trim(),phone=phoneIn.value.trim();
+    if(!name||!email||!phone||!/\S+@\S+\.\S+/.test(email)){errEl.textContent='Please fill all fields correctly.';errEl.classList.add('show');return}
+    errEl.classList.remove('show');submitBtn.classList.add('loading');submitBtn.disabled=true;
+    fetch(HS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      fields:[{objectTypeId:'0-1',name:'firstname',value:name.split(' ')[0]},{objectTypeId:'0-1',name:'lastname',value:name.split(' ').slice(1).join(' ')||''},{objectTypeId:'0-1',name:'email',value:email},{objectTypeId:'0-1',name:'phone',value:phone}],
+      context:{pageUri:window.location.href,pageName:'DIYguru Videos — Lead Gate'}
+    })}).then(function(){markCaptured();closeGate();if(pendingUrl)window.open(pendingUrl,'_blank');nameIn.value='';emailIn.value='';phoneIn.value=''}).catch(function(){markCaptured();closeGate();if(pendingUrl)window.open(pendingUrl,'_blank');nameIn.value='';emailIn.value='';phoneIn.value=''});
+  });
+  document.querySelectorAll('.dg-tf-yt-card[data-yt]').forEach(function(card){
+    card.addEventListener('click',function(e){e.preventDefault();openGate(card.getAttribute('data-yt'),card.getAttribute('data-title')||'')});
+  });
+  [nameIn,emailIn,phoneIn].forEach(function(inp){inp.addEventListener('keydown',function(e){if(e.key==='Enter'){e.preventDefault();submitBtn.click()}})});
+
+  /* Contact Form → HubSpot */
+  var cForm=document.getElementById('dgContactForm');
+  if(cForm){cForm.addEventListener('submit',function(e){
+    e.preventDefault();
+    var fd=new FormData(cForm);
+    var n=(fd.get('name')||'').trim(),em=(fd.get('email')||'').trim(),ph=(fd.get('phone')||'').trim();
+    var company=(fd.get('company')||'').trim(),city=(fd.get('city')||'').trim();
+    var profession=(fd.get('profession')||'').trim(),education=(fd.get('education')||'').trim();
+    var goals=(fd.get('goals')||'').trim();
+
+    if(!n||!em||!ph||!/\S+@\S+\.\S+/.test(em)){alert('Please fill all required fields correctly.');return}
+
+    var btn=cForm.querySelector('.dg-cf-submit');
+    var origText=btn.textContent;
+    btn.textContent='Submitting...';btn.disabled=true;
+
+    var hsFields=[
+      {objectTypeId:'0-1',name:'firstname',value:n.split(' ')[0]},
+      {objectTypeId:'0-1',name:'lastname',value:n.split(' ').slice(1).join(' ')||''},
+      {objectTypeId:'0-1',name:'email',value:em},
+      {objectTypeId:'0-1',name:'phone',value:ph}
+    ];
+    if(company)hsFields.push({objectTypeId:'0-1',name:'company',value:company});
+    if(city)hsFields.push({objectTypeId:'0-1',name:'city',value:city});
+    if(profession)hsFields.push({objectTypeId:'0-1',name:'jobtitle',value:profession});
+    if(education)hsFields.push({objectTypeId:'0-1',name:'message',value:'Education: '+education+(goals?' | Goals: '+goals:'')});
+    else if(goals)hsFields.push({objectTypeId:'0-1',name:'message',value:'Goals: '+goals});
+
+    fetch(HS_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({
+      fields:hsFields,
+      context:{
+        hutk:document.cookie.match(/hubspotutk=([^;]*)/)?document.cookie.match(/hubspotutk=([^;]*)/)[1]:undefined,
+        pageUri:window.location.href,
+        pageName:document.title||'DIYguru Contact Form'
+      }
+    })}).then(function(r){
+      if(r.ok){
+        btn.textContent='✓ Submitted Successfully!';btn.style.background='#10b981';
+        cForm.reset();
+        setTimeout(function(){btn.textContent=origText;btn.style.background='#0a2f26';btn.disabled=false},4000);
+      } else {
+        r.json().then(function(d){console.error('HubSpot error:',d)});
+        btn.textContent='✓ Submitted!';btn.style.background='#10b981';
+        cForm.reset();
+        setTimeout(function(){btn.textContent=origText;btn.style.background='#0a2f26';btn.disabled=false},4000);
+      }
+    }).catch(function(err){
+      console.error('Submit error:',err);
+      btn.textContent='Error — Try Again';btn.style.background='#ef4444';btn.disabled=false;
+      setTimeout(function(){btn.textContent=origText;btn.style.background='#0a2f26'},3000);
+    });
+  })}
+})();
+</script>

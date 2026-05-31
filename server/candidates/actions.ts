@@ -1396,7 +1396,21 @@ export async function getResumeDownloadUrl(input: {
   // leave the content-type alone; the browser will trigger a
   // download cleanly because it can't preview Word documents inline
   // anyway.
-  const isPdf = key.toLowerCase().endsWith(".pdf");
+  //
+  // Extension detection is intentionally loose:
+  //   - strip query string before checking (presigned URLs can have
+  //     `?something` appended at signing time on some shapes)
+  //   - match `.pdf` ANYWHERE in the key (not just .endsWith), since
+  //     a few legacy keys appended a content-hash suffix like
+  //     `foo.pdf.v2` and `.endsWith` would miss them
+  //   - if there's no recognised extension at all, assume PDF —
+  //     `uploadAndParseResume` only ever accepts PDF or Word, and
+  //     Word docs get caught by the explicit `.docx?` test below.
+  //     Defaulting to PDF for "unknown" gives the iframe a chance
+  //     to render anything that ISN'T explicitly Word.
+  const keyForCheck = key.toLowerCase().split("?")[0];
+  const isDocx = /\.docx?$/.test(keyForCheck);
+  const isPdf = !isDocx; // PDF or assume-PDF; Word handled separately
   return presignDownload("resumes", key, 60 * 5, {
     inline: isPdf,
     contentType: isPdf ? "application/pdf" : undefined,
