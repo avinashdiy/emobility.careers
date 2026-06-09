@@ -126,14 +126,16 @@ export function ogCard(opts: OgCardOptions): ImageResponse {
           ⚡ {eyebrow}
         </div>
 
-        {/* Title — the line everyone sees first on WhatsApp / LinkedIn */}
+        {/* Title — the line everyone sees first on WhatsApp / LinkedIn.
+            62px so a 2-line title clears the subtitle with room to
+            spare (72px wrapped tight against the subtitle's ascenders). */}
         <div
           style={{
-            marginTop: 18,
+            marginTop: 16,
             display: "flex",
-            fontSize: 72,
+            fontSize: 62,
             fontWeight: 800,
-            lineHeight: 1.05,
+            lineHeight: 1.08,
             letterSpacing: "-0.02em",
             color: "white",
           }}
@@ -145,13 +147,13 @@ export function ogCard(opts: OgCardOptions): ImageResponse {
         {subtitle ? (
           <div
             style={{
-              marginTop: 22,
+              marginTop: 28,
               display: "flex",
-              fontSize: 30,
+              fontSize: 28,
               fontWeight: 500,
               lineHeight: 1.3,
               color: "rgba(255,255,255,0.82)",
-              maxWidth: 900,
+              maxWidth: 920,
             }}
           >
             {subtitle}
