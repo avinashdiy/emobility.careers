@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
 export const metadata: Metadata = {
   title: "EV recruitment drives & job fairs",
   description:
-    "Upcoming and ongoing EV-industry job fairs and recruitment drives across India. Meet hiring companies, apply on the spot, get shortlisted via on-site challenges.",
+    "Upcoming and ongoing EV-industry job fairs and recruitment drives worldwide. Meet hiring companies, apply on the spot, get shortlisted via on-site challenges.",
   alternates: { canonical: `${env.NEXT_PUBLIC_APP_URL}/fairs` },
   openGraph: {
     type: "website",
@@ -22,6 +22,19 @@ export const metadata: Metadata = {
     title: "EV job fairs · eMobility Careers",
     description:
       "Multi-company EV recruitment drives. Free for candidates, free for participating colleges.",
+    // Branded job-fair photo — the share card for the fairs surface.
+    // Explicit images take precedence over a file-based opengraph-image,
+    // and a static photo renders instantly (no Satori at crawl time).
+    images: [
+      { url: "/og/fairs.jpg", width: 1200, height: 630, alt: "eMobility.careers Job Fair" },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "EV job fairs · eMobility Careers",
+    description:
+      "Multi-company EV recruitment drives. Free for candidates, free for participating colleges.",
+    images: ["/og/fairs.jpg"],
   },
 };
 

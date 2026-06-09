@@ -75,9 +75,11 @@ export async function generateMetadata({
   // Prefer hero (16:9, designed for social) over banner (3:1, designed
   // for /fairs grid). Both are public-read S3 URLs so OG crawlers
   // (WhatsApp, LinkedIn, Twitter) can fetch them directly.
-  // Branded /og/home.jpg fallback so a fair without a hero/banner
-  // still unfurls with an image instead of dropping to a favicon.
-  const ogImage = drive.heroImageUrl || drive.bannerImageUrl || "/og/home.jpg";
+  // A fair's own hero/banner wins (most specific). Otherwise the
+  // branded job-fair image (/og/fairs.jpg) — more on-topic for a fair
+  // share than the generic office photo, and the default for every
+  // fair that hasn't uploaded its own artwork.
+  const ogImage = drive.heroImageUrl || drive.bannerImageUrl || "/og/fairs.jpg";
   return {
     title: `${drive.title} · ${drive.city}`,
     description,
