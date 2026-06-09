@@ -30,6 +30,8 @@ import {
   linkedinSignInWithNext,
 } from "@/server/auth/actions";
 import { registerCandidateInline } from "@/server/recruitathon/register-actions";
+import { searchInstitutions, type InstitutionMatch } from "@/server/entities/actions";
+import { EntityAutocomplete } from "@/components/recruitathon/EntityAutocomplete";
 import { emptyFormState } from "@/lib/form-state";
 
 export function CandidateRegisterForm({
@@ -165,7 +167,20 @@ export function CandidateRegisterForm({
             </div>
             <div>
               <Label htmlFor="cand-college">College / institute *</Label>
-              <Input id="cand-college" name="college" required aria-invalid={!!state.fieldErrors?.college} />
+              {/* Typeahead — picking an existing institution posts a
+                  hidden `institutionId` so the server-side education
+                  record links to the canonical row instead of a
+                  free-text duplicate. If no match exists, the
+                  candidate keeps typing and the institution is
+                  created at submission as PENDING. */}
+              <EntityAutocomplete<InstitutionMatch>
+                nameField="college"
+                idField="institutionId"
+                placeholder="Type your college name…"
+                required
+                ariaInvalid={!!state.fieldErrors?.college}
+                onSearch={searchInstitutions}
+              />
               <FieldError error={state.fieldErrors?.college} />
             </div>
           </div>

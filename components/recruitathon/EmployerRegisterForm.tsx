@@ -26,6 +26,8 @@ import {
   linkedinSignInWithNext,
 } from "@/server/auth/actions";
 import { registerEmployerInline } from "@/server/recruitathon/register-actions";
+import { searchCompanies, type CompanyMatch } from "@/server/entities/actions";
+import { EntityAutocomplete } from "@/components/recruitathon/EntityAutocomplete";
 import { emptyFormState } from "@/lib/form-state";
 
 export function EmployerRegisterForm({
@@ -46,6 +48,14 @@ export function EmployerRegisterForm({
 }) {
   const [state, formAction] = useActionState(registerEmployerInline, emptyFormState);
   const [startedAt] = useState(() => Date.now());
+  // Phase: typeahead-driven autofill. When the user picks an existing
+  // company from the dropdown we auto-populate the website field from
+  // the matched row. Storing in state (instead of resetting the input
+  // imperatively) keeps React in control of the input's value — needed
+  // because `Input` is uncontrolled by default and we'd otherwise have
+  // to reach for refs. Empty default = "let the input behave as
+  // uncontrolled" so we don't break the normal typing experience.
+  const [websiteValue, setWebsiteValue] = useState<string | undefined>(undefined);
   const oauthNext = `/fairs/${driveSlug}/register?as=employer`;
 
   return (
@@ -153,12 +163,57 @@ export function EmployerRegisterForm({
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="emp-company">Company name *</Label>
-              <Input id="emp-company" name="companyName" required aria-invalid={!!state.fieldErrors?.companyName} />
+              {/* Typeahead — searches the Company directory. If the user
+                  picks an existing row, the website field auto-fills
+                  AND a hidden `companyId` posts so the server action
+                  attaches to that specific row instead of dedupe-by-name.
+                  If no match exists, the user keeps typing and the
+                  server creates a fresh Company on submit. */}
+              <EntityAutocomplete<CompanyMatch>
+                nameField="companyName"
+                idField="companyId"
+                placeholder="Type your company name…"
+                required
+                ariaInvalid={!!state.fieldErrors?.companyName}
+                onSearch={searchCompanies}
+                onPick={(m) => {
+                  // Auto-fill website. Empty string lands as "user clears
+                  // it" rather than "no autofill" — equivalent in form-
+                  // submission terms.
+                  setWebsiteValue(m.website ?? "");
+                }}
+                onUnpick={() => {
+                  // Returning to free-text mode — release the input
+                  // back to uncontrolled so the user can edit naturally.
+                  setWebsiteValue(undefined);
+                }}
+              />
               <FieldError error={state.fieldErrors?.companyName} />
             </div>
             <div>
               <Label htmlFor="emp-website">Company website</Label>
-              <Input id="emp-website" name="companyWebsite" type="url" placeholder="https://example.com" aria-invalid={!!state.fieldErrors?.companyWebsite} />
+              {/* Controlled when a company was picked (so we can autofill);
+                  uncontrolled otherwise so manual typing works normally.
+                  React requires a value-and-onChange pair when controlled. */}
+              {websiteValue !== undefined ? (
+                <Input
+                  id="emp-website"
+                  name="companyWebsite"
+                  type="url"
+                  placeholder="https://example.com"
+                  value={websiteValue}
+                  onChange={(e) => setWebsiteValue(e.target.value)}
+                  aria-invalid={!!state.fieldErrors?.companyWebsite}
+                />
+              ) : (
+                <Input
+                  id="emp-website"
+                  name="companyWebsite"
+                  type="url"
+                  placeholder="https://example.com"
+                  aria-invalid={!!state.fieldErrors?.companyWebsite}
+                />
+              )}
               <FieldError error={state.fieldErrors?.companyWebsite} />
             </div>
           </div>

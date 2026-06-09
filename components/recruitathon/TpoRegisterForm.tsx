@@ -32,6 +32,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { FieldError } from "@/components/ui/field-error";
 import { TurnstileWidget } from "@/components/auth/TurnstileWidget";
 import { registerTpoInline } from "@/server/recruitathon/register-actions";
+import { searchInstitutions, type InstitutionMatch } from "@/server/entities/actions";
+import { EntityAutocomplete } from "@/components/recruitathon/EntityAutocomplete";
 import { emptyFormState } from "@/lib/form-state";
 
 export function TpoRegisterForm({
@@ -50,6 +52,11 @@ export function TpoRegisterForm({
 }) {
   const [state, formAction] = useActionState(registerTpoInline, emptyFormState);
   const [startedAt] = useState(() => Date.now());
+  // Phase: typeahead autofill — picking an existing institution
+  // populates the city field from the matched row so the TPO doesn't
+  // re-type their college's city. Same controlled-on-pick /
+  // uncontrolled-otherwise pattern as the Employer form.
+  const [cityValue, setCityValue] = useState<string | undefined>(undefined);
 
   return (
     <>
@@ -143,14 +150,37 @@ export function TpoRegisterForm({
           </legend>
           <div>
             <Label htmlFor="tpo-college">College name *</Label>
-            <Input id="tpo-college" name="collegeName" required placeholder="BMS College of Engineering" aria-invalid={!!state.fieldErrors?.collegeName} />
+            <EntityAutocomplete<InstitutionMatch>
+              nameField="collegeName"
+              idField="institutionId"
+              placeholder="BMS College of Engineering"
+              required
+              ariaInvalid={!!state.fieldErrors?.collegeName}
+              onSearch={searchInstitutions}
+              onPick={(m) => {
+                // Auto-fill city when present on the picked institution.
+                setCityValue(m.city ?? "");
+              }}
+              onUnpick={() => setCityValue(undefined)}
+            />
             <p className="mt-1 text-hint text-emce-text-muted">Type the full name. If we don&apos;t have your college in our database yet, we&apos;ll add it.</p>
             <FieldError error={state.fieldErrors?.collegeName} />
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="tpo-city">City</Label>
-              <Input id="tpo-city" name="city" placeholder="Bengaluru" maxLength={80} />
+              {cityValue !== undefined ? (
+                <Input
+                  id="tpo-city"
+                  name="city"
+                  placeholder="Bengaluru"
+                  maxLength={80}
+                  value={cityValue}
+                  onChange={(e) => setCityValue(e.target.value)}
+                />
+              ) : (
+                <Input id="tpo-city" name="city" placeholder="Bengaluru" maxLength={80} />
+              )}
             </div>
             <div>
               <Label htmlFor="tpo-state">State</Label>

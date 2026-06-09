@@ -127,6 +127,12 @@ const RecruitathonAvailabilityEnum = z.enum(["OFFLINE", "ONLINE", "HYBRID"]);
 const candidateRecruitathonFields = {
   phone: z.string().trim().min(7, "Phone number is required").max(20),
   college: z.string().trim().min(2, "College / institute name is required").max(200),
+  /// Optional FK posted by the EntityAutocomplete when the candidate
+  /// picked an existing Institution from the dropdown. Server-side
+  /// lookup prefers this over name-based dedupe — picking an existing
+  /// row guarantees the canonical link instead of a fuzzy-match win.
+  /// Empty string is normalised to null at the action layer.
+  institutionId: z.string().trim().max(40).optional().or(z.literal("")),
   course: z.string().trim().min(2, "Course / specialization is required").max(200),
   yearOfStudy: z.enum(["1", "2", "3", "4", "5", "FRESHER", "EXPERIENCED"], {
     errorMap: () => ({ message: "Select your year of study" }),
@@ -293,6 +299,10 @@ export async function registerCandidateInline(
       data: {
         candidateId: profile.id,
         institution: d.college,
+        // Picked-from-typeahead institution wins; otherwise leave the
+        // FK null and let the entry stay as plain text (admin can
+        // canonicalise later from the institutions queue).
+        institutionId: d.institutionId && d.institutionId.length > 0 ? d.institutionId : null,
         degree: d.course,
         field: d.course,
         // yearOfStudy is descriptive (FRESHER, 1, 2, ...). We don't
@@ -527,6 +537,7 @@ async function registerCandidateForFair(userId: string, formData: FormData): Pro
       data: {
         candidateId: profile.id,
         institution: d.college,
+        institutionId: d.institutionId && d.institutionId.length > 0 ? d.institutionId : null,
         degree: d.course,
         field: d.course,
       },
@@ -643,6 +654,12 @@ const employerRecruitathonFields = {
   pocPhone: z.string().trim().min(7, "POC phone is required").max(20),
   pocDesignation: z.string().trim().min(2, "POC designation is required").max(120),
   companyName: z.string().trim().min(2, "Company name is required").max(200),
+  /// Optional FK posted by the EntityAutocomplete when the recruiter
+  /// picked an existing Company from the dropdown. Server-side lookup
+  /// prefers this over the website / name dedupe path so the new
+  /// EmployerProfile attaches to the EXACT row the user picked
+  /// (avoids fuzzy-name collisions like "Tata Motors" vs "Tata EV").
+  companyId: z.string().trim().max(40).optional().or(z.literal("")),
   companyWebsite: z.string().trim().url("Enter a valid website URL").max(300).optional().or(z.literal("")),
   industry: z.string().trim().min(2, "Industry is required").max(200),
   productsServices: z.string().trim().min(2, "Tell us what you build / sell").max(2000),
@@ -748,18 +765,36 @@ export async function registerEmployerInline(
       }),
     );
 
-    // Find-or-create the Company. We dedupe by website (most reliable)
-    // falling back to lower-cased name. If a Company already exists,
-    // the new user gets added as a non-admin EmployerProfile and the
-    // registration goes against that company — admin can promote to
-    // company-admin later via /admin/claims if needed.
+    // Find-or-create the Company.
+    //
+    // Order of resolution:
+    //   1. If the form posted `companyId` (user picked an existing row
+    //      from the EntityAutocomplete dropdown), look that up FIRST.
+    //      The user explicitly chose this row, so we should attach to
+    //      it even if their typed website matches a different company.
+    //   2. Otherwise dedupe by website (most reliable for "same
+    //      company, two recruiters signed up separately").
+    //   3. Otherwise dedupe by lower-cased name.
+    //   4. Otherwise create a fresh Company row.
+    //
+    // If a Company already exists, the new user gets added as a
+    // non-admin EmployerProfile and the registration goes against
+    // that company — admin can promote to company-admin later via
+    // /admin/claims if needed.
     const websiteNorm = (d.companyWebsite ?? "").trim().toLowerCase().replace(/\/+$/, "");
-    let company = websiteNorm
-      ? await tx.company.findFirst({
-          where: { website: { equals: websiteNorm, mode: "insensitive" } },
+    const pickedCompanyId = (d.companyId ?? "").trim();
+    let company = pickedCompanyId
+      ? await tx.company.findUnique({
+          where: { id: pickedCompanyId },
           select: { id: true, slug: true, name: true },
         })
       : null;
+    if (!company && websiteNorm) {
+      company = await tx.company.findFirst({
+        where: { website: { equals: websiteNorm, mode: "insensitive" } },
+        select: { id: true, slug: true, name: true },
+      });
+    }
     if (!company) {
       company = await tx.company.findFirst({
         where: { name: { equals: d.companyName.trim(), mode: "insensitive" } },
@@ -1071,6 +1106,11 @@ const tpoRecruitathonFields = {
   contactPhone: z.string().trim().min(7, "Phone number is required").max(20),
   designation: z.string().trim().min(2, "Designation is required").max(120),
   collegeName: z.string().trim().min(2, "College / institute name is required").max(200),
+  /// Optional FK posted by the EntityAutocomplete when the TPO picked
+  /// an existing Institution. Server prefers this over the
+  /// name-based dedupe so two TPOs at the same college both link to
+  /// the canonical Institution row regardless of name spelling drift.
+  institutionId: z.string().trim().max(40).optional().or(z.literal("")),
   city: z.string().trim().max(80).optional().or(z.literal("")),
   state: z.string().trim().max(80).optional().or(z.literal("")),
   studentCount: z.coerce.number().int().min(0).max(50_000).optional().nullable(),
@@ -1175,13 +1215,25 @@ export async function registerTpoInline(
       }),
     );
 
-    // Find-or-create the institution. Case-insensitive name match
-    // catches the common "BMS College of Engineering" vs "B.M.S
-    // College of Engineering" variance — admin can dedupe later.
-    let institution = await tx.institution.findFirst({
-      where: { name: { equals: d.collegeName.trim(), mode: "insensitive" } },
-      select: { id: true, slug: true, name: true },
-    });
+    // Find-or-create the institution. Order:
+    //   1. Picked from EntityAutocomplete (institutionId set) — wins,
+    //      matches the canonical row the TPO explicitly chose.
+    //   2. Case-insensitive name match (catches the "BMS College of
+    //      Engineering" vs "B.M.S College of Engineering" variance).
+    //   3. Fresh create.
+    const pickedInstitutionId = (d.institutionId ?? "").trim();
+    let institution = pickedInstitutionId
+      ? await tx.institution.findUnique({
+          where: { id: pickedInstitutionId },
+          select: { id: true, slug: true, name: true },
+        })
+      : null;
+    if (!institution) {
+      institution = await tx.institution.findFirst({
+        where: { name: { equals: d.collegeName.trim(), mode: "insensitive" } },
+        select: { id: true, slug: true, name: true },
+      });
+    }
     if (!institution) {
       institution = await withUniqueSlug(d.collegeName, (slug) =>
         tx.institution.create({
@@ -1316,10 +1368,22 @@ async function registerTpoForFair(
   }
 
   const created = await db.$transaction(async (tx) => {
-    let institution = await tx.institution.findFirst({
-      where: { name: { equals: d.collegeName.trim(), mode: "insensitive" } },
-      select: { id: true, slug: true, name: true },
-    });
+    // Same picked-id-first ordering as the unsigned-in TPO branch
+    // above. Centralised resolution would be nicer; pragmatic copy
+    // here because the surrounding transaction shape differs.
+    const pickedInstitutionId = (d.institutionId ?? "").trim();
+    let institution = pickedInstitutionId
+      ? await tx.institution.findUnique({
+          where: { id: pickedInstitutionId },
+          select: { id: true, slug: true, name: true },
+        })
+      : null;
+    if (!institution) {
+      institution = await tx.institution.findFirst({
+        where: { name: { equals: d.collegeName.trim(), mode: "insensitive" } },
+        select: { id: true, slug: true, name: true },
+      });
+    }
     if (!institution) {
       institution = await withUniqueSlug(d.collegeName, (slug) =>
         tx.institution.create({

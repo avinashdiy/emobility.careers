@@ -49,6 +49,10 @@ export interface CompanyMatch {
   name: string;
   logoUrl: string | null;
   hqLocation: string | null;
+  /// Returned so registration forms (Recruitathon) can auto-fill the
+  /// "Company website" field when the user picks an existing row.
+  /// Empty string serialises cleanly into a form input value.
+  website: string | null;
   // Surfaced so the picker UI can render a "pending review" pill on
   // UNVERIFIED / PENDING rows and a "verified" tick on VERIFIED rows.
   // The picker treats PENDING as selectable so candidates don't
@@ -79,7 +83,7 @@ export async function searchCompanies(q: string): Promise<CompanyMatch[]> {
   let fts: CompanyMatch[] = [];
   try {
     fts = await db.$queryRaw<CompanyMatch[]>`
-      SELECT id, slug, name, "logoUrl", "hqLocation", "verificationStatus"::text
+      SELECT id, slug, name, "logoUrl", "hqLocation", website, "verificationStatus"::text
       FROM "Company"
       WHERE ("searchTsv" @@ to_tsquery('simple', ${tsq})
           OR slug = ${slugCandidate})
