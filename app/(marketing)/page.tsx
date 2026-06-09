@@ -50,9 +50,9 @@ import { getFeaturedPartnersWithSlugs } from "@/lib/featured-companies";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Where the EV industry hires, gets hired · APAC + global",
+  title: "Where the EV industry hires, gets hired · Global",
   description:
-    "The specialised hiring platform for the global electric mobility industry — battery, charging, motors, vehicles and software careers across APAC and beyond. Verified profiles, AI matching, salary intel, hybrid recruitathons.",
+    "The specialised hiring platform for the global electric mobility industry — battery, charging, motors, vehicles and software careers, globally. Verified profiles, AI matching, salary intel, hybrid recruitathons.",
   openGraph: {
     title: "Where the EV industry hires, gets hired",
     description:
@@ -64,7 +64,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Where the EV industry hires, gets hired",
     description:
-      "The specialised hiring platform for the global electric mobility industry. Live across APAC and beyond.",
+      "The specialised hiring platform for the global electric mobility industry. Live globally.",
   },
 };
 
@@ -241,7 +241,7 @@ export default async function HomePage() {
 
               <div className="mt-auto max-w-md md:max-w-lg lg:max-w-xl">
                 <div className="animate-fade-up text-[11px] font-extrabold uppercase tracking-[0.2em] text-emce-mid">
-                  ✦ APAC&apos;s home for EV careers
+                  ✦ The global home for EV careers
                 </div>
                 <h1
                   className="animate-fade-up mt-3 text-3xl font-extrabold leading-[1.05] tracking-tight text-white sm:text-4xl md:text-5xl lg:text-6xl"
@@ -255,9 +255,8 @@ export default async function HomePage() {
                   style={{ animationDelay: "160ms" }}
                 >
                   Battery, charging, motors, vehicles and software — every EV
-                  career across APAC and beyond. 50,000+ professionals.
-                  1,200+ companies in 8 countries. Find your next role, or your
-                  next hire.
+                  career, globally. 50,000+ professionals. 1,200+ companies
+                  in 8 countries. Find your next role, or your next hire.
                 </p>
                 <div
                   className="animate-fade-up mt-5 flex flex-wrap gap-3 md:mt-6"
@@ -310,7 +309,7 @@ export default async function HomePage() {
               </div>
 
               {/* Card 2 — Match-found notification (sample UI shape;
-                  APAC example so the regional positioning of the
+                  global example so the regional positioning of the
                   hero matches the body of the page). */}
               <div className="ml-8 rounded-2xl bg-white p-4 shadow-2xl">
                 <div className="flex items-center gap-2">
@@ -384,7 +383,7 @@ export default async function HomePage() {
               From battery engineers in Pune to charging-infra leads in
               Singapore, fleet ops in Dubai to manufacturing roles in
               Penang — emobility.careers is the address where 50,000+ EV
-              professionals build careers across APAC and beyond. Browse
+              professionals build careers globally. Browse
               open roles. Get matched. Move the industry forward.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
@@ -418,8 +417,8 @@ export default async function HomePage() {
                   : "Companies hiring on emobility.careers"}
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-sm text-emce-text-sec">
-                From global OEMs and battery makers to APAC charging
-                networks and EV fleets — the full industry stack lives
+                From global OEMs and battery makers to charging networks
+                and EV fleets worldwide — the full industry stack lives
                 here. Click any name to see open roles + the company
                 page.
               </p>
@@ -734,7 +733,7 @@ export default async function HomePage() {
             />
           </div>
           <div>
-            <Badge variant="success" className="mb-3">📍 Job fairs across APAC</Badge>
+            <Badge variant="success" className="mb-3">📍 Global job fairs</Badge>
             <h2 className="text-3xl font-extrabold leading-tight tracking-tight text-emce-text md:text-4xl lg:text-5xl">
               Where careers happen, in person.
             </h2>
