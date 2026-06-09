@@ -271,7 +271,7 @@ export default async function HomePage() {
         <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
           <div className="relative aspect-[16/9] overflow-hidden rounded-2xl shadow-emce-lg lg:order-1">
             <Image
-              src="/home/office-reception.png"
+              src="/home/office-reception.jpg"
               alt="The emobility.careers office reception — wordmark on a dark counter, latest-jobs board behind, green wall and meeting room beyond"
               fill
               sizes="(min-width: 1024px) 50vw, 100vw"
@@ -528,7 +528,7 @@ export default async function HomePage() {
           <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
             <div className="relative aspect-[16/9] overflow-hidden rounded-2xl shadow-2xl lg:order-2">
               <Image
-                src="/home/office-video-calls.png"
+                src="/home/office-video-calls.jpg"
                 alt="emobility.careers office with simultaneous in-person and online interviews — a candidate on a laptop video call in the lounge, a recruiter on a wall-mounted video call in the meeting room"
                 fill
                 sizes="(min-width: 1024px) 50vw, 100vw"
@@ -634,7 +634,7 @@ export default async function HomePage() {
         <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
           <div className="relative aspect-[16/9] overflow-hidden rounded-2xl shadow-emce-lg">
             <Image
-              src="/home/job-fair.png"
+              src="/home/job-fair.jpg"
               alt="A packed emobility.careers Recruitathon job fair — recruiters and candidates in conversation, branded booth with the 'Drive the future. Build your career.' tagline, an EV charging on the show floor"
               fill
               sizes="(min-width: 1024px) 50vw, 100vw"
