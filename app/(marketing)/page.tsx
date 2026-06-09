@@ -1,4 +1,5 @@
 import Link from "next/link";
+import Image from "next/image";
 import type { Metadata } from "next";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -260,6 +261,48 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* ─── Editorial intro — image-led "what this place is" panel.
+          Sits right after the hero so the page reads as a story
+          (hero is text, this is image), borrowing the WhatsApp.com
+          alternating-image-and-copy rhythm. Reception photo speaks
+          to "this is a real platform with a real presence in the EV
+          industry" rather than another job-board landing page. */}
+      <section className="container py-12 md:py-16">
+        <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
+          <div className="relative aspect-[16/9] overflow-hidden rounded-2xl shadow-emce-lg lg:order-1">
+            <Image
+              src="/home/office-reception.png"
+              alt="The emobility.careers office reception — wordmark on a dark counter, latest-jobs board behind, green wall and meeting room beyond"
+              fill
+              sizes="(min-width: 1024px) 50vw, 100vw"
+              className="object-cover"
+              priority
+            />
+          </div>
+          <div className="lg:order-2">
+            <Badge variant="default" className="mb-3">⚡ Built for India&apos;s EV industry</Badge>
+            <h2 className="text-3xl font-extrabold leading-tight tracking-tight text-emce-text md:text-4xl lg:text-5xl">
+              Where India&apos;s EV industry comes to work.
+            </h2>
+            <p className="mt-4 text-base text-emce-text-sec md:text-lg">
+              From the latest battery-engineer roles in Pune to ATS-grade
+              hiring tools for fleet operators in Bengaluru —
+              emobility.careers is the platform 50,000+ EV professionals
+              call home. Browse open roles. Get matched. Move the industry
+              forward.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button asChild size="lg" variant="default">
+                <Link href="/jobs">Browse jobs →</Link>
+              </Button>
+              <Button asChild size="lg" variant="outline">
+                <Link href="/about">How it works →</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ─── Featured recruitment drives ─── (renders nothing
           when no featured fairs exist, so the section quietly
           disappears between fairs and the layout flows on). */}
@@ -474,6 +517,57 @@ export default async function HomePage() {
         </section>
       )}
 
+      {/* ─── Hybrid hiring spotlight — image-led, dark section to
+          contrast with the white pulse/compass above. Cross-promotes
+          the Recruitathon hybrid mode (Phase 1-3 build) without
+          burying it under data-table noise. Image deliberately reversed
+          (left on desktop) so the page's image rhythm alternates
+          right → left → right between editorial sections. */}
+      <section className="border-y border-emce-border bg-emce-darkest text-white">
+        <div className="container py-16 md:py-20">
+          <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
+            <div className="relative aspect-[16/9] overflow-hidden rounded-2xl shadow-2xl lg:order-2">
+              <Image
+                src="/home/office-video-calls.png"
+                alt="emobility.careers office with simultaneous in-person and online interviews — a candidate on a laptop video call in the lounge, a recruiter on a wall-mounted video call in the meeting room"
+                fill
+                sizes="(min-width: 1024px) 50vw, 100vw"
+                className="object-cover"
+              />
+            </div>
+            <div className="lg:order-1">
+              <div className="mb-3 inline-flex items-center gap-2 text-[11px] font-extrabold uppercase tracking-[0.2em] text-emce-mid">
+                <span className="h-0.5 w-6 rounded-full bg-emce-mid" />
+                Recruitathon · hybrid mode
+              </div>
+              <h2 className="text-3xl font-extrabold leading-tight tracking-tight md:text-4xl lg:text-5xl">
+                Hire from anywhere.<br className="hidden md:block" /> Interview from anywhere.
+              </h2>
+              <p className="mt-4 text-base text-white/80 md:text-lg">
+                Run a Recruitathon in Pune. Interview a candidate in Delhi.
+                Our hybrid event mode brings online and offline candidates
+                into the same pipeline — mode-aware slot booking, one-click
+                Join buttons, presence tracking, and post-event analytics
+                split by attendance mode.
+              </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <Button asChild size="lg" variant="accent">
+                  <Link href="/fairs">See upcoming fairs →</Link>
+                </Button>
+                <Button
+                  asChild
+                  size="lg"
+                  variant="outline"
+                  className="border-white/40 bg-white/5 text-white hover:bg-white/15 hover:text-white"
+                >
+                  <Link href="/employer">Host one for your company →</Link>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* ─── Featured This Week ─── */}
       {featured.length > 0 && (
         <section className="border-y border-emce-border bg-emce-light-soft/30">
@@ -531,6 +625,45 @@ export default async function HomePage() {
           </div>
         </section>
       )}
+
+      {/* ─── Job-fair editorial — image-led "in-person hiring at scale"
+          panel. Image LEFT this time so the page's editorial rhythm
+          stays right → left → right alternating, and the right-side
+          copy can lead into the Recruitathon CTA naturally. */}
+      <section className="container py-12 md:py-16">
+        <div className="grid items-center gap-8 lg:grid-cols-2 lg:gap-12">
+          <div className="relative aspect-[16/9] overflow-hidden rounded-2xl shadow-emce-lg">
+            <Image
+              src="/home/job-fair.png"
+              alt="A packed emobility.careers Recruitathon job fair — recruiters and candidates in conversation, branded booth with the 'Drive the future. Build your career.' tagline, an EV charging on the show floor"
+              fill
+              sizes="(min-width: 1024px) 50vw, 100vw"
+              className="object-cover"
+            />
+          </div>
+          <div>
+            <Badge variant="success" className="mb-3">📍 Job fairs across India</Badge>
+            <h2 className="text-3xl font-extrabold leading-tight tracking-tight text-emce-text md:text-4xl lg:text-5xl">
+              Where careers happen, in person.
+            </h2>
+            <p className="mt-4 text-base text-emce-text-sec md:text-lg">
+              Multi-day hiring events bring top EV companies and serious
+              candidates into one room. Pune, Bengaluru, Delhi, Chennai —
+              and now Delhi-from-anywhere thanks to hybrid mode. Walk a
+              booth in person, or join a 30-minute interview slot from your
+              laptop. Same pipeline, same recruiter, same hire.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button asChild size="lg" variant="default">
+                <Link href="/fairs">Browse upcoming fairs →</Link>
+              </Button>
+              <Button asChild size="lg" variant="outline">
+                <Link href="/colleges/register">TPO? Bring your cohort →</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </section>
 
       {/* ─── Browse by topic ─── */}
       <section className="container py-16">
