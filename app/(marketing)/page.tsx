@@ -277,6 +277,7 @@ export default async function HomePage() {
               sizes="(min-width: 1024px) 50vw, 100vw"
               className="object-cover"
               priority
+              unoptimized
             />
           </div>
           <div className="lg:order-2">
@@ -533,6 +534,7 @@ export default async function HomePage() {
                 fill
                 sizes="(min-width: 1024px) 50vw, 100vw"
                 className="object-cover"
+                unoptimized
               />
             </div>
             <div className="lg:order-1">
@@ -639,6 +641,7 @@ export default async function HomePage() {
               fill
               sizes="(min-width: 1024px) 50vw, 100vw"
               className="object-cover"
+              unoptimized
             />
           </div>
           <div>
