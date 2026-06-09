@@ -71,7 +71,7 @@ export function EmployerRegisterForm({
           <strong>Signed in as {signedInUser.name ?? signedInUser.email}.</strong>{" "}
           We&apos;ll attach this fair registration to your existing employer
           account (or create one for the company you list below).{" "}
-          <Link href="/api/auth/signout" className="font-bold text-emce-dark hover:underline">
+          <Link href="/signout" className="font-bold text-emce-dark hover:underline">
             Not you?
           </Link>
         </div>

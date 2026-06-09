@@ -158,7 +158,7 @@ async function AdminUserMenuSlot({
     // the admin can still escape the page.
     return (
       <Link
-        href="/api/auth/signout"
+        href="/signout"
         className="rounded bg-white/10 px-2 py-1 text-xs font-bold hover:bg-white/20"
       >
         Sign out

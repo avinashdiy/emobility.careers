@@ -102,7 +102,7 @@ export async function SiteHeader() {
           ...(user.role === "ADMIN" || isPlacementOfficer
             ? [{ href: "/tpo", label: "Placement (TPO)" }]
             : []),
-          { href: "/api/auth/signout", label: t("nav.signOut", locale) },
+          { href: "/signout", label: t("nav.signOut", locale) },
         ]
       : [
           { href: "/signin", label: t("nav.signIn", locale) },

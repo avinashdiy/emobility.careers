@@ -98,7 +98,7 @@ export async function RoleStaleBanner() {
           <span className="ml-1 text-emce-text-sec">— {body}</span>
         </p>
         <Link
-          href="/api/auth/signout"
+          href="/signout"
           className="inline-flex items-center rounded bg-emce-darkest px-3 py-1 text-xs font-bold text-emce-mid hover:bg-emce-dark"
         >
           Sign out & refresh →

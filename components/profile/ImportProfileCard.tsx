@@ -75,7 +75,7 @@ export function ImportProfileCard({
           </div>
           {!hasLinkedinAccount && (
             <Link
-              href="/api/auth/signout"
+              href="/signout"
               className="shrink-0 rounded-md bg-emce-darkest px-3 py-1.5 text-xs font-bold text-emce-mid hover:bg-emce-dark"
             >
               Sign out to retry →

@@ -219,7 +219,7 @@ export function HeaderUserMenu({ user }: { user: UserMenuViewerData }) {
 
           <Group title="Account">
             <Item href="/me/preferences" icon={<Settings className="h-4 w-4" />} label="Notification preferences" />
-            <Item href="/api/auth/signout" icon={<LogOut className="h-4 w-4" />} label="Sign out" />
+            <Item href="/signout" icon={<LogOut className="h-4 w-4" />} label="Sign out" />
           </Group>
         </div>
       )}

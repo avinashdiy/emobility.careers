@@ -82,7 +82,7 @@ export function CandidateRegisterForm({
           <strong>Signed in as {signedInUser.name ?? signedInUser.email}.</strong>{" "}
           We&apos;ll register your existing account for this fair — no new
           account needed.{" "}
-          <Link href="/api/auth/signout" className="font-bold text-emce-dark hover:underline">
+          <Link href="/signout" className="font-bold text-emce-dark hover:underline">
             Not you?
           </Link>
         </div>

@@ -70,7 +70,7 @@ export function TpoRegisterForm({
         <div className="mb-3 rounded-md border border-emce-mid bg-emce-light-soft p-3 text-sm text-emce-text">
           <strong>Signed in as {signedInUser.name ?? signedInUser.email}.</strong>{" "}
           We&apos;ll attach your placement-cell application to this account.{" "}
-          <Link href="/api/auth/signout" className="font-bold text-emce-dark hover:underline">
+          <Link href="/signout" className="font-bold text-emce-dark hover:underline">
             Not you?
           </Link>
         </div>

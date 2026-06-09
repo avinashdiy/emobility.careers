@@ -81,7 +81,7 @@ export default async function InvitePage({
             <strong>{session.user.email}</strong>. Sign out and use the right account.
           </p>
           <div className="mt-4 flex justify-center gap-2">
-            <Button asChild variant="outline"><Link href="/api/auth/signout">Sign out</Link></Button>
+            <Button asChild variant="outline"><Link href="/signout">Sign out</Link></Button>
           </div>
         </Card>
       </div>
