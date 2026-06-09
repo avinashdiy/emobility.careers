@@ -7,6 +7,7 @@ verification → synthesis). 35 raw findings → **23 confirmed** after verifica
 
 **Audit date:** 2026-06-09
 **Severity counts:** 3 critical · 10 major · 8 minor · 3 nit
+**Status:** 3 critical resolved (2 fixed + 1 working-as-intended); 18 open
 
 Status legend: `[ ]` open · `[x]` done · `[~]` decision needed (product call)
 
@@ -26,11 +27,17 @@ Status legend: `[ ]` open · `[x]` done · `[~]` decision needed (product call)
   let me book an in-person slot when I registered online") unresolvable from the
   log. **Fixed 2026-06-09** — audit meta now records `slotMode` + `candidateFairMode`.
 
-- [~] **Resume `EMPLOYERS_ONLY` visible to all verified employers** — `lib/profile-visibility.ts:189`
-  The audit flagged this as a bypass because `canSeeResume()` for `EMPLOYERS_ONLY`
-  returns `ctx.role === "EMPLOYER"` (any employer), while the parallel
-  `canSeeContact()` requires an application relationship.
-  **DECISION NEEDED — likely a false positive.** The resume tier model is a
+- [x] **Resume `EMPLOYERS_ONLY` visible to all verified employers** — `lib/profile-visibility.ts:189`
+  **RESOLVED 2026-06-09 — working as intended (product decision).** Confirmed with
+  product owner: the searchable-resume model is deliberate. `EMPLOYERS_ONLY` =
+  any verified employer can download, which is the standard Naukri/LinkedIn
+  sourcing behaviour and lets recruiters find candidates who haven't applied yet.
+  No code change.
+
+  Detail for posterity — the audit flagged this as a bypass because
+  `canSeeResume()` for `EMPLOYERS_ONLY` returns `ctx.role === "EMPLOYER"` (any
+  employer), while the parallel `canSeeContact()` requires an application
+  relationship. That comparison was a false positive: the resume tier model is a
   coherent 3-level design that matches its candidate-facing copy:
   - `PRIVATE` → "Employers see it only when you apply to a job" (applied-only)
   - `EMPLOYERS_ONLY` → "Verified employers can download your resume from your
@@ -41,10 +48,7 @@ Status legend: `[ ]` open · `[x]` done · `[~]` decision needed (product call)
   make `EMPLOYERS_ONLY` **identical to `PRIVATE`**, collapsing two tiers and
   silently breaking the promise to candidates who opted into recruiter discovery.
   Only call site is the public profile page (`app/[username]/page.tsx:644`) — not
-  the employer sourcing flow. **If** the platform wants to tighten resume privacy
-  to match the 2026-05 contact-info tightening, that's a deliberate product change
-  that also needs the `RESUME_VISIBILITY_DESCRIPTIONS` copy updated. Left as-is
-  pending product decision.
+  the employer sourcing flow.
 
 ---
 
