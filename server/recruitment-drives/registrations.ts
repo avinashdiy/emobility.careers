@@ -151,21 +151,33 @@ export async function registerForDrive(formData: FormData): Promise<void> {
         attempt++;
         const code = mintCheckInCode();
         try {
-          const created = await db.recruitmentDriveRegistration.create({
-            data: {
-              driveId: drive.id,
-              candidateId: profile.id,
-              checkInCode: code,
-              intentNote: intentNote && intentNote.length > 0 ? intentNote : null,
-              source: "DIRECT",
-            },
-            select: { checkInCode: true },
+          // Atomic: the registration row + the public counter
+          // increment must commit together. Previously these were
+          // two separate awaits — a crash (or a connection drop on
+          // the shared Postgres) between them left a registered
+          // candidate whose count was never tallied, drifting the
+          // admin dashboard's registeredCount permanently below the
+          // true row count. The $transaction rolls back BOTH on any
+          // error, so a checkInCode-collision retry can't leave a
+          // phantom increment behind either.
+          const created = await db.$transaction(async (tx) => {
+            const reg = await tx.recruitmentDriveRegistration.create({
+              data: {
+                driveId: drive.id,
+                candidateId: profile.id,
+                checkInCode: code,
+                intentNote: intentNote && intentNote.length > 0 ? intentNote : null,
+                source: "DIRECT",
+              },
+              select: { checkInCode: true },
+            });
+            await tx.recruitmentDrive.update({
+              where: { id: drive.id },
+              data: { registeredCount: { increment: 1 } },
+            });
+            return reg;
           });
           checkInCode = created.checkInCode;
-          await db.recruitmentDrive.update({
-            where: { id: drive.id },
-            data: { registeredCount: { increment: 1 } },
-          });
           break;
         } catch (err) {
           const code = (err as { code?: string; meta?: { target?: string[] } })?.code;
@@ -255,25 +267,30 @@ export async function cancelDriveRegistration(formData: FormData): Promise<void>
     });
     if (!drive) redirect("/fairs");
 
-    const result = await db.recruitmentDriveRegistration.updateMany({
-      where: {
-        driveId: drive.id,
-        candidateId: profile.id,
-        status: "REGISTERED",
-      },
-      data: {
-        status: "CANCELLED",
-        cancelledAt: new Date(),
-      },
-    });
-    if (result.count > 0) {
-      // Roll back the public counter — only when we actually
-      // flipped a row from REGISTERED to CANCELLED.
-      await db.recruitmentDrive.update({
-        where: { id: drive.id },
-        data: { registeredCount: { decrement: 1 } },
+    // Atomic: flip the row to CANCELLED and roll back the public
+    // counter in one transaction. The conditional decrement (only
+    // when a row actually flipped) lives inside the transaction so a
+    // crash between the updateMany and the decrement can't leave a
+    // CANCELLED registration still counted in registeredCount.
+    await db.$transaction(async (tx) => {
+      const result = await tx.recruitmentDriveRegistration.updateMany({
+        where: {
+          driveId: drive.id,
+          candidateId: profile.id,
+          status: "REGISTERED",
+        },
+        data: {
+          status: "CANCELLED",
+          cancelledAt: new Date(),
+        },
       });
-    }
+      if (result.count > 0) {
+        await tx.recruitmentDrive.update({
+          where: { id: drive.id },
+          data: { registeredCount: { decrement: 1 } },
+        });
+      }
+    });
 
     revalidatePath(`/fairs/${drive.slug}`);
     redirect(

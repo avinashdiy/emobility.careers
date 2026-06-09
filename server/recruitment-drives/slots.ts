@@ -597,7 +597,17 @@ export async function bookInterviewSlot(formData: FormData): Promise<void> {
         action: "fair.slot_booked",
         entity: "RecruitmentDriveInterviewSlot",
         entityId: slot.id,
-        meta: { driveId: slot.driveCompany.drive.id },
+        // Record the modes that the compatibility gate (above) checked
+        // against, so a later dispute ("the system let me book an
+        // in-person slot when I'd registered online") is resolvable
+        // from the audit log alone. slotMode = the slot's delivery
+        // channel; candidateFairMode = the attendance mode the
+        // candidate registered with at booking time.
+        meta: {
+          driveId: slot.driveCompany.drive.id,
+          slotMode: slot.mode,
+          candidateFairMode: registration.fairMode,
+        },
       });
     } catch {/* best-effort */}
 
