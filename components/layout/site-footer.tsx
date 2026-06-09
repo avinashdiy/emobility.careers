@@ -2,6 +2,8 @@ import Link from "next/link";
 import { auth } from "@/lib/auth";
 import { CompactFooter } from "@/components/layout/compact-footer";
 import { Logo } from "@/components/brand/Logo";
+import { LanguageSwitcher } from "@/components/layout/language-switcher";
+import { getLocale } from "@/lib/i18n-server";
 
 /**
  * Session-aware footer wrapper.
@@ -27,7 +29,11 @@ import { Logo } from "@/components/brand/Logo";
  * on-mobile / spread-on-desktop legal + social + language strip.
  */
 export async function SiteFooter() {
-  const session = await auth();
+  // Resolve session + locale in parallel — the marketing footer
+  // shows the active language in its bottom-right pill (read by the
+  // <LanguageSwitcher> client component below). Anonymous visitors
+  // default to "en" via getLocale's fallback.
+  const [session, locale] = await Promise.all([auth(), getLocale()]);
   if (session?.user) {
     return <CompactFooter />;
   }
@@ -189,13 +195,15 @@ export async function SiteFooter() {
 
             <div className="flex flex-wrap items-center justify-center gap-3">
               <SocialIcons />
-              {/* Language switcher — links into the existing /me/settings
-                  language preference. Inline because anonymous visitors
-                  hitting /me redirect to sign-in. */}
-              <span className="ml-2 inline-flex items-center gap-1 rounded-md border border-white/20 px-2.5 py-1 text-[11px] font-bold text-emce-light-soft">
-                <span aria-hidden>🌐</span>
-                <span>English (India)</span>
-              </span>
+              {/* Language switcher — wired to the same emce_locale cookie
+                  the rest of the app uses. Pill display mode adds the
+                  active locale's display name next to the globe icon so
+                  the footer chrome stays readable; clicking opens the
+                  native <select> picker with all 10 locales (EN, HI,
+                  TA, TE, MR, DE, AR, ZH, FR, JA). Selecting one writes
+                  the cookie, kicks the Google Translate widget, and
+                  reloads. */}
+              <LanguageSwitcher current={locale} variant="dark" displayMode="pill" />
             </div>
           </div>
         </div>

@@ -38,11 +38,22 @@ function writeGoogleTranslateCookie(locale: Locale) {
 export function LanguageSwitcher({
   current,
   variant = "dark",
+  displayMode = "icon",
 }: {
   current: Locale;
   variant?: "light" | "dark";
+  /**
+   * "icon" — the original 9x9 globe-only trigger used in the header.
+   * "pill" — wider trigger that renders the active locale's display
+   * name next to the globe (e.g. "🌐 English"). Matches the footer's
+   * inline-pill rhythm (Terms / Privacy / Cookies / Sitemap all read
+   * as text). Defaults to "icon" so existing call-sites keep their
+   * compact chrome.
+   */
+  displayMode?: "icon" | "pill";
 }) {
   const [pending, start] = useTransition();
+  const isPill = displayMode === "pill";
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
     const newLocale = e.target.value as Locale;
@@ -73,23 +84,34 @@ export function LanguageSwitcher({
     });
   }
 
+  // Tone tokens for dark vs light surface. Pill mode adds a border so
+  // it reads as a clickable target without hover (the footer is dark,
+  // so the border alone has to carry "this is interactive").
+  const toneClasses =
+    variant === "dark"
+      ? "text-white/85 hover:bg-white/10 hover:text-white focus-within:ring-offset-emce-darkest"
+      : "text-emce-text-sec hover:bg-emce-light-soft hover:text-emce-dark focus-within:ring-offset-white";
+
+  const sizingClasses = isPill
+    ? `gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-bold border ${
+        variant === "dark" ? "border-white/20" : "border-emce-border"
+      }`
+    : "h-9 w-9 rounded-md";
+
   return (
-    // Icon-only trigger — the native <select> sits invisibly on top of
-    // the globe icon so a tap/click opens the system picker. The
-    // closed-state visible chrome is just the globe (no "EN" text, no
-    // chevron) so the header stays uncluttered. Options inside the
-    // picker still show the full language names ("EN · English", etc.)
-    // so users know what they're choosing.
+    // Both modes overlay a native <select> on top of the visible
+    // trigger so a tap/click opens the system picker. Options inside
+    // the picker show the full language names ("EN · English") so
+    // users know what they're choosing.
     <label
-      className={`relative inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors focus-within:ring-2 focus-within:ring-emce-mid focus-within:ring-offset-2 ${
-        variant === "dark"
-          ? "text-white/80 hover:bg-white/10 hover:text-white focus-within:ring-offset-emce-darkest"
-          : "text-emce-text-sec hover:bg-emce-light-soft hover:text-emce-dark focus-within:ring-offset-white"
-      } ${pending ? "opacity-60" : ""}`}
+      className={`relative inline-flex items-center justify-center transition-colors focus-within:ring-2 focus-within:ring-emce-mid focus-within:ring-offset-2 ${toneClasses} ${sizingClasses} ${
+        pending ? "opacity-60" : ""
+      }`}
       aria-label="Language"
       title="Language"
     >
-      <Globe className="h-4 w-4" aria-hidden />
+      <Globe className={isPill ? "h-3 w-3" : "h-4 w-4"} aria-hidden />
+      {isPill && <span className="leading-none">{localeNames[current]}</span>}
       <select
         value={current}
         disabled={pending}
