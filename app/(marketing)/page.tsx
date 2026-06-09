@@ -21,8 +21,6 @@ import {
 import { Avatar } from "@/components/ui/avatar";
 import { FeaturedCompaniesGallery } from "@/components/marketing/FeaturedCompaniesGallery";
 import { getFeaturedPartnersWithSlugs } from "@/lib/featured-companies";
-import { getViewerCountry } from "@/lib/viewer-country";
-import { pickHomeVariant, homeAlternates } from "@/lib/home-variants";
 
 /**
  * Home page — framed as a daily snapshot of the EV industry rather
@@ -51,37 +49,24 @@ import { pickHomeVariant, homeAlternates } from "@/lib/home-variants";
 // can afford a fresh SSR on every homepage hit.
 export const dynamic = "force-dynamic";
 
-/**
- * Per-request metadata — varies by the visitor's resolved country so
- * the page title + meta description match the country variant shown
- * in the rendered body. hreflang `languages` alternates point at the
- * 5 canonical country pages (/in /au /ae /us /uk) for SEO; the
- * x-default points back at /.
- */
-export async function generateMetadata(): Promise<Metadata> {
-  const country = await getViewerCountry();
-  const variant = pickHomeVariant(country);
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? "https://emobility.careers";
-  return {
-    title: variant.metaTitle,
-    description: variant.metaDescription,
-    alternates: {
-      canonical: `${appUrl.replace(/\/$/, "")}/`,
-      languages: homeAlternates(appUrl),
-    },
-    openGraph: {
-      title: variant.hero.h1Lead.trim() + " " + variant.hero.h1Tail,
-      description: variant.ogDescription,
-      type: "website",
-      siteName: "eMobility Careers",
-    },
-    twitter: {
-      card: "summary_large_image",
-      title: variant.hero.h1Lead.trim() + " " + variant.hero.h1Tail,
-      description: variant.ogDescription,
-    },
-  };
-}
+export const metadata: Metadata = {
+  title: "Where the EV industry hires, gets hired · APAC + global",
+  description:
+    "The specialised hiring platform for the global electric mobility industry — battery, charging, motors, vehicles and software careers across APAC and beyond. Verified profiles, AI matching, salary intel, hybrid recruitathons.",
+  openGraph: {
+    title: "Where the EV industry hires, gets hired",
+    description:
+      "The specialised hiring platform for the global electric mobility industry. Live in India, UK, US, UAE, Australia, Malaysia, Bangladesh, Nepal.",
+    type: "website",
+    siteName: "eMobility Careers",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Where the EV industry hires, gets hired",
+    description:
+      "The specialised hiring platform for the global electric mobility industry. Live across APAC and beyond.",
+  },
+};
 
 const ACTION_PILLS: { href: string; emoji: string; label: string; tone: "primary" | "secondary" }[] = [
   { href: "/employer", emoji: "🎯", label: "I'm hiring", tone: "primary" },
@@ -137,13 +122,6 @@ function relativeWhen(ms: number): string {
 }
 
 export default async function HomePage() {
-  // Resolve country → variant first; everything downstream reads
-  // strings from `variant.*`. Anonymous IN visitors get India copy,
-  // AU visitors get Sydney/BYD copy, etc. Falls through to IN for
-  // any country not in the 5-variant list.
-  const country = await getViewerCountry();
-  const variant = pickHomeVariant(country);
-
   const [
     locale,
     pulse,
@@ -263,20 +241,23 @@ export default async function HomePage() {
 
               <div className="mt-auto max-w-md md:max-w-lg lg:max-w-xl">
                 <div className="animate-fade-up text-[11px] font-extrabold uppercase tracking-[0.2em] text-emce-mid">
-                  {variant.hero.eyebrow}
+                  ✦ APAC&apos;s home for EV careers
                 </div>
                 <h1
                   className="animate-fade-up mt-3 text-3xl font-extrabold leading-[1.05] tracking-tight text-white sm:text-4xl md:text-5xl lg:text-6xl"
                   style={{ animationDelay: "80ms" }}
                 >
-                  {variant.hero.h1Lead}
-                  <span className="emce-text-gradient">{variant.hero.h1Tail}</span>
+                  Where the EV industry{" "}
+                  <span className="emce-text-gradient">hires, gets hired.</span>
                 </h1>
                 <p
                   className="animate-fade-up mt-4 max-w-md text-sm text-white/90 sm:text-base md:text-lg"
                   style={{ animationDelay: "160ms" }}
                 >
-                  {variant.hero.subtitle}
+                  Battery, charging, motors, vehicles and software — every EV
+                  career across APAC and beyond. 50,000+ professionals.
+                  1,200+ companies in 8 countries. Find your next role, or your
+                  next hire.
                 </p>
                 <div
                   className="animate-fade-up mt-5 flex flex-wrap gap-3 md:mt-6"
@@ -339,7 +320,7 @@ export default async function HomePage() {
                   </span>
                 </div>
                 <p className="mt-2 text-sm font-bold text-emce-text">
-                  {variant.matchCard.title}
+                  Senior BMS Engineer · Hyundai
                 </p>
                 <div className="mt-2 flex items-center gap-2">
                   <div className="h-2 flex-1 overflow-hidden rounded-full bg-emce-light-soft">
@@ -350,7 +331,7 @@ export default async function HomePage() {
                   </span>
                 </div>
                 <p className="mt-2 text-hint text-emce-text-sec">
-                  {variant.matchCard.meta}
+                  Singapore · S$110-140k · 2 days ago
                 </p>
               </div>
             </div>
@@ -395,12 +376,16 @@ export default async function HomePage() {
             />
           </div>
           <div className="lg:order-2">
-            <Badge variant="default" className="mb-3">{variant.editorialIntro.badge}</Badge>
+            <Badge variant="default" className="mb-3">⚡ Built for the global EV industry</Badge>
             <h2 className="text-3xl font-extrabold leading-tight tracking-tight text-emce-text md:text-4xl lg:text-5xl">
-              {variant.editorialIntro.h2}
+              Where the EV industry comes to work.
             </h2>
             <p className="mt-4 text-base text-emce-text-sec md:text-lg">
-              {variant.editorialIntro.body}
+              From battery engineers in Pune to charging-infra leads in
+              Singapore, fleet ops in Dubai to manufacturing roles in
+              Penang — emobility.careers is the address where 50,000+ EV
+              professionals build careers across APAC and beyond. Browse
+              open roles. Get matched. Move the industry forward.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Button asChild size="lg" variant="default">
@@ -433,7 +418,10 @@ export default async function HomePage() {
                   : "Companies hiring on emobility.careers"}
               </h2>
               <p className="mx-auto mt-2 max-w-2xl text-sm text-emce-text-sec">
-                {variant.logoWallBody}
+                From global OEMs and battery makers to APAC charging
+                networks and EV fleets — the full industry stack lives
+                here. Click any name to see open roles + the company
+                page.
               </p>
             </div>
 
@@ -647,11 +635,11 @@ export default async function HomePage() {
                 Hire from anywhere.<br className="hidden md:block" /> Interview from anywhere.
               </h2>
               <p className="mt-4 text-base text-white/80 md:text-lg">
-                {variant.hybrid.example} Our hybrid event mode brings
-                online and offline candidates into the same pipeline —
-                mode-aware slot booking, one-click Join buttons,
-                presence tracking, and post-event analytics split by
-                attendance mode.
+                Run a Recruitathon in Pune. Interview a candidate in
+                Jakarta. Our hybrid event mode brings online and offline
+                candidates into the same pipeline — mode-aware slot
+                booking, one-click Join buttons, presence tracking, and
+                post-event analytics split by attendance mode.
               </p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <Button asChild size="lg" variant="accent">
@@ -746,12 +734,17 @@ export default async function HomePage() {
             />
           </div>
           <div>
-            <Badge variant="success" className="mb-3">{variant.jobFair.badge}</Badge>
+            <Badge variant="success" className="mb-3">📍 Job fairs across APAC</Badge>
             <h2 className="text-3xl font-extrabold leading-tight tracking-tight text-emce-text md:text-4xl lg:text-5xl">
               Where careers happen, in person.
             </h2>
             <p className="mt-4 text-base text-emce-text-sec md:text-lg">
-              {variant.jobFair.body}
+              Multi-day hiring events bring top EV companies and serious
+              candidates into one room. Pune, Bengaluru, Delhi, Chennai,
+              Singapore, Dubai — and now joining-from-anywhere thanks to
+              hybrid mode. Walk a booth in person, or join a 30-minute
+              interview slot from your laptop. Same pipeline, same
+              recruiter, same hire.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Button asChild size="lg" variant="default">
@@ -846,10 +839,12 @@ export default async function HomePage() {
       <section className="border-y border-emce-border bg-emce-darkest text-white">
         <div className="container py-12 text-center">
           <h2 className="text-2xl font-extrabold tracking-tight md:text-3xl">
-            {variant.finalCta.h2}
+            Become part of the global EV story.
           </h2>
           <p className="mx-auto mt-2 max-w-xl text-sm text-white/75">
-            {variant.finalCta.subtitle}
+            Sign up free. Post a role. Submit a salary. Roast your resume.
+            Every action helps the next person navigate the industry —
+            from Pune to Singapore, Dubai to Sydney.
           </p>
           <div className="mt-6 flex flex-wrap justify-center gap-3">
             <Button asChild size="lg" variant="accent">
