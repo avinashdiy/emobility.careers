@@ -59,12 +59,31 @@ export const metadata: Metadata = {
       "The specialised hiring platform for the global electric mobility industry. Live in India, UK, US, UAE, Australia, Malaysia, Bangladesh, Nepal.",
     type: "website",
     siteName: "eMobility Careers",
+    // Explicit static OG image. The file-based app/opengraph-image.tsx
+    // convention does NOT merge into this page's tags because the
+    // homepage lives in the (marketing) route group while the
+    // opengraph-image is at the root segment — Next.js was emitting
+    // og:title/description but NO og:image, so WhatsApp/LinkedIn
+    // unfurls fell back to the favicon. Referencing a static 1200x630
+    // JPG here guarantees the tag is emitted and renders instantly
+    // (no Satori at crawl time = no timeout risk on WhatsApp's
+    // aggressive crawler). metadataBase (set in app/layout.tsx) makes
+    // this relative path resolve to an absolute URL.
+    images: [
+      {
+        url: "/og/home.jpg",
+        width: 1200,
+        height: 630,
+        alt: "The eMobility.careers office — where the EV industry hires, gets hired.",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
     title: "Where the EV industry hires, gets hired",
     description:
       "The specialised hiring platform for the global electric mobility industry. Live globally.",
+    images: ["/og/home.jpg"],
   },
 };
 
