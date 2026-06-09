@@ -25,6 +25,14 @@ export const authConfig: NextAuthConfig = {
   pages: {
     signIn: "/signin",
     newUser: "/onboarding",
+    // Custom branded sign-out page. Without this, a GET to
+    // /api/auth/signout renders Auth.js's default unstyled
+    // confirmation (blank page + a lone blue "Sign out" button) —
+    // every logout link in the app navigates there. Pointing
+    // pages.signOut at /signout makes Auth.js redirect those GETs to
+    // our branded page instead, so we fix the experience for ALL
+    // entry points without touching each individual link.
+    signOut: "/signout",
   },
   callbacks: {
     async jwt({ token, user, trigger, session }) {

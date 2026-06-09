@@ -328,6 +328,18 @@ export async function signOutAction() {
   await signOut({ redirectTo: "/" });
 }
 
+/**
+ * Sign out and land on the branded /signout page, which (now that the
+ * session is gone) renders the "You're signed out — see you soon"
+ * acknowledgment with sign-back-in / homepage CTAs. Used by the
+ * confirmation button on /signout so the user gets a clear, branded
+ * "logout succeeded" state instead of the old blank Auth.js screen.
+ */
+export async function signOutToConfirmation() {
+  const { signOut } = await import("@/lib/auth");
+  await signOut({ redirectTo: "/signout" });
+}
+
 // ─── Password reset ─────────────────────────────────────────
 
 const requestResetSchema = z.object({
