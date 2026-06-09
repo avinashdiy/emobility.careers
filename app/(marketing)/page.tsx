@@ -156,105 +156,186 @@ export default async function HomePage() {
 
   return (
     <>
-      {/* ─── Hero — editorial masthead ─── */}
-      <section className="emce-mesh-hero relative text-white">
-        {/* Soft floating orbs add ambient warmth to the mesh gradient
-            without competing with the headline. Hidden on mobile so they
-            don't fight the hero copy in a narrow viewport. */}
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -left-16 top-10 hidden h-56 w-56 rounded-full bg-emce-mid/25 blur-3xl animate-float md:block"
-        />
-        <span
-          aria-hidden
-          className="pointer-events-none absolute -right-12 top-32 hidden h-64 w-64 rounded-full bg-emce-light/20 blur-3xl animate-float md:block"
-          style={{ animationDelay: "1.6s" }}
-        />
-        <div
-          aria-hidden
-          className="emce-dot-grid pointer-events-none absolute inset-0 opacity-25"
-        />
-        <div className="container relative py-16 md:py-20">
-          {/* Live ticker pill — sets tone before any copy. The
-              animated dot reads as "this page is alive". The full
-              date + "added today" segments are hidden on phones so
-              the pill stays inside a 360-px viewport; md+ shows the
-              full ticker. */}
-          <Link
-            href="/pulse"
-            className="emce-pill mb-6 max-w-full transition hover:bg-white/15"
-          >
-            <span aria-hidden className="relative flex h-2 w-2 shrink-0">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emce-mid opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emce-mid" />
-            </span>
-            <span className="min-w-0 truncate tabular-nums">
-              <strong>LIVE</strong>
-              <span className="hidden md:inline">
-                <span className="mx-2 opacity-50">·</span>
-                {dateStr}
-              </span>
-              {pulse.openJobs > 0 && (
-                <>
-                  <span className="mx-2 opacity-50">·</span>
-                  {pulse.openJobs.toLocaleString()} open roles
-                </>
-              )}
-              {pulse.jobsAddedToday > 0 && (
-                <span className="hidden md:inline">
-                  <span className="mx-2 opacity-50">·</span>
-                  {pulse.jobsAddedToday} added today
-                </span>
-              )}
-            </span>
-            <span aria-hidden className="shrink-0">→</span>
-          </Link>
+      {/* ─── Hero — photo-led editorial (WhatsApp.com pattern) ───
+          Full-width rounded image. On desktop: text overlays the LEFT
+          third (over the dark reception area in the photo, where the
+          gradient gives WCAG-AA contrast for white type), and two
+          floating product-UI cards float on the RIGHT (mimicking
+          WhatsApp's chat-bubble overlays, but using real platform
+          features instead). On mobile: overlay collapses to a stack
+          (image on top, copy below) — floating cards hide. Secondary
+          actions (4 chips) sit BELOW the image card so the hero stays
+          focused on the two primary intents (hiring vs. looking). */}
+      <section className="bg-emce-light-bg">
+        <div className="container py-6 md:py-10">
+          <div className="relative overflow-hidden rounded-3xl shadow-emce-lg">
+            {/* Background photo. unoptimized because the Next/Image
+                optimizer on this Hetzner deploy returns null for
+                local fetches (see Phase 4 backlog). 1672x941 source,
+                serves at full-bleed in the hero card. */}
+            <Image
+              src="/home/hero-interview.jpg"
+              alt="A successful candidate shaking hands across a wooden table with a recruiter, after receiving an offer from emobility.careers — branded reception counter, brand notebook + mug on the table, modern open office in the background"
+              width={1672}
+              height={941}
+              priority
+              unoptimized
+              className="h-auto w-full object-cover"
+            />
 
-          <div className="animate-fade-up text-[11px] font-extrabold uppercase tracking-[0.2em] text-emce-mid">
-            ✦ The address of EV in India
-          </div>
-          <h1
-            className="animate-fade-up mt-3 max-w-4xl text-4xl font-extrabold leading-[1.05] tracking-tight text-white md:text-5xl lg:text-6xl"
-            style={{ animationDelay: "80ms" }}
-          >
-            Where the EV industry{" "}
-            <span className="emce-text-gradient">hires, gets hired,</span>
-            <br className="hidden md:block" /> and reads what&apos;s happening.
-          </h1>
-          <p
-            className="animate-fade-up mt-5 max-w-2xl text-base text-white/85 md:text-lg"
-            style={{ animationDelay: "160ms" }}
-          >
-            A daily snapshot of India&apos;s EV industry — jobs across battery,
-            charging, motors, vehicles and software; salaries you can
-            actually verify; the people moving the work; the signal you
-            need before your next move.
-          </p>
+            {/* Left-side dark gradient — strong on the reception side
+                where the text sits, fading to transparent over the
+                candidate's smile + handshake (so the photo's emotional
+                centre stays visible). */}
+            <div
+              aria-hidden
+              className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/55 to-black/10 md:from-black/75 md:via-black/35 md:to-transparent"
+            />
 
-          {/* "What brings you here" action row — replaces the "Find a job"
-              hard CTA. Five intents, equal weight visually so candidates,
-              employers and curious browsers all see themselves. */}
-          <div
-            className="animate-fade-up mt-8 flex flex-wrap gap-2"
-            style={{ animationDelay: "240ms" }}
-          >
-            {ACTION_PILLS.map((p, i) => (
-              <Button
-                key={p.href}
-                asChild
-                size="lg"
-                variant={p.tone === "primary" ? (i === 0 ? "glow" : "accent") : "outline"}
-                className={
-                  p.tone === "primary"
-                    ? ""
-                    : "border-white/40 bg-white/5 text-white hover:bg-white/15 hover:text-white"
-                }
+            {/* Content overlay — flex column so the live-ticker chip
+                pins top-left and the copy block pins mid-left. The
+                copy `max-w-md/lg` keeps it from creeping into the
+                photo's bright centre even on wide viewports. */}
+            <div className="absolute inset-0 flex flex-col p-5 sm:p-8 md:p-12 lg:p-16">
+              <Link
+                href="/pulse"
+                className="emce-pill self-start max-w-full transition hover:bg-white/15"
               >
-                <Link href={p.href}>
-                  <span className="mr-2" aria-hidden>{p.emoji}</span>
-                  {p.label}
-                </Link>
-              </Button>
+                <span aria-hidden className="relative flex h-2 w-2 shrink-0">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emce-mid opacity-75" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-emce-mid" />
+                </span>
+                <span className="min-w-0 truncate tabular-nums">
+                  <strong>LIVE</strong>
+                  <span className="hidden md:inline">
+                    <span className="mx-2 opacity-50">·</span>
+                    {dateStr}
+                  </span>
+                  {pulse.openJobs > 0 && (
+                    <>
+                      <span className="mx-2 opacity-50">·</span>
+                      {pulse.openJobs.toLocaleString()} open roles
+                    </>
+                  )}
+                  {pulse.jobsAddedToday > 0 && (
+                    <span className="hidden md:inline">
+                      <span className="mx-2 opacity-50">·</span>
+                      {pulse.jobsAddedToday} added today
+                    </span>
+                  )}
+                </span>
+                <span aria-hidden className="shrink-0">→</span>
+              </Link>
+
+              <div className="mt-auto max-w-md md:max-w-lg lg:max-w-xl">
+                <div className="animate-fade-up text-[11px] font-extrabold uppercase tracking-[0.2em] text-emce-mid">
+                  ✦ The address of EV in India
+                </div>
+                <h1
+                  className="animate-fade-up mt-3 text-3xl font-extrabold leading-[1.05] tracking-tight text-white sm:text-4xl md:text-5xl lg:text-6xl"
+                  style={{ animationDelay: "80ms" }}
+                >
+                  Where India&apos;s EV industry{" "}
+                  <span className="emce-text-gradient">hires, gets hired.</span>
+                </h1>
+                <p
+                  className="animate-fade-up mt-4 max-w-md text-sm text-white/90 sm:text-base md:text-lg"
+                  style={{ animationDelay: "160ms" }}
+                >
+                  Battery, charging, motors, vehicles and software — every EV
+                  career under one platform. 50,000+ professionals. 1,200+
+                  companies. Find your next role, or your next hire.
+                </p>
+                <div
+                  className="animate-fade-up mt-5 flex flex-wrap gap-3 md:mt-6"
+                  style={{ animationDelay: "240ms" }}
+                >
+                  <Button asChild size="lg" variant="glow">
+                    <Link href="/employer">🎯 I&apos;m hiring</Link>
+                  </Button>
+                  <Button
+                    asChild
+                    size="lg"
+                    variant="outline"
+                    className="border-white/50 bg-white/10 text-white backdrop-blur-sm hover:bg-white/20 hover:text-white"
+                  >
+                    <Link href="/jobs">🔍 I&apos;m looking</Link>
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            {/* Floating product-UI cards — only on lg+ to avoid
+                cluttering the photo on mid screens. Two cards stacked
+                in the upper-right quadrant of the image, mimicking
+                WhatsApp's "French Class" + chat-bubble overlay
+                pattern but using real platform UI elements (live
+                pulse counter + a match-found notification). */}
+            <div className="pointer-events-none absolute right-8 top-8 hidden w-72 flex-col gap-3 lg:flex">
+              {/* Card 1 — Live pulse mini stat */}
+              <div className="rounded-2xl bg-white p-4 shadow-2xl">
+                <div className="flex items-center gap-2">
+                  <span aria-hidden className="relative flex h-2 w-2">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emce-mid opacity-75" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emce-mid" />
+                  </span>
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-emce-mid-deep">
+                    Live now
+                  </span>
+                </div>
+                <p className="mt-2 text-2xl font-extrabold tabular-nums text-emce-darkest">
+                  {pulse.openJobs > 0 ? pulse.openJobs.toLocaleString() : "1,200+"}
+                </p>
+                <p className="text-hint text-emce-text-sec">
+                  open EV roles today
+                </p>
+                {pulse.jobsAddedToday > 0 && (
+                  <p className="mt-1 text-hint font-bold text-emce-mid-deep">
+                    +{pulse.jobsAddedToday} added in the last 24h
+                  </p>
+                )}
+              </div>
+
+              {/* Card 2 — Match-found notification (sample UI shape) */}
+              <div className="ml-8 rounded-2xl bg-white p-4 shadow-2xl">
+                <div className="flex items-center gap-2">
+                  <span aria-hidden className="text-base">🎯</span>
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-emce-mid-deep">
+                    Match found
+                  </span>
+                </div>
+                <p className="mt-2 text-sm font-bold text-emce-text">
+                  Battery Engineer · Tata EV
+                </p>
+                <div className="mt-2 flex items-center gap-2">
+                  <div className="h-2 flex-1 overflow-hidden rounded-full bg-emce-light-soft">
+                    <div className="h-full w-[92%] rounded-full bg-emce-mid" />
+                  </div>
+                  <span className="text-xs font-extrabold tabular-nums text-emce-mid-deep">
+                    92%
+                  </span>
+                </div>
+                <p className="mt-2 text-hint text-emce-text-sec">
+                  Pune · ₹24-32L · 4 days ago
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Secondary actions below the image card. The 4 non-primary
+              ACTION_PILLS land here as small chips so candidates still
+              have one-tap access to Salaries / Pulse / Roast / AI tools
+              without the hero competing with itself for attention. */}
+          <div className="mt-5 flex flex-wrap justify-center gap-2 md:mt-6">
+            {ACTION_PILLS.filter((p) => p.tone === "secondary").map((p) => (
+              <Link
+                key={p.href}
+                href={p.href}
+                className="inline-flex items-center gap-1.5 rounded-full border border-emce-border bg-white px-4 py-2 text-sm font-bold text-emce-text transition hover:border-emce-mid hover:bg-emce-light-soft"
+              >
+                <span aria-hidden>{p.emoji}</span>
+                {p.label}
+              </Link>
             ))}
           </div>
         </div>
