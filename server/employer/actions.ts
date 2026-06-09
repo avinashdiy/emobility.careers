@@ -330,11 +330,21 @@ export async function updateCompany(formData: FormData) {
   if (!employer.isCompanyAdmin) redirect("/403");
   const parsed = companyUpdateSchema.safeParse(Object.fromEntries(formData));
   if (!parsed.success) {
+    // Surface validation failure to the user instead of returning void
+    // (which silently discarded their edits). The /employer/company
+    // page renders <ToastFromSearchParams/>, so redirecting with
+    // ?error=… pops a toast — same pattern createStage + every other
+    // bare-form action in this codebase uses.
+    const flat = parsed.error.flatten();
+    const firstError =
+      Object.values(flat.fieldErrors).flat()[0] ??
+      flat.formErrors[0] ??
+      "Some fields need fixing — check the form and try again.";
     logger.warn(
-      { fieldErrors: parsed.error.flatten().fieldErrors },
-      "[employer] Zod validation failed — bare-form action returns void; user sees no feedback. Migrate to useActionState if per-field errors needed.",
+      { companyId: employer.companyId, fieldErrors: flat.fieldErrors },
+      "[updateCompany] validation failed",
     );
-    return;
+    redirect("/employer/company?error=" + encodeURIComponent(firstError));
   }
   const { techStack, benefits, ...rest } = parsed.data;
   await db.company.update({
@@ -350,6 +360,9 @@ export async function updateCompany(formData: FormData) {
   });
   revalidatePath("/employer");
   revalidatePath(`/company/${employer.company.slug}`);
+  // Confirm the save — previously the page just silently refreshed,
+  // leaving the user unsure whether anything happened.
+  redirect("/employer/company?notice=" + encodeURIComponent("Company details saved."));
 }
 
 // ─── Job posting ────────────────────────────────────────────

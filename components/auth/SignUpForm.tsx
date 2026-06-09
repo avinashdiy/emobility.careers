@@ -216,7 +216,7 @@ export function SignUpForm({
             required
             aria-invalid={!!state.fieldErrors?.country}
             aria-describedby={state.fieldErrors?.country ? "country-err" : "country-hint"}
-            className="h-10 w-full rounded-md border border-emce-border bg-white px-3 text-sm focus:border-emce-mid focus:outline-none"
+            className="h-10 w-full rounded-md border border-emce-border bg-white px-3 text-sm focus-visible:outline-none focus-visible:border-emce-mid focus-visible:ring-[3px] focus-visible:ring-emce-mid/15"
           >
             {SUPPORTED_COUNTRY_LIST.map((c) => (
               <option key={c.code} value={c.code}>

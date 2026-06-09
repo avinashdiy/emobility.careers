@@ -90,7 +90,8 @@ export default async function ApplicationDetail({
           // Pull the User.phone as a fallback — older signups stored
           // phone on User (via SMS-OTP onboarding) and never copied it
           // onto CandidateProfile.phone. Render whichever is set.
-          user: { select: { phone: true, email: true } },
+          // `status` gates the deleted-account privacy guard below.
+          user: { select: { phone: true, email: true, status: true } },
         },
       },
       notes: {
@@ -121,7 +122,20 @@ export default async function ApplicationDetail({
 
   const c = application.candidate;
   const fullName = [c.firstName, c.lastName].filter(Boolean).join(" ");
-  const resumeHref = c.resumeUrl ? await getResumeDownloadUrl({ applicationId: application.id }) : null;
+  // Deleted-account privacy guard. Account deletion (server/account/
+  // data-rights.ts) scrubs the candidate's name/contact and flips all
+  // visibility to PRIVATE, but intentionally keeps the Application row
+  // so the employer's pipeline history stays intact. It does NOT null
+  // resumeUrl, though — so without this guard the deleted candidate's
+  // resume (full PII) was still one click away in the ATS, defeating
+  // the deletion. When the account is DELETED we suppress the resume
+  // download + contact and show a banner; the historical row remains
+  // visible (read-only) for the employer's records.
+  const isDeleted = c.user?.status === "DELETED";
+  const resumeHref =
+    c.resumeUrl && !isDeleted
+      ? await getResumeDownloadUrl({ applicationId: application.id })
+      : null;
   // Detect Word-doc resumes so we don't try to iframe-preview them
   // (Chrome can't render .docx inline → would show a gray box).
   // Snapshot URL wins because that's the actual file the recruiter
@@ -348,6 +362,14 @@ export default async function ApplicationDetail({
               </div>
             </div>
 
+        {isDeleted && (
+          <div className="mb-4 rounded-md border border-emce-border bg-emce-light-soft/60 p-3 text-sm text-emce-text-sec">
+            <strong className="text-emce-text">This candidate has deleted their account.</strong>{" "}
+            Their application is kept here for your records, but their
+            résumé, contact details and profile are no longer available.
+          </div>
+        )}
+
         <Card className="p-4 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
             <div className="flex items-start gap-3 sm:contents">
@@ -386,7 +408,11 @@ export default async function ApplicationDetail({
                         it's an infrastructure problem to flag
                   Previously the button just vanished, making (b) and
                   (c) indistinguishable from "ATS is broken". */}
-              {resumeHref ? (
+              {isDeleted ? (
+                <div className="rounded-md border border-emce-border bg-emce-light-soft/40 px-2 py-1.5 text-[11px] text-emce-text-muted">
+                  Résumé removed — account deleted
+                </div>
+              ) : resumeHref ? (
                 <Button asChild variant="ghost" size="sm">
                   <a href={resumeHref} target="_blank" rel="noopener noreferrer">View resume</a>
                 </Button>
@@ -546,7 +572,7 @@ export default async function ApplicationDetail({
             legacy candidates onboarded via SMS-OTP have phone there
             but not on CandidateProfile).
           */}
-          {(c.phone || c.user?.phone || c.email || c.user?.email) && (
+          {!isDeleted && (c.phone || c.user?.phone || c.email || c.user?.email) && (
             <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 border-t border-emce-border pt-3 text-sm">
               <span className="text-hint font-bold uppercase tracking-wide text-emce-text-muted">
                 Contact

@@ -938,6 +938,16 @@ async function clearDriveImage(formData: FormData, field: "bannerImageUrl" | "he
     }
     const driveId = String(formData.get("driveId") ?? "");
     if (!driveId) return { ok: false, message: "Missing driveId." };
+    // Existence check mirrors uploadDriveImage — without it, a stale
+    // or bad driveId hits update() which throws P2025 and surfaces the
+    // generic "Could not remove image" + an error-level log, instead
+    // of a clean "Drive not found." This keeps the two paths
+    // consistent and quiets the log for an expected not-found.
+    const exists = await db.recruitmentDrive.findUnique({
+      where: { id: driveId },
+      select: { id: true },
+    });
+    if (!exists) return { ok: false, message: "Drive not found." };
     await db.recruitmentDrive.update({
       where: { id: driveId },
       data: { [field]: null },
@@ -1098,6 +1108,11 @@ async function clearDriveBrochure(
     }
     const driveId = String(formData.get("driveId") ?? "");
     if (!driveId) return { ok: false, message: "Missing driveId." };
+    const exists = await db.recruitmentDrive.findUnique({
+      where: { id: driveId },
+      select: { id: true },
+    });
+    if (!exists) return { ok: false, message: "Drive not found." };
     await db.recruitmentDrive.update({
       where: { id: driveId },
       data: { [field]: null },

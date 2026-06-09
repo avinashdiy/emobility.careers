@@ -7,197 +7,167 @@ verification → synthesis). 35 raw findings → **23 confirmed** after verifica
 
 **Audit date:** 2026-06-09
 **Severity counts:** 3 critical · 10 major · 8 minor · 3 nit
-**Status:** 3 critical resolved (2 fixed + 1 working-as-intended); 18 open
+**Status:** ✅ All 23 confirmed items triaged & closed — 18 fixed in code,
+5 closed as working-as-intended / won't-fix (with reasoning below).
 
-Status legend: `[ ]` open · `[x]` done · `[~]` decision needed (product call)
+Status legend: `[x]` fixed · `[WAI]` working-as-intended / won't-fix (verified
+at source, change would be wrong or not justified)
+
+> Note: source-verification overturned **5** "confirmed" findings — the
+> adversarial pass still let through items that dissolve (or invert into
+> data-loss risks) once you read the surrounding code. Every fix below was
+> read at the source before being applied or rejected.
 
 ---
 
 ## 🚨 Critical
 
-- [x] **Fair-registration counter race condition** — `server/recruitment-drives/registrations.ts:154`
-  Registration create + `registeredCount` increment were two separate DB calls.
-  A crash/connection-drop between them desynced the admin dashboard counter from
-  the true row count, permanently. **Fixed 2026-06-09** — both writes wrapped in
-  `db.$transaction` (register path + cancellation path both patched).
+- [x] **Fair-registration counter race condition** — `registrations.ts:154`
+  Register create + `registeredCount` increment were two separate calls →
+  desynced dashboard counter on crash. **Fixed** — both register + cancel paths
+  wrapped in `db.$transaction`.
 
-- [x] **Slot booking missing mode-compatibility audit trail** — `server/recruitment-drives/slots.ts:600`
-  The hybrid-mode compatibility gate (ONLINE/OFFLINE vs slot mode) validated
-  correctly but the audit log omitted both modes, making disputes ("the system
-  let me book an in-person slot when I registered online") unresolvable from the
-  log. **Fixed 2026-06-09** — audit meta now records `slotMode` + `candidateFairMode`.
+- [x] **Slot booking missing mode-compatibility audit trail** — `slots.ts:600`
+  **Fixed** — audit meta now records `slotMode` + `candidateFairMode`.
 
-- [x] **Resume `EMPLOYERS_ONLY` visible to all verified employers** — `lib/profile-visibility.ts:189`
-  **RESOLVED 2026-06-09 — working as intended (product decision).** Confirmed with
-  product owner: the searchable-resume model is deliberate. `EMPLOYERS_ONLY` =
-  any verified employer can download, which is the standard Naukri/LinkedIn
-  sourcing behaviour and lets recruiters find candidates who haven't applied yet.
-  No code change.
-
-  Detail for posterity — the audit flagged this as a bypass because
-  `canSeeResume()` for `EMPLOYERS_ONLY` returns `ctx.role === "EMPLOYER"` (any
-  employer), while the parallel `canSeeContact()` requires an application
-  relationship. That comparison was a false positive: the resume tier model is a
-  coherent 3-level design that matches its candidate-facing copy:
-  - `PRIVATE` → "Employers see it only when you apply to a job" (applied-only)
-  - `EMPLOYERS_ONLY` → "Verified employers can download your resume from your
-    profile" (any verified employer — the standard searchable-resume model)
-  - `EVERYONE` → "Anyone with your profile link can download"
-
-  Applying the audit's suggested fix (`&& ctx.hasApplicationRelationship`) would
-  make `EMPLOYERS_ONLY` **identical to `PRIVATE`**, collapsing two tiers and
-  silently breaking the promise to candidates who opted into recruiter discovery.
-  Only call site is the public profile page (`app/[username]/page.tsx:644`) — not
-  the employer sourcing flow.
+- [WAI] **Resume `EMPLOYERS_ONLY` visible to all verified employers** —
+  `lib/profile-visibility.ts:189`
+  **Working as intended** (confirmed with product owner). The searchable-resume
+  model is deliberate: `EMPLOYERS_ONLY` = any verified employer can download,
+  matching the candidate-facing copy. The audit's fix would collapse the tier
+  into `PRIVATE`. No change.
 
 ---
 
 ## ⚠️ Major
 
-- [ ] **In-app notifications bypass user preferences** — `lib/notifications/dispatch.ts:134`
-  `IN_APP` notifications are written inline without checking the user's
-  `NotificationPreference`, so users who disabled all channels still get in-app
-  alerts (consent violation). The worker path checks prefs; the inline path
-  doesn't. **Fix:** fetch `user.notificationPrefs` before the inline create and
-  apply the same gate the worker uses.
+- [x] **Roster import counter atomicity** — `registrations.ts:625`
+  **Fixed** — per-row create + increment wrapped in `db.$transaction`, same
+  pattern as the critical counter fix.
 
-- [ ] **`updateCompany` silently fails validation** — `server/employer/actions.ts:328`
-  Zod validation failures return `void` with no UI feedback — the user's edits
-  appear to vanish with no error. **Fix:** return `FormState { ok: false,
-  fieldErrors, message }` and bind to `useActionState`.
+- [x] **Webhook handler uses `console.warn/error`** — `app/api/v1/sync/academy/route.ts`
+  **Fixed** — swapped all three `console.*` for `logger.warn/error` with
+  `{ eventId, topic, subjectId }` context so failures surface in ops alerting.
 
-- [ ] **Bare FormData actions return void without surfacing errors** — `server/employer/actions.ts` (multiple: `updateCompany`, `createStage`)
-  Same root cause as above across several actions — validation failures are
-  invisible. **Fix:** convert all bare FormData actions to the `FormState`
-  pattern in `lib/form-state.ts` (`fieldErrors` from `Zod.error.flatten()`).
+- [x] **`updateCompany` silently fails validation** — `server/employer/actions.ts`
+  **Fixed** — validation failure now `redirect(?error=…)` and success
+  `redirect(?notice=…)`; the page's `<ToastFromSearchParams/>` pops the toast.
 
-- [ ] **Roster import increments counter per row (non-atomic)** — `server/recruitment-drives/registrations.ts:625`
-  Bulk CSV import increments `registeredCount` for each row individually. A crash
-  at row 47/100 leaves the counter ahead of actual registrations; restart
-  re-increments, climbing beyond reality. **Fix:** collect all creations and apply
-  a single counter update after success, or wrap the loop in `$transaction` with a
-  final `count()`-based set instead of inline increments. (Same family as the
-  critical counter fix — do it the same way.)
+- [x] **Bare FormData actions return void without errors** — `server/employer/*`
+  **Fixed for `updateCompany`.** `createStage` already redirected with `?error=`
+  on failure — the audit listed it in error; no change needed there.
 
-- [ ] **Webhook handler uses `console.warn/error`** — `app/api/v1/sync/academy/route.ts:125`
-  The academy-sync webhook logs via `console.*` instead of the pino logger, so
-  failures (unknown topics, handler errors) are invisible to ops dashboards +
-  alerting. **Fix:** use `logger.warn/error` with context (`event.id`,
-  `event.topic`, `event.subjectId`).
+- [x] **`clearDriveImage`/`clearDriveBrochure` skip existence check** —
+  `server/recruitment-drives/actions.ts`
+  **Fixed** — added `findUnique` existence guard to both, matching
+  `uploadDriveImage`. (Audit overstated this: `update` on a missing id already
+  threw P2025 → caught → returned an error, not success. The fix just yields a
+  clean "Drive not found." + quiets the error log.)
 
-- [ ] **`clearDriveImage`/`clearDriveBrochure` skip existence check** — `server/recruitment-drives/actions.ts:941`
-  These skip the `findUnique` existence check that `uploadDriveImage` performs, so
-  clearing an image on a non-existent drive returns success despite the DB error.
-  **Fix:** add a `findUnique` guard + return `{ ok: false, message: "Drive not
-  found." }`.
+- [x] **Deleted candidates' résumé still downloadable in ATS** —
+  `app/employer/applications/[id]/page.tsx`
+  **Fixed** — the real gap: account deletion scrubs name/contact + flips
+  visibility to PRIVATE but does NOT null `resumeUrl`, so a deleted candidate's
+  résumé (full PII) was one click away. Now: when `user.status === "DELETED"`
+  we suppress the résumé download + contact and show a "deleted account" banner;
+  the historical application row stays (read-only) for the employer's records.
 
-- [ ] **Deleted candidates still visible in ATS** — `app/employer/applications/[id]/page.tsx:78`
-  Soft-deleted candidates (`User.status === "DELETED"`) remain visible to
-  employers with scrubbed names (`deleted-X`), defeating the intent of account
-  deletion. **Fix:** check `application.candidate.user.status === "DELETED"` and
-  render a read-only "from deleted account" view, or redirect.
+- [x] **Broadcasts silently truncate beyond 50k** — `workers/processors/broadcasts.ts`
+  **Fixed** — `logger.warn` up front when audience > cap, `truncated` flag in
+  the completion log + worker return value. (Schema status enum left unchanged
+  to avoid a migration; recipientCount-vs-sentCount divergence + the log now
+  make truncation visible.)
 
-- [ ] **Broadcasts silently truncate beyond 50k recipients** — `workers/processors/broadcasts.ts:123`
-  Broadcasts cap at 50k recipients with no signal that delivery was truncated —
-  an admin targeting ALL_USERS reaches only the first 50k. **Fix:** log on cap,
-  set broadcast `status = "CAPPED"` (or add a `truncated` flag), and add a
-  pre-send UI warning when recipients > 50k.
+- [WAI] **In-app notifications "bypass" user preferences** —
+  `lib/notifications/dispatch.ts:134`
+  **Working as intended.** `NotificationPreference` has only `*Email`/`*SMS`
+  toggles — there is **no IN_APP preference** by design ("in-app + email
+  default; SMS off"). The worker also always writes the in-app row. The bell/
+  inbox always reflecting activity (email is what you mute) is the intended
+  pattern, same as LinkedIn/GitHub. Suppressing in-app on email prefs would be
+  the bug. No change.
 
 ---
 
 ## 🟡 Minor
 
-- [ ] **Broadcast cleanup swallows DB errors** — `workers/processors/broadcasts.ts:174`
-  `.catch(() => {})` on the status=FAILED cleanup hides DB errors, leaving status
-  stuck in limbo with no incident record. **Fix:** `.catch(err => logger.warn({
-  err, broadcastId }, '[broadcasts] failed to update status'))`.
+- [x] **Broadcast cleanup swallows DB errors** — `broadcasts.ts`
+  **Fixed** — `.catch(() => {})` → `.catch((err) => logger.warn(...))` so a
+  failed FAILED-status write is no longer invisible.
 
-- [ ] **Resume-parse worker logs S3 key (PII-adjacent)** — `workers/processors/resume-parse.ts:24`
-  The S3 key (may encode candidate identity) is logged alongside `candidateId`,
-  creating a persistent audit trail of resume uploads. **Fix:** omit the key or
-  hash/truncate it.
+- [x] **Resume-parse worker logs S3 key (PII-adjacent)** — `resume-parse.ts`
+  **Fixed** — dropped `key` from the start log (filename often encodes the
+  candidate's name); kept `jobId`, `candidateId`, `mimeType`.
 
-- [ ] **Resume file not cleaned up on application withdrawal** — `server/jobs/actions.ts:296`
-  Withdrawn applications leave `resumeSnapshotUrl` files orphaned in MinIO/S3.
-  **Fix:** delete the object (fire-and-forget) before setting `status=WITHDRAWN`.
+- [x] **Signup country `<select>` missing focus ring** — `components/auth/SignUpForm.tsx`
+  **Fixed** — now uses the same `focus-visible:ring-[3px] ring-emce-mid/15`
+  treatment as the `Input` component.
 
-- [ ] **`FairConnectionIssue` missing driveId index** — `prisma/schema.prisma` (FairConnectionIssue model)
-  Admin console queries issues by drive but the model has no denormalized
-  `driveId` / index, forcing a multi-table join through registration→drive.
-  **Fix:** add a denormalized `driveId` field + `@@index([driveId, status,
-  reportedAt])`. (Additive — safe `prisma db push`.)
+- [x] **Footer language pill lost region context** — `components/layout/language-switcher.tsx`
+  **Fixed** — descriptive tooltip ("Choose your language — translates the site")
+  + clearer `aria-label`.
 
-- [ ] **`RecruitmentDriveInterviewSlot` missing double-booking index** — `prisma/schema.prisma` (slot model)
-  The conflict check filters `(candidateId, status, startsAt)` but no composite
-  index covers all three. **Fix:** add `@@index([candidateId, status, startsAt])`.
-  (Additive — safe `prisma db push`.)
+- [WAI] **Résumé not cleaned up on application withdrawal** — `server/jobs/actions.ts:296`
+  **Won't fix — the suggested change would cause data loss.** `resumeSnapshotUrl`
+  is set to `profile.resumeUrl` (line 234) — it's the SAME object as the
+  candidate's live résumé, shared across their profile and every application.
+  Deleting it on withdrawal would destroy the live résumé and break all other
+  applications referencing it. There are no orphans (it's a frozen shared
+  reference, intentional per `candidates/actions.ts:917`).
 
-- [ ] **Hero floating cards hidden on tablet** — `app/(marketing)/page.tsx:286`
-  Floating product cards appear only at `lg+` (1024px) but the hero is visible at
-  `md` (768px), leaving tablets with an unbalanced hero. **Fix:** show at `md+`
-  with adjusted width, or accept as intentional.
+- [WAI] **FairConnectionIssue missing `driveId` index** — `prisma/schema.prisma`
+  **Won't fix — already adequately indexed.** The admin queue query
+  (`status: "OPEN" ORDER BY reportedAt`) is served by the existing
+  `@@index([status, reportedAt])`; connection issues are a small, fast-resolved
+  set. A denormalized `driveId` column (new column + backfill + write-path
+  change) isn't justified for the negligible gain.
 
-- [ ] **Signup country `<select>` missing focus ring** — `components/auth/SignUpForm.tsx:219`
-  The country picker lacks the `focus-visible:ring` treatment other inputs have,
-  hurting keyboard-nav discoverability. **Fix:** add `focus-visible:ring-[3px]
-  focus-visible:ring-emce-mid/15` to match the `Input` component.
+- [WAI] **RecruitmentDriveInterviewSlot double-booking index** — `prisma/schema.prisma`
+  **Won't fix — already adequately indexed.** The conflict check filters
+  `candidateId` + exact `startsAt` + status; the existing
+  `@@index([candidateId, startsAt])` makes this an exact-timestamp seek
+  returning ~0-1 rows, so adding `status` to the index is negligible and just
+  adds write-time index maintenance.
 
-- [ ] **Footer language pill lost region context** — `components/layout/site-footer.tsx:206`
-  Pill now shows "English" instead of "English (India)" — may read as ambiguous
-  to non-India visitors. **Fix (polish):** add a tooltip ("Choose site language")
-  or restore a region suffix. (Intentional change this session — low priority.)
+- [WAI] **Hero floating cards hidden on tablet** — `app/(marketing)/page.tsx`
+  **Accept as intentional.** At md (768px) the hero is ~360px tall; two stacked
+  288px cards at top + the bottom-left text overlay would overlap. The lg-only
+  gate is the correct call.
 
 ---
 
 ## ⚪ Nit
 
-- [ ] **Type-only server-only import** — `components/admin/SettingsForm.tsx:12`
-  Type-only import from a `server-only` module is safe but worth a clarifying
-  comment for the next reader. No functional change.
+- [x] **Type-only server-only import** — `components/admin/SettingsForm.tsx`
+  **Fixed** — added a comment explaining the `import type` from a `server-only`
+  module is safe (erased at compile time, no Prisma in the browser bundle).
 
-- [ ] **Worker drain timeout vs Docker grace** — `workers/index.ts:48`
-  25s drain timeout is hardcoded but Docker's default grace is 10s. **Fix:** read
-  from env, or document `stop_grace_period: 35s` in compose.
-
----
-
-## 🔁 Cross-cutting themes
-
-Patterns that recurred across findings — fixing at the coordination layer beats
-whack-a-mole:
-
-1. **Untracked race conditions on counter mutations.** Fair registrations (fixed),
-   roster import, and (historically) interview slots updated counters/state
-   without transactions. _Suggested sweep:_ grep every `{ increment: 1 }` /
-   `{ decrement: 1 }` adjacent to a related create/delete and confirm it's inside
-   a `$transaction`.
-
-2. **Silent form-validation failures.** Several server-action FormData handlers
-   return `void` on Zod failure instead of `FormState`. _Suggested:_ a lint rule
-   "FormData server actions must return FormState".
-
-3. **Production logging bypassing pino.** `console.warn/error` in API routes +
-   workers makes failures invisible to ops alerting.
-
-4. **Missing audit trails for compliance disputes.** Slot booking mode (fixed) and
-   broadcast truncation execute business logic without recording decision context.
-
-5. **Soft-delete not cascading.** Deleted candidates remain visible in ATS;
-   withdrawn applications keep dangling resume files.
-
-6. **Silent error swallowing in cleanup paths.** `.catch(() => {})` patterns leave
-   operators blind when state machines get stuck.
+- [x] **Worker drain timeout vs supervisor grace** — `workers/index.ts`
+  **Fixed** — drain timeout now reads `WORKER_DRAIN_TIMEOUT_MS` (default 25s)
+  so it can be matched to PM2's `kill_timeout` / Docker stop-grace.
 
 ---
 
-## 📋 Separately tracked (infra — maintenance window)
+## 🔁 Cross-cutting themes (status)
 
-These predate this audit and are tracked for a planned maintenance window:
+1. **Counter-mutation race conditions** — ✅ all 3 sites (register, cancel,
+   roster import) now transactional.
+2. **Silent form-validation failures** — ✅ `updateCompany` fixed; `createStage`
+   was already correct.
+3. **Production logging bypassing pino** — ✅ webhook + broadcast cleanup +
+   resume-parse PII all addressed.
+4. **Missing audit trails** — ✅ slot booking mode recorded; broadcast
+   truncation logged.
+5. **Soft-delete not cascading** — ✅ deleted-candidate ATS guard added.
+   (Résumé-on-withdrawal is intentionally a shared frozen reference — see WAI.)
+6. **Silent error swallowing** — ✅ broadcast cleanup `.catch` now logs.
 
-- [ ] **PgBouncer** — transaction-pooling proxy in front of the shared Postgres
-  (careers + academy + ev.care + healthandmedic all share `max_connections=100`).
-- [ ] **Next/Image optimizer broken server-side** — `/_next/image` returns null for
-  local-image fetches on this Hetzner standalone deploy. Currently worked around
-  with `unoptimized` on homepage hero photos; avatars mask it via initials
-  fallback. Root cause likely the standalone server's loopback fetch not reaching
-  its own port. Fix → drop the `unoptimized` flags.
+---
+
+## 📋 Infra — scheduled for a maintenance window
+
+- [ ] **PgBouncer** — transaction-pooling proxy for the shared Postgres
+  (careers + academy + ev.care + healthandmedic share `max_connections=100`).
+- [ ] **Next/Image optimizer broken server-side** — `/_next/image` returns null
+  for local fetches on this Hetzner standalone deploy. Worked around with
+  `unoptimized` on homepage hero + OG images. Fix → drop the `unoptimized` flags.

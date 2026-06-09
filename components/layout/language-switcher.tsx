@@ -107,8 +107,8 @@ export function LanguageSwitcher({
       className={`relative inline-flex items-center justify-center transition-colors focus-within:ring-2 focus-within:ring-emce-mid focus-within:ring-offset-2 ${toneClasses} ${sizingClasses} ${
         pending ? "opacity-60" : ""
       }`}
-      aria-label="Language"
-      title="Language"
+      aria-label="Choose your language"
+      title="Choose your language — translates the site"
     >
       <Globe className={isPill ? "h-3 w-3" : "h-4 w-4"} aria-hidden />
       {isPill && <span className="leading-none">{localeNames[current]}</span>}

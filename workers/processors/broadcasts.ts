@@ -121,6 +121,17 @@ export function startBroadcastsWorker() {
       const PAGE = 500;
       // Cap to a sane upper bound so a misclick doesn't email 10M people.
       const MAX_RECIPIENTS = 50_000;
+      // Surface truncation loudly. Without this, an admin targeting an
+      // audience larger than the cap saw status=SENT and assumed full
+      // delivery — only the recipientCount (total) vs sentCount (capped)
+      // divergence hinted otherwise. Log up front so ops sees it the
+      // moment the broadcast runs.
+      if (total > MAX_RECIPIENTS) {
+        logger.warn(
+          { broadcastId, total, cap: MAX_RECIPIENTS },
+          "[broadcasts] audience exceeds cap — delivery will be truncated",
+        );
+      }
       while (sent < MAX_RECIPIENTS) {
         const batch = await db.user.findMany({
           where,
@@ -151,6 +162,7 @@ export function startBroadcastsWorker() {
         if (batch.length < PAGE) break;
       }
 
+      const truncated = total > MAX_RECIPIENTS;
       await db.broadcast.update({
         where: { id: broadcastId },
         data: {
@@ -159,8 +171,13 @@ export function startBroadcastsWorker() {
           completedAt: new Date(),
         },
       });
-      logger.info({ broadcastId, recipients: sent }, "[broadcasts] fanout complete");
-      return { ok: true, sent };
+      logger.info(
+        { broadcastId, recipients: sent, total, truncated },
+        truncated
+          ? "[broadcasts] fanout complete (TRUNCATED at cap — some recipients not reached)"
+          : "[broadcasts] fanout complete",
+      );
+      return { ok: true, sent, total, truncated };
     },
     { connection: redis, concurrency: 1 },
   );
@@ -171,7 +188,14 @@ export function startBroadcastsWorker() {
       await db.broadcast.update({
         where: { id: job.data.broadcastId },
         data: { status: "FAILED", completedAt: new Date() },
-      }).catch(() => {});
+      }).catch((updateErr) =>
+        // Don't swallow silently — if we can't even mark the broadcast
+        // FAILED, it's stuck in SENDING with no record of why.
+        logger.warn(
+          { updateErr, broadcastId: job.data.broadcastId },
+          "[broadcasts] could not mark broadcast FAILED after job failure",
+        ),
+      );
     }
   });
 

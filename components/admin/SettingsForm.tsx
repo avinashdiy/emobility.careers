@@ -9,6 +9,10 @@ import { SubmitButton } from "@/components/ui/submit-button";
 import { FieldError } from "@/components/ui/field-error";
 import { saveSettings } from "@/server/admin/settings-actions";
 import { emptyFormState } from "@/lib/form-state";
+// Type-only import from lib/settings (a "server-only" module). This is
+// safe in a "use client" file because `import type` is erased at
+// compile time — no runtime code (and so no Prisma/db) is pulled into
+// the browser bundle. Do NOT change to a value import.
 import type { SettingDefinition } from "@/lib/settings";
 
 interface Props {

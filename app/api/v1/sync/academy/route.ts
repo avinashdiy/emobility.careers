@@ -38,6 +38,7 @@
 import { NextResponse } from "next/server";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { db } from "@/lib/db";
+import { logger } from "@/lib/logger";
 
 export const runtime = "nodejs";
 
@@ -122,16 +123,27 @@ export async function POST(req: Request) {
         // M2-M4 topics — handlers TBD. Return 200 so academy doesn't
         // retry an event we just haven't built a UI for yet; the row
         // still gets logged by the next branch.
-        console.warn("[sync] topic acknowledged but not yet handled:", event.topic);
+        logger.warn(
+          { eventId: event.id, topic: event.topic, subjectId: event.subjectId },
+          "[sync] topic acknowledged but not yet handled",
+        );
         break;
       default:
         // Unknown topics return 200 — we don't want academy stuck
         // retrying an event careers can't interpret. Log for triage.
-        console.warn("[sync] unknown topic", event.topic);
+        logger.warn(
+          { eventId: event.id, topic: event.topic, subjectId: event.subjectId },
+          "[sync] unknown topic",
+        );
     }
     return NextResponse.json({ ok: true });
   } catch (err) {
-    console.error("[sync] handler failure", event.id, err);
+    // Structured so academy-sync failures surface in pino /
+    // /admin/operations dashboards + alerting, not just stdout.
+    logger.error(
+      { err, eventId: event.id, topic: event.topic, subjectId: event.subjectId },
+      "[sync] handler failure",
+    );
     // 500 → academy will retry. Handlers must be idempotent.
     return NextResponse.json({ error: "handler failure" }, { status: 500 });
   }

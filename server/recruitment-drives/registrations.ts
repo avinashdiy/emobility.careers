@@ -630,18 +630,30 @@ export async function importDriveRoster(formData: FormData): Promise<void> {
 
       // Try to register. Existing registration → skip silently
       // (counter stays accurate via on-conflict no-op).
+      // Hoisted before the tx closure — TS doesn't carry the
+      // `!user.candidateProfile` guard's narrowing into a nested
+      // function, so we capture the id where it's known non-null.
+      const candidateProfileId = user.candidateProfile.id;
       try {
-        await db.recruitmentDriveRegistration.create({
-          data: {
-            driveId: drive.id,
-            candidateId: user.candidateProfile.id,
-            checkInCode: mintCheckInCode(),
-            source: "ROSTER_IMPORT",
-          },
-        });
-        await db.recruitmentDrive.update({
-          where: { id: drive.id },
-          data: { registeredCount: { increment: 1 } },
+        // Atomic create + counter increment — same fix as the direct
+        // register path. Per-row this prevents the bulk import from
+        // leaving the counter ahead of the real row count if a write
+        // fails (or the process is killed) partway through a large
+        // CSV. A P2002 (duplicate) rolls the whole row's tx back, so
+        // the counter is never bumped for a row that didn't insert.
+        await db.$transaction(async (tx) => {
+          await tx.recruitmentDriveRegistration.create({
+            data: {
+              driveId: drive.id,
+              candidateId: candidateProfileId,
+              checkInCode: mintCheckInCode(),
+              source: "ROSTER_IMPORT",
+            },
+          });
+          await tx.recruitmentDrive.update({
+            where: { id: drive.id },
+            data: { registeredCount: { increment: 1 } },
+          });
         });
         registeredCount += 1;
 

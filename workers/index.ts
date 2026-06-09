@@ -43,12 +43,17 @@ async function shutdown(signal: string) {
   shuttingDown = true;
   logger.info({ signal }, "[worker] shutdown signal — draining in-flight jobs");
   // Pass `true` to wait for active jobs to complete before closing the worker.
-  // Cap total drain at 25s so a stuck job can't block container teardown
-  // forever (Docker default stop-grace is 10s; bump it to 30 in compose).
+  // Cap total drain so a stuck job can't block teardown forever. Made
+  // env-configurable because the right value depends on the process
+  // manager's own kill grace period: PM2's `kill_timeout` (ecosystem
+  // .config.js) and Docker's stop-grace must be >= this, or the
+  // supervisor SIGKILLs us mid-drain. Set WORKER_DRAIN_TIMEOUT_MS to
+  // match. Default 25s.
+  const drainTimeoutMs = Number(process.env.WORKER_DRAIN_TIMEOUT_MS ?? 25_000);
   const timer = setTimeout(() => {
-    logger.warn("[worker] drain timeout — forcing exit");
+    logger.warn({ drainTimeoutMs }, "[worker] drain timeout — forcing exit");
     process.exit(1);
-  }, 25_000);
+  }, drainTimeoutMs);
   try {
     await Promise.allSettled(workers.map((w) => w.close(true)));
   } finally {

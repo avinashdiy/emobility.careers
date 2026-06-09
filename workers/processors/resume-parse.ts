@@ -21,7 +21,12 @@ export function startResumeParseWorker() {
     QueueNames.ResumeParse,
     async (job) => {
       const { candidateId, bucket, key, mimeType } = job.data;
-      logger.info({ jobId: job.id, candidateId, key }, "[resume-parse] start");
+      // Don't log the raw S3 key — it can encode candidate identity
+      // (filename often contains the person's name) and builds a
+      // persistent audit trail of who uploaded a resume and when.
+      // candidateId + jobId are enough to trace a parse run; mimeType
+      // is useful and non-identifying.
+      logger.info({ jobId: job.id, candidateId, mimeType }, "[resume-parse] start");
 
       const obj = await s3.send(new GetObjectCommand({ Bucket: bucket, Key: key }));
       const buffer = await streamToBuffer(obj.Body as Readable);
