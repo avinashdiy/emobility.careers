@@ -174,19 +174,25 @@ export default async function HomePage() {
             ≥1440 px viewports; this scales the gutter with the
             viewport instead. */}
         <div className="px-3 py-6 sm:px-6 md:py-8 lg:px-12 xl:px-16">
-          <div className="relative overflow-hidden rounded-3xl shadow-emce-lg">
+          <div className="relative aspect-[4/5] overflow-hidden rounded-3xl shadow-emce-lg sm:aspect-[3/2] md:aspect-[2/1] lg:aspect-[5/2] xl:aspect-[16/6]">
             {/* Background photo. unoptimized because the Next/Image
                 optimizer on this Hetzner deploy returns null for
-                local fetches (see Phase 4 backlog). 1672x941 source,
-                serves at full-bleed in the hero card. */}
+                local fetches (see Phase 4 backlog). 1672x941 source.
+                Aspect ratio scales by viewport: tallish on mobile so
+                the copy block has room above the photo's bright
+                centre, gradually flattening to ~16:6 on xl — matches
+                whatsapp.com's near-cinema-bar hero feel. The Image
+                uses fill+cover so the source gets cropped to fit the
+                container shape rather than the container growing to
+                fit the source. */}
             <Image
               src="/home/hero-interview.jpg"
               alt="A successful candidate shaking hands across a wooden table with a recruiter, after receiving an offer from emobility.careers — branded reception counter, brand notebook + mug on the table, modern open office in the background"
-              width={1672}
-              height={941}
+              fill
               priority
               unoptimized
-              className="h-auto w-full object-cover"
+              sizes="100vw"
+              className="object-cover object-[center_35%]"
             />
 
             {/* Left-side dark gradient — strong on the reception side
