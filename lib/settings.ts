@@ -153,6 +153,29 @@ const TTL_MS = Number(process.env.SETTINGS_TTL_MS ?? 30_000);
 let cache: { values: Map<string, string>; expires: number } | null = null;
 
 async function loadAll(): Promise<Map<string, string>> {
+  // Build-phase short-circuit. `next build` parallelises static-route
+  // generation across worker processes (one per CPU — 12 on the
+  // current Hetzner box). Each worker is its own Node process with
+  // its own Prisma client + its own connection pool, so without this
+  // guard a build of ~50 routes that each transitively call
+  // getSetting() can request 12 × `connection_limit` = >100 Postgres
+  // connections in a single burst. That trips P2037 "too many
+  // clients" against the shared Postgres instance (also serving
+  // emobility.academy + ev.care), masked at the time only by the
+  // catch-and-default fallback below.
+  //
+  // Safety review (2026-05): every statically-prerendered route in
+  // careers is settings-free (image assets, /robots.txt, /sitemap*,
+  // /opengraph-image). Every PAGE that consumes settings imports
+  // <SiteHeader /> which calls `auth()` and therefore renders
+  // dynamic — so no defaults from this short-circuit ever bake into
+  // an .html file at build time. First runtime request fills the
+  // real cache; users never see defaults.
+  if (process.env.NEXT_PHASE === "phase-production-build") {
+    const map = new Map<string, string>();
+    for (const def of SETTING_DEFINITIONS) map.set(def.key, def.default);
+    return map;
+  }
   if (cache && cache.expires > Date.now()) return cache.values;
   const rows = await db.siteSetting.findMany({ select: { key: true, value: true } }).catch((err) => {
     logger.warn({ err }, "[settings] read failed; falling back to defaults");
