@@ -36,8 +36,29 @@ export async function SiteFooter() {
               the half-faded variant for failing AA on the dark-teal
               footer surface; the full token (#eef2eb) hits ~12:1
               contrast against bg-emce-darkest. */}
-          <p className="mt-3 text-sm text-emce-light-soft">
-            India&apos;s specialised hiring platform for the electric mobility industry.
+          <p className="mt-4 text-sm font-extrabold leading-snug text-emce-light">
+            Where the EV industry hires, gets hired.
+          </p>
+          <p className="mt-2 text-sm leading-relaxed text-emce-light-soft">
+            The specialised hiring platform for battery, charging,
+            motors, vehicles and software careers — built for the
+            global electric mobility industry. Verified profiles,
+            AI-powered matching, salary intelligence, and hybrid
+            recruitathons in one place.
+          </p>
+          {/* International footprint — declared once in the footer so
+              every page footer signals reach without needing per-page
+              country switcher UI in the chrome. Flag emojis render
+              cleanly on every modern OS via the system colour-emoji
+              font; no SVG sprites needed. */}
+          <p className="mt-5 text-[10px] font-extrabold uppercase tracking-[0.18em] text-emce-mid">
+            Live in 8 countries
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-emce-light-soft/85">
+            🇮🇳 India · 🇬🇧 UK · 🇺🇸 US · 🇦🇪 UAE · 🇦🇺 Australia · 🇲🇾 Malaysia · 🇧🇩 Bangladesh · 🇳🇵 Nepal
+          </p>
+          <p className="mt-3 text-xs leading-relaxed text-emce-light-soft/70">
+            50,000+ EV professionals · 1,200+ companies · daily updates
           </p>
         </div>
         <FooterCol

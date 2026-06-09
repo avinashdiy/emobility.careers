@@ -167,7 +167,13 @@ export default async function HomePage() {
           actions (4 chips) sit BELOW the image card so the hero stays
           focused on the two primary intents (hiring vs. looking). */}
       <section className="bg-emce-light-bg">
-        <div className="container py-6 md:py-10">
+        {/* Wider-than-container gutters so the rounded photo card
+            reaches near-edge-to-edge (matches WhatsApp.com's hero
+            ~40-60px-gutter feel). The standard `container` class
+            caps at 1280 px which left awkward whitespace on
+            ≥1440 px viewports; this scales the gutter with the
+            viewport instead. */}
+        <div className="px-3 py-6 sm:px-6 md:py-8 lg:px-12 xl:px-16">
           <div className="relative overflow-hidden rounded-3xl shadow-emce-lg">
             {/* Background photo. unoptimized because the Next/Image
                 optimizer on this Hetzner deploy returns null for
