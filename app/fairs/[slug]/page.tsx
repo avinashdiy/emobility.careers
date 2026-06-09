@@ -647,6 +647,44 @@ export default async function FairLandingPage({
               </p>
             )}
 
+          {/* ─── About the event + featured image ───────────────
+              The primary "what is this" panel directly below the
+              hero (matches the event-page convention: lead with a
+              description + a hero photo before the stats). About copy
+              on the LEFT (wider column), a featured photo on the
+              RIGHT. Featured image = the fair's own bannerImageUrl
+              when an admin has set one, else the branded job-fair
+              photo (/og/fairs.jpg). Plain <img> (not next/image) to
+              bypass the broken standalone optimizer — same as the
+              hero banner does. Replaces the old "About this drive"
+              card that used to sit far down the page. */}
+          {drive.description && (
+            <section className="grid gap-8 lg:grid-cols-[1.45fr_1fr] lg:items-start">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-emce-mid-muted">
+                  About the event
+                </p>
+                <div
+                  className="prose prose-sm mt-3 max-w-none text-body text-emce-text-sec prose-headings:text-emce-text prose-strong:text-emce-text"
+                  dangerouslySetInnerHTML={{ __html: htmlOrFallback(drive.description) }}
+                />
+              </div>
+              <figure className="overflow-hidden rounded-2xl border border-emce-border shadow-emce-lg">
+                <div className="relative aspect-[16/10]">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={drive.bannerImageUrl ?? "/og/fairs.jpg"}
+                    alt={`${drive.title} — eMobility.careers job fair`}
+                    className="absolute inset-0 h-full w-full object-cover"
+                  />
+                </div>
+                <figcaption className="bg-white px-4 py-2 text-center text-hint text-emce-text-muted">
+                  {drive.city ? `${drive.city} · ` : ""}Drive the future. Build your career.
+                </figcaption>
+              </figure>
+            </section>
+          )}
+
           {/* ─── Stat band ─────────────────────────────────────
               Single cohesive centerpiece — NOT four equal grey
               boxes. Hierarchy:
@@ -1136,16 +1174,10 @@ export default async function FairLandingPage({
             </section>
           )}
 
-          {/* About */}
-          {drive.description && (
-            <Card className="p-6">
-              <h2 className="text-section text-emce-text">About this drive</h2>
-              <div
-                className="prose prose-sm mt-3 max-w-none text-body text-emce-text-sec"
-                dangerouslySetInnerHTML={{ __html: htmlOrFallback(drive.description) }}
-              />
-            </Card>
-          )}
+          {/* (The "About this drive" card moved up to the new
+              About-the-event + featured-image section directly below
+              the hero — see above. Removed here to avoid showing the
+              description twice.) */}
 
           {/* Venue map — falls back to a text card when lat/lng
               aren't set (e.g. virtual fairs or admin hasn't pinned
