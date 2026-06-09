@@ -19,7 +19,6 @@ import {
   type TopRoleByTier,
 } from "@/lib/salary-compass";
 import { Avatar } from "@/components/ui/avatar";
-import { FeaturedFairsRail } from "@/components/recruitment-drives/FeaturedFairsRail";
 import { FeaturedCompaniesGallery } from "@/components/marketing/FeaturedCompaniesGallery";
 import { getFeaturedPartnersWithSlugs } from "@/lib/featured-companies";
 
@@ -302,13 +301,6 @@ export default async function HomePage() {
             </div>
           </div>
         </div>
-      </section>
-
-      {/* ─── Featured recruitment drives ─── (renders nothing
-          when no featured fairs exist, so the section quietly
-          disappears between fairs and the layout flows on). */}
-      <section className="container py-10">
-        <FeaturedFairsRail />
       </section>
 
       {/* ─── Featured hiring partners — dark-section logo gallery ───
@@ -719,7 +711,17 @@ export default async function HomePage() {
         </Card>
 
         <Card className="bg-emce-darkest p-8 text-white hover:shadow-emce-modal">
-          <Badge variant="verified" className="mb-3">{t("value.employers.tag", locale)}</Badge>
+          {/* Bright emerald pill with dark text — `verified` variant
+              renders a pale yellow that disappears against the
+              dark-green card here. Explicit colour override matches
+              the brand palette and gives proper WCAG contrast on
+              the dark surface. */}
+          <Badge
+            variant="default"
+            className="mb-3 border-transparent bg-emce-mid text-emce-darkest"
+          >
+            {t("value.employers.tag", locale)}
+          </Badge>
           <h3 className="text-section text-2xl text-white">
             {t("value.employers.title", locale)}
           </h3>
