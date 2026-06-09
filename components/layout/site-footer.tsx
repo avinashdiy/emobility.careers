@@ -35,13 +35,19 @@ export async function SiteFooter() {
   return (
     <footer className="mt-24 border-t border-emce-border bg-emce-darkest text-emce-light-soft">
       <div className="container py-12 md:py-16">
-        {/* 5-column grid on lg+: brand-panel (2 cols wide) + 4 nav cols.
-            Stacks to 1 column on mobile, 2 cols on sm (brand + first
-            nav), 5-col on lg. Gap is generous so the layout breathes. */}
-        <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-12">
-          {/* Brand panel — wider via lg:col-span-4 so the international
-              value prop has room. */}
-          <div className="lg:col-span-4">
+        {/* 5-column grid on lg+: brand-panel + 4 nav columns. Uses
+            an arbitrary CSS-Grid template `2fr 1fr 1fr 1fr 1fr` so
+            the brand panel gets ~28% width (room for the value-prop
+            block) and each nav column gets ~14.5%. Previous version
+            used `lg:grid-cols-12` without col-span on the nav cols,
+            which squashed each FooterCol to 1/12 (8% width) and
+            wrapped even "Browse jobs" to two lines. Stacks to 1
+            column on mobile, 2 cols on sm. */}
+        <div className="grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:[grid-template-columns:2fr_1fr_1fr_1fr_1fr] lg:gap-x-8">
+          {/* Brand panel — first cell of the arbitrary template (2fr
+              ≈ 28% of the row width). No col-span needed since the
+              template explicitly sizes each column. */}
+          <div>
             {/* Logo PNG was designed for light backgrounds (dark teal
                 type). The marketing footer is dark teal too, so we
                 host it inside a white pill. */}
@@ -220,7 +226,7 @@ function FooterCol({
           <li key={l.href}>
             <Link
               href={l.href}
-              className="text-emce-light-soft/85 transition hover:text-emce-light"
+              className="whitespace-nowrap text-emce-light-soft/85 transition hover:text-emce-light"
             >
               {l.label}
             </Link>
