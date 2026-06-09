@@ -23,6 +23,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Textarea } from "@/components/ui/textarea";
 import { NativeSelect } from "@/components/ui/select";
 import { EmployerShell } from "@/components/layout/employer-shell";
+import { VideoIntroPlayer } from "@/components/recruitathon/VideoIntroPlayer";
 import { moveStage, addNote, rateApplication } from "@/server/ats/actions";
 import { scheduleInterview, cancelInterview } from "@/server/interviews/actions";
 import { startThreadFromApplication } from "@/server/messaging/actions";
@@ -128,6 +129,27 @@ export default async function ApplicationDetail({
   const storedResumeKey =
     application.resumeSnapshotUrl ?? c.resumeUrl ?? "";
   const isWordResume = /\.docx?($|\?)/i.test(storedResumeKey);
+
+  // Phase 3 hybrid — surface the candidate's video intro (if any)
+  // when this application came in through a fair (RecruitmentDrive).
+  // The registration row holds the videoIntroUrl. Authz on the
+  // playback presign happens server-side inside the client
+  // component's `getFairVideoIntroUrl` call.
+  const fairRegistration = application.recruitmentDriveId
+    ? await db.recruitmentDriveRegistration.findUnique({
+        where: {
+          driveId_candidateId: {
+            driveId: application.recruitmentDriveId,
+            candidateId: c.id,
+          },
+        },
+        select: {
+          id: true,
+          videoIntroUrl: true,
+          videoIntroUploadedAt: true,
+        },
+      })
+    : null;
 
   // Wave B #17 — lazy-generate the AI applicant summary the first
   // time a recruiter opens the application. Bounded latency via
@@ -602,6 +624,21 @@ export default async function ApplicationDetail({
               <Card className="p-6">
                 <h2 className="text-section text-emce-text">Cover letter</h2>
                 <p className="mt-2 whitespace-pre-line text-body text-emce-text-sec">{application.coverLetter}</p>
+              </Card>
+            )}
+
+            {/* Phase 3 hybrid — async video-intro fallback. Shows
+                only when the candidate uploaded one for the fair this
+                application came through. The player is a small
+                client component that fetches a presigned URL on
+                click (so the URL doesn't sit in page HTML where a
+                stale screenshot could leak it). */}
+            {fairRegistration?.videoIntroUrl && fairRegistration.videoIntroUploadedAt && (
+              <Card className="p-6">
+                <VideoIntroPlayer
+                  registrationId={fairRegistration.id}
+                  uploadedAt={fairRegistration.videoIntroUploadedAt.toISOString()}
+                />
               </Card>
             )}
 

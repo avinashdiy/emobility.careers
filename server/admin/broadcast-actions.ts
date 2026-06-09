@@ -7,7 +7,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { broadcastsQueue } from "@/lib/queues";
-import { BroadcastTarget, NotificationChannel } from "@prisma/client";
+import { BroadcastTarget, NotificationChannel, RecruitathonAvailability } from "@prisma/client";
 import { optionalUrl } from "@/lib/forms/zod-url";
 
 async function requireAdmin() {
@@ -26,6 +26,11 @@ const broadcastSchema = z.object({
   /// Empty string ("") is coerced to null at action level since the
   /// form select defaults to "" when no fair is picked.
   targetDriveId: z.string().optional().or(z.literal("")),
+  /// Phase 2 hybrid — optional fairMode filter on a FAIR_* target.
+  /// Empty string ("") means "no filter — every mode" and is coerced
+  /// to null below; otherwise OFFLINE / ONLINE / HYBRID narrows the
+  /// audience to that single attendance segment.
+  targetFairMode: z.union([z.nativeEnum(RecruitathonAvailability), z.literal("")]).optional(),
   email: z.coerce.boolean().optional(),
   sms: z.coerce.boolean().optional(),
   whatsapp: z.coerce.boolean().optional(),
@@ -63,6 +68,20 @@ export async function createBroadcast(formData: FormData) {
     redirect("/admin/broadcasts?error=" + encodeURIComponent("Pick a fair when targeting fair registrants."));
   }
 
+  // Phase 2 hybrid — fairMode filter only applies when the target
+  // is fair-scoped AND filters by candidate fairMode (currently
+  // FAIR_REGISTERED_CANDIDATES + FAIR_ALL_REGISTRANTS — the
+  // employer / TPO targets don't expose fairMode). For other
+  // targets we forcibly null it out so it can't accidentally
+  // affect anything downstream.
+  const targetFairMode =
+    (parsed.data.target === BroadcastTarget.FAIR_REGISTERED_CANDIDATES ||
+      parsed.data.target === BroadcastTarget.FAIR_ALL_REGISTRANTS) &&
+    parsed.data.targetFairMode &&
+    parsed.data.targetFairMode.length > 0
+      ? (parsed.data.targetFairMode as RecruitathonAvailability)
+      : null;
+
   const broadcast = await db.broadcast.create({
     data: {
       title: parsed.data.title,
@@ -70,6 +89,7 @@ export async function createBroadcast(formData: FormData) {
       link: parsed.data.link || null,
       target: parsed.data.target,
       targetDriveId,
+      targetFairMode,
       channels,
       createdById: session.user.id,
       status: parsed.data.sendNow ? "SENDING" : "DRAFT",

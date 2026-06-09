@@ -108,6 +108,27 @@ export default async function BroadcastsPage() {
                 Only OPEN / IN_PROGRESS fairs are listed. To target a closed fair&apos;s audience (e.g. post-event survey), bump it back to OPEN temporarily.
               </p>
             </div>
+            {/* Phase 2 hybrid — optional attendance-mode filter on
+                fair-scoped CANDIDATE / ALL audiences. Empty option =
+                no filter (every mode). Ignored server-side for
+                EMPLOYER / TPO targets, but always rendered here so the
+                admin doesn't have to swap fields when changing target. */}
+            <div className="sm:col-span-12">
+              <Label htmlFor="targetFairMode">Attendance-mode filter (optional)</Label>
+              <NativeSelect id="targetFairMode" name="targetFairMode" defaultValue="">
+                <option value="">— No filter (every mode) —</option>
+                <option value="OFFLINE">📍 In-person (OFFLINE) only</option>
+                <option value="ONLINE">💻 Online only</option>
+                <option value="HYBRID">🌐 Hybrid only</option>
+              </NativeSelect>
+              <p className="mt-1 text-hint text-emce-text-muted">
+                Narrows the FAIR_REGISTERED_CANDIDATES /
+                FAIR_ALL_REGISTRANTS audiences to a single attendance
+                mode. Example: blast &quot;your Meet link is in your
+                pass&quot; to ONLINE only. No effect on platform-wide
+                or non-candidate targets.
+              </p>
+            </div>
             <fieldset className="sm:col-span-12 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <legend className="sr-only">Channels</legend>
               <label className="flex items-center gap-2 rounded-md bg-emce-light-soft p-2 text-hint font-bold text-emce-text">

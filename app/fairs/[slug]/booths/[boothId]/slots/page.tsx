@@ -61,8 +61,10 @@ export default async function FairBoothSlotsPage({
   }
 
   // Pull available slots only. Past slots filtered out so the page
-  // doesn't show ghost slots from earlier in the day.
-  const slots = await db.recruitmentDriveInterviewSlot.findMany({
+  // doesn't show ghost slots from earlier in the day. `mode` is
+  // included so we can render a badge per slot AND filter against
+  // the candidate's registration mode below (Phase 1 hybrid work).
+  const rawSlots = await db.recruitmentDriveInterviewSlot.findMany({
     where: {
       driveCompanyId: booth.id,
       status: "AVAILABLE",
@@ -80,6 +82,10 @@ export default async function FairBoothSlotsPage({
   let registered = false;
   let myBookingAtBooth: { id: string; startsAt: Date } | null = null;
   let hasCandidateProfile = false;
+  // Phase 1 hybrid filtering — the candidate's registration mode
+  // decides which slots they can book. Null when the candidate isn't
+  // registered yet OR registered before fairMode was captured.
+  let candidateFairMode: "OFFLINE" | "ONLINE" | "HYBRID" | null = null;
   if (session?.user) {
     const profile = await db.candidateProfile.findUnique({
       where: { userId: session.user.id },
@@ -107,11 +113,12 @@ export default async function FairBoothSlotsPage({
         where: {
           driveId_candidateId: { driveId: drive.id, candidateId: profile.id },
         },
-        select: { status: true },
+        select: { status: true, fairMode: true },
       });
       registered =
         reg !== null &&
         (reg.status === "REGISTERED" || reg.status === "CHECKED_IN");
+      candidateFairMode = reg?.fairMode ?? null;
 
       // Existing booking at THIS booth (if any) — so the candidate
       // sees their current booking surfaced even when browsing
@@ -127,6 +134,24 @@ export default async function FairBoothSlotsPage({
       myBookingAtBooth = existingBooking;
     }
   }
+
+  // Hybrid Recruitathon (Phase 1) — filter slots by the candidate's
+  // registration mode. OFFLINE candidates see only ONSITE slots;
+  // ONLINE candidates see only VIDEO/PHONE slots; HYBRID candidates
+  // see everything. Anonymous viewers / not-yet-registered candidates
+  // see the whole list (they hit the eligibility-gate panel before
+  // booking anyway). We keep the raw total around so we can surface
+  // "X of Y compatible with your mode" — important for the case
+  // where a Delhi student visits a booth that only has ONSITE slots
+  // and would otherwise see an empty list with no explanation.
+  const slots = candidateFairMode && candidateFairMode !== "HYBRID"
+    ? rawSlots.filter((s) =>
+        candidateFairMode === "ONLINE"
+          ? s.mode === "VIDEO" || s.mode === "PHONE"
+          : s.mode === "ONSITE",
+      )
+    : rawSlots;
+  const filteredOut = rawSlots.length - slots.length;
 
   // Group available slots by date (Asia/Kolkata).
   const slotsByDay = new Map<string, typeof slots>();
@@ -302,7 +327,34 @@ export default async function FairBoothSlotsPage({
           <div>
             <h2 className="text-section text-emce-text">
               {slots.length} available {slots.length === 1 ? "slot" : "slots"}
+              {filteredOut > 0 && (
+                <span className="ml-2 text-hint font-normal text-emce-text-muted">
+                  · {filteredOut} {filteredOut === 1 ? "slot" : "slots"} hidden (different mode)
+                </span>
+              )}
             </h2>
+            {filteredOut > 0 && candidateFairMode && candidateFairMode !== "HYBRID" && (
+              <Card className="mt-3 border-emce-mid/30 bg-emce-light-soft/30 p-3">
+                <p className="text-hint text-emce-text-sec">
+                  You registered as{" "}
+                  <strong className="text-emce-text">
+                    {candidateFairMode === "ONLINE" ? "online" : "in-person"}
+                  </strong>
+                  , so only{" "}
+                  <strong className="text-emce-text">
+                    {candidateFairMode === "ONLINE" ? "video / phone" : "in-person"}
+                  </strong>{" "}
+                  slots show here. To see everything, re-register from the{" "}
+                  <Link
+                    href={`/fairs/${slug}`}
+                    className="font-bold text-emce-dark hover:underline"
+                  >
+                    fair page
+                  </Link>{" "}
+                  and choose HYBRID.
+                </p>
+              </Card>
+            )}
             {slots.length === 0 ? (
               <Card className="mt-3 p-6 text-center">
                 <p className="text-hint text-emce-text-muted">
@@ -338,6 +390,19 @@ export default async function FairBoothSlotsPage({
                           <span className="shrink-0 text-hint text-emce-text-muted">
                             {s.durationMinutes}m
                           </span>
+                          {s.mode === "VIDEO" ? (
+                            <Badge variant="default" size="sm" className="bg-emce-mid/20 text-emce-darkest">
+                              📹 Video
+                            </Badge>
+                          ) : s.mode === "PHONE" ? (
+                            <Badge variant="default" size="sm" className="bg-emce-mid/20 text-emce-darkest">
+                              📞 Phone
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" size="sm">
+                              📍 In person
+                            </Badge>
+                          )}
                           {s.job && (
                             <Badge variant="default" size="sm">
                               {s.job.title}

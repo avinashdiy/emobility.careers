@@ -11,7 +11,20 @@ import { notificationsQueue, QueueNames, type BroadcastJob } from "@/lib/queues"
  * worker handles in-app + email/SMS dispatch with the user's preferences.
  */
 
-function whereForTarget(target: string, targetDriveId: string | null): Prisma.UserWhereInput {
+function whereForTarget(
+  target: string,
+  targetDriveId: string | null,
+  // Phase 2 hybrid — optional fairMode filter applied INSIDE the
+  // FAIR_REGISTERED_CANDIDATES + FAIR_ALL_REGISTRANTS audiences.
+  // Null = no additional filter (default behaviour, audience-wide).
+  // Set = only candidate registrations matching this mode are
+  // included. Ignored for non-fair targets and for employer/TPO
+  // fair targets (those don't have a fairMode concept).
+  targetFairMode: "OFFLINE" | "ONLINE" | "HYBRID" | null,
+): Prisma.UserWhereInput {
+  const fairRegFilter = targetFairMode
+    ? { driveId: targetDriveId!, cancelledAt: null, fairMode: targetFairMode }
+    : { driveId: targetDriveId!, cancelledAt: null };
   switch (target) {
     case "ALL_USERS":
       return { status: "ACTIVE" };
@@ -38,7 +51,7 @@ function whereForTarget(target: string, targetDriveId: string | null): Prisma.Us
       return {
         status: "ACTIVE",
         candidateProfile: {
-          fairRegistrations: { some: { driveId: targetDriveId, cancelledAt: null } },
+          fairRegistrations: { some: fairRegFilter },
         },
       };
     case "FAIR_REGISTERED_EMPLOYERS":
@@ -73,7 +86,7 @@ function whereForTarget(target: string, targetDriveId: string | null): Prisma.Us
       return {
         status: "ACTIVE",
         OR: [
-          { candidateProfile: { fairRegistrations: { some: { driveId: targetDriveId, cancelledAt: null } } } },
+          { candidateProfile: { fairRegistrations: { some: fairRegFilter } } },
           { employerProfile: { company: { recruitmentDriveParticipations: { some: { driveId: targetDriveId, withdrawnAt: null } } } } },
           { placementCellsCreated: { some: { status: "APPROVED", referredRegistrations: { some: { driveId: targetDriveId } } } } },
         ],
@@ -91,7 +104,11 @@ export function startBroadcastsWorker() {
       const broadcast = await db.broadcast.findUnique({ where: { id: broadcastId } });
       if (!broadcast) return { ok: false, reason: "not-found" };
 
-      const where = whereForTarget(broadcast.target, broadcast.targetDriveId);
+      const where = whereForTarget(
+        broadcast.target,
+        broadcast.targetDriveId,
+        broadcast.targetFairMode,
+      );
       const total = await db.user.count({ where });
       await db.broadcast.update({
         where: { id: broadcastId },

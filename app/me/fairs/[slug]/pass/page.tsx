@@ -11,8 +11,14 @@ import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
 import { ToastFromSearchParams } from "@/components/ui/toast-from-params";
-import { cancelDriveRegistration } from "@/server/recruitment-drives/registrations";
+import {
+  cancelDriveRegistration,
+  markOnlineCheckedIn,
+} from "@/server/recruitment-drives/registrations";
 import { cancelInterviewBooking } from "@/server/recruitment-drives/slots";
+import { PresencePinger } from "@/components/recruitathon/PresencePinger";
+import { ConnectionIssueButton } from "@/components/recruitathon/ConnectionIssueButton";
+import { VideoIntroUploader } from "@/components/recruitathon/VideoIntroUploader";
 
 export const metadata: Metadata = {
   title: "Your fair pass",
@@ -84,7 +90,17 @@ export default async function FairPassPage({
 
   const reg = await db.recruitmentDriveRegistration.findUnique({
     where: { driveId_candidateId: { driveId: drive.id, candidateId: profile.id } },
-    select: { id: true, status: true, checkInCode: true, createdAt: true, checkedInAt: true },
+    select: {
+      id: true,
+      status: true,
+      checkInCode: true,
+      createdAt: true,
+      checkedInAt: true,
+      fairMode: true,
+      interviewReadyAt: true,
+      videoIntroUrl: true,
+      videoIntroUploadedAt: true,
+    },
   });
   if (!reg) {
     // No registration — kick back to the fair landing with a hint.
@@ -92,6 +108,16 @@ export default async function FairPassPage({
       `/fairs/${slug}?notice=` +
         encodeURIComponent("You're not registered yet — click Register to attend."),
     );
+  }
+
+  // Phase 2 hybrid — auto-check-in path for ONLINE / HYBRID
+  // candidates who hit the pass page during the event window.
+  // Idempotent inside the action; safe to call on every render.
+  // OFFLINE candidates and out-of-window views are no-ops.
+  const isOnlineCandidate =
+    reg.fairMode === "ONLINE" || reg.fairMode === "HYBRID";
+  if (isOnlineCandidate && !reg.checkedInAt) {
+    await markOnlineCheckedIn(slug);
   }
 
   // Pull this candidate's interview slot bookings at any booth in
@@ -111,6 +137,11 @@ export default async function FairPassPage({
       durationMinutes: true,
       status: true,
       notes: true,
+      // Phase 1 hybrid — mode decides which CTA to render in the
+      // booked-slots list (Join for VIDEO, venue info for ONSITE,
+      // a stand-by hint for PHONE). meetingUrl powers the Join link.
+      mode: true,
+      meetingUrl: true,
       driveCompany: {
         select: {
           boothLabel: true,
@@ -120,6 +151,17 @@ export default async function FairPassPage({
       job: { select: { id: true, title: true } },
     },
   });
+
+  // Phase 1 hybrid — used by the Join-button branch below. A button
+  // shown 30 min before the slot start AND up to (durationMinutes + 15)
+  // after — wide enough that a candidate who's a few minutes late or
+  // a recruiter running long can both still tap Join.
+  const now = new Date();
+  function joinWindow(slot: { startsAt: Date; durationMinutes: number }): boolean {
+    const opensAt = new Date(slot.startsAt.getTime() - 30 * 60 * 1000);
+    const closesAt = new Date(slot.startsAt.getTime() + (slot.durationMinutes + 15) * 60 * 1000);
+    return now >= opensAt && now <= closesAt;
+  }
 
   // ICS download URL — uses an existing API route pattern if one
   // exists, otherwise falls back to a manual data: URL we mint
@@ -141,6 +183,13 @@ export default async function FairPassPage({
       <SiteHeader />
       <main className="min-h-screen bg-emce-light-bg py-8 md:py-12">
         <ToastFromSearchParams />
+        {/* Phase 2 hybrid — presence beacon for ONLINE / HYBRID
+            candidates. Bumps lastActiveAt every 60s while the tab is
+            foregrounded, plus on visibilitychange. Powers the live
+            console's "online active right now" tile. OFFLINE
+            candidates skip the beacon — their presence is the
+            scanner at the venue, not a tab somewhere. */}
+        {isOnlineCandidate && <PresencePinger driveSlug={slug} />}
         <div className="container max-w-2xl space-y-4">
           <Link
             href={`/fairs/${slug}`}
@@ -172,6 +221,25 @@ export default async function FairPassPage({
               )}
               {reg.status === "NO_SHOW" && (
                 <Badge variant="outline">No-show</Badge>
+              )}
+              {/* Phase 1 hybrid — attendance-mode badge so the candidate
+                  sees at a glance whether they're heading to the venue
+                  or joining online. */}
+              {reg.fairMode === "OFFLINE" && (
+                <Badge variant="outline">📍 In-person</Badge>
+              )}
+              {reg.fairMode === "ONLINE" && (
+                <Badge variant="outline">💻 Online</Badge>
+              )}
+              {reg.fairMode === "HYBRID" && (
+                <Badge variant="outline">🌐 Hybrid</Badge>
+              )}
+              {/* Phase 2 hybrid — setup-tested badge for online
+                  candidates who've passed the camera/mic self-test.
+                  Recruiter sees the same signal as a green dot on
+                  their slot board. */}
+              {isOnlineCandidate && reg.interviewReadyAt && (
+                <Badge variant="success">✓ Setup tested</Badge>
               )}
             </div>
 
@@ -245,6 +313,21 @@ export default async function FairPassPage({
               <Button asChild variant="outline" size="sm">
                 <a href={`/me/fairs/${drive.slug}/slots.ics`}>📅 Interview slots → calendar</a>
               </Button>
+              {/* Phase 2 hybrid — only surface for online-capable
+                  candidates. OFFLINE registrants don't need to test. */}
+              {isOnlineCandidate && (
+                <Button
+                  asChild
+                  variant={reg.interviewReadyAt ? "outline" : "default"}
+                  size="sm"
+                >
+                  <Link href={`/me/fairs/${drive.slug}/test-call`}>
+                    {reg.interviewReadyAt
+                      ? "🎥 Re-test camera + mic"
+                      : "🎥 Test camera + mic"}
+                  </Link>
+                </Button>
+              )}
               {reg.status === "REGISTERED" && drive.status !== "CLOSED" && (
                 <form action={cancelDriveRegistration}>
                   <input type="hidden" name="driveId" value={drive.id} />
@@ -270,57 +353,183 @@ export default async function FairPassPage({
             <Card className="p-6">
               <h2 className="text-section text-emce-text">Your interview slots</h2>
               <p className="mt-1 text-hint text-emce-text-sec">
-                Show up 5 minutes early. Bring photo ID + a printed CV
-                (we&apos;ll have the digital one on file).
+                In-person slots: arrive 5 minutes early with photo ID. Online
+                slots: tap Join when the time comes — the link opens in a
+                new tab.
               </p>
               <ul className="mt-3 divide-y divide-emce-border">
-                {bookedSlots.map((s) => (
-                  <li key={s.id} className="flex items-start gap-3 py-3">
-                    <div className="min-w-0 flex-1">
-                      <p className="font-bold text-emce-text">
-                        {s.driveCompany.company.name}
-                        {s.driveCompany.boothLabel && (
-                          <span className="ml-2 text-hint font-normal text-emce-text-muted">
-                            · 📍 {s.driveCompany.boothLabel}
-                          </span>
+                {bookedSlots.map((s) => {
+                  const isOnline = s.mode === "VIDEO" || s.mode === "PHONE";
+                  const canJoin =
+                    s.mode === "VIDEO" &&
+                    s.meetingUrl &&
+                    s.status === "BOOKED" &&
+                    joinWindow(s);
+                  return (
+                    <li key={s.id} className="py-3">
+                      <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-emce-text">
+                            {s.driveCompany.company.name}
+                            {!isOnline && s.driveCompany.boothLabel && (
+                              <span className="ml-2 text-hint font-normal text-emce-text-muted">
+                                · 📍 {s.driveCompany.boothLabel}
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-hint text-emce-text-sec">
+                            {s.startsAt.toLocaleString("en-IN", {
+                              timeZone: "Asia/Kolkata",
+                              weekday: "short",
+                              day: "numeric",
+                              month: "short",
+                              hour: "numeric",
+                              minute: "2-digit",
+                              hour12: true,
+                            })}{" "}
+                            · {s.durationMinutes} min
+                            {s.job ? ` · ${s.job.title}` : ""}
+                          </p>
+                          {/* Phase 1 hybrid — per-slot mode badge tells
+                              the candidate exactly how this one is
+                              happening. Visually distinct so the
+                              ONLINE-Delhi candidate doesn't accidentally
+                              show up at a Pune booth. */}
+                          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                            {s.mode === "VIDEO" && (
+                              <Badge variant="default" size="sm" className="bg-emce-mid/20 text-emce-darkest">
+                                📹 Online · video
+                              </Badge>
+                            )}
+                            {s.mode === "PHONE" && (
+                              <Badge variant="default" size="sm" className="bg-emce-mid/20 text-emce-darkest">
+                                📞 Online · phone
+                              </Badge>
+                            )}
+                            {s.mode === "ONSITE" && (
+                              <Badge variant="outline" size="sm">
+                                📍 In person
+                              </Badge>
+                            )}
+                            {s.status === "COMPLETED" && (
+                              <Badge variant="success" size="sm">✓ Done</Badge>
+                            )}
+                          </div>
+                          {s.notes && (
+                            <p className="mt-1 text-hint italic text-emce-text-sec">
+                              {s.notes}
+                            </p>
+                          )}
+                          {/* PHONE mode — recruiter calls the candidate's
+                              registered phone. Just a hint; no Join button. */}
+                          {s.mode === "PHONE" && s.status === "BOOKED" && (
+                            <p className="mt-2 text-hint text-emce-text-sec">
+                              📞 The recruiter will call you on your registered
+                              phone number. Keep it handy 5 minutes before the
+                              slot time.
+                            </p>
+                          )}
+                        </div>
+                        {s.status === "BOOKED" && (
+                          <form action={cancelInterviewBooking}>
+                            <input type="hidden" name="slotId" value={s.id} />
+                            <ConfirmSubmit
+                              variant="link"
+                              size="sm"
+                              confirm={`Cancel your ${s.driveCompany.company.name} interview slot?`}
+                              pendingLabel="…"
+                              className="text-emce-red-deep"
+                            >
+                              Cancel
+                            </ConfirmSubmit>
+                          </form>
                         )}
-                      </p>
-                      <p className="text-hint text-emce-text-sec">
-                        {s.startsAt.toLocaleString("en-IN", {
-                          timeZone: "Asia/Kolkata",
-                          weekday: "short",
-                          day: "numeric",
-                          month: "short",
-                          hour: "numeric",
-                          minute: "2-digit",
-                          hour12: true,
-                        })}{" "}
-                        · {s.durationMinutes} min
-                        {s.job ? ` · ${s.job.title}` : ""}
-                      </p>
-                      {s.notes && (
-                        <p className="mt-1 text-hint italic text-emce-text-sec">
-                          {s.notes}
-                        </p>
+                      </div>
+                      {/* VIDEO mode — Join CTA. We always render the
+                          link when the slot has a meetingUrl, but
+                          gate the *primary* (filled) variant to the
+                          ±30 min window so the candidate doesn't
+                          jump into an empty room hours early. The
+                          outline variant always shows so the candidate
+                          can copy the link to their calendar app. */}
+                      {s.mode === "VIDEO" && s.meetingUrl && s.status === "BOOKED" && (
+                        <div className="mt-3 flex flex-wrap items-center gap-2">
+                          {canJoin ? (
+                            <Button asChild size="sm">
+                              <a
+                                href={s.meetingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                ▶ Join interview
+                              </a>
+                            </Button>
+                          ) : (
+                            <Button asChild size="sm" variant="outline">
+                              <a
+                                href={s.meetingUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                Open meeting link
+                              </a>
+                            </Button>
+                          )}
+                          <span className="text-hint text-emce-text-muted">
+                            {canJoin
+                              ? "Join button is live — opens in a new tab."
+                              : "Join button lights up 30 min before the slot."}
+                          </span>
+                        </div>
                       )}
-                    </div>
-                    <form action={cancelInterviewBooking}>
-                      <input type="hidden" name="slotId" value={s.id} />
-                      <ConfirmSubmit
-                        variant="link"
-                        size="sm"
-                        confirm={`Cancel your ${s.driveCompany.company.name} interview slot?`}
-                        pendingLabel="…"
-                        className="text-emce-red-deep"
-                      >
-                        Cancel
-                      </ConfirmSubmit>
-                    </form>
-                  </li>
-                ))}
+                    </li>
+                  );
+                })}
               </ul>
             </Card>
           )}
+
+          {/* Phase 3 hybrid — async fallback. Online candidates can
+              upload a 2-min video intro that recruiters see as a
+              non-blocking review item. Useful when a slot got
+              cancelled, they couldn't book in time, or they just
+              want a recruiter to put a face to the CV. OFFLINE
+              candidates skip this — they're at the booth in person. */}
+          {isOnlineCandidate && (
+            <Card className="p-6">
+              <h2 className="text-section text-emce-text">
+                🎥 Video intro (optional)
+              </h2>
+              <VideoIntroUploader
+                driveSlug={slug}
+                hasExistingIntro={Boolean(reg.videoIntroUrl)}
+              />
+            </Card>
+          )}
+
+          {/* Phase 3 hybrid — connection-issue SOS. Surfaces during
+              and slightly around the event window so a candidate
+              having pre-event setup trouble can ping the admin too.
+              Hidden completely for OFFLINE candidates — they walk up
+              to the help desk at the venue. */}
+          {isOnlineCandidate &&
+            new Date() >= new Date(drive.startsAt.getTime() - 60 * 60 * 1000) &&
+            new Date() <= new Date(drive.endsAt.getTime() + 30 * 60 * 1000) && (
+              <Card className="border-emce-red/30 bg-emce-red-light/30 p-6">
+                <h2 className="text-section text-emce-text">
+                  Something not working?
+                </h2>
+                <p className="mt-1 text-hint text-emce-text-sec">
+                  If your video / mic / Meet link is failing during a
+                  booked slot, tap this — the fair admin gets paged
+                  on WhatsApp and will call you back. We&apos;ll also
+                  try to re-slot you with the recruiter.
+                </p>
+                <div className="mt-3">
+                  <ConnectionIssueButton driveSlug={slug} />
+                </div>
+              </Card>
+            )}
 
           <p className="text-hint text-emce-text-sec">
             Lost your code? It&apos;s already linked to your account — fair

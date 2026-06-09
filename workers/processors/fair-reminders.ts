@@ -37,12 +37,26 @@ const TICK_EVERY_MS = 10 * 60 * 1000; // 10 minutes
 // The marker column ensures one-and-done; the window covers ±2-12 hr
 // around the target so a worker that's been offline for an hour
 // still catches due rows.
+//
+// Phase 1 hybrid — `buildBody` receives the registration's `fairMode`
+// so the copy can branch:
+//   OFFLINE → venue address copy ("plan your travel to Pune")
+//   ONLINE  → Meet-link copy ("your interview slots have join links
+//             on your fair pass")
+//   HYBRID / null → blended copy that mentions both paths
+type FairMode = "OFFLINE" | "ONLINE" | "HYBRID" | null;
+
 type ReminderDef = {
   marker: "reminderWeekBeforeSentAt" | "reminder3DaysSentAt" | "reminderDayBeforeSentAt" | "reminderHourBeforeSentAt";
   windowFromHours: number;
   windowToHours: number;
   type: string;
-  buildBody: (driveTitle: string, checkInCode: string, place: string) => { title: string; body: string };
+  buildBody: (args: {
+    driveTitle: string;
+    checkInCode: string;
+    place: string;
+    fairMode: FairMode;
+  }) => { title: string; body: string };
 };
 
 const REMINDERS: ReminderDef[] = [
@@ -51,8 +65,8 @@ const REMINDERS: ReminderDef[] = [
     windowFromHours: 7 * 24 - 6,
     windowToHours: 7 * 24 + 6,
     type: "fair.reminder_week",
-    buildBody: (title) => ({
-      title: `${title} is a week away`,
+    buildBody: ({ driveTitle }) => ({
+      title: `${driveTitle} is a week away`,
       body: "One week to go. Make sure your profile + résumé are up to date so recruiters can find you on the day.",
     }),
   },
@@ -61,9 +75,14 @@ const REMINDERS: ReminderDef[] = [
     windowFromHours: 3 * 24 - 6,
     windowToHours: 3 * 24 + 6,
     type: "fair.reminder_3days",
-    buildBody: (title, _code, place) => ({
-      title: `${title} — 3 days to go`,
-      body: `Plan your travel to ${place}. Pre-book any interview slots from the fair page so the in-demand booths don't fill up.`,
+    buildBody: ({ driveTitle, place, fairMode }) => ({
+      title: `${driveTitle} — 3 days to go`,
+      body:
+        fairMode === "ONLINE"
+          ? "Online attendees: pre-book interview slots from the fair page so the in-demand recruiters don't fill up. Meet links will be on each booked slot in your fair pass."
+          : fairMode === "OFFLINE"
+            ? `Plan your travel to ${place}. Pre-book any interview slots from the fair page so the in-demand booths don't fill up.`
+            : `Plan your trip to ${place} (or your virtual setup). Pre-book interview slots from the fair page so the in-demand booths don't fill up.`,
     }),
   },
   {
@@ -71,9 +90,12 @@ const REMINDERS: ReminderDef[] = [
     windowFromHours: 24 - 4,
     windowToHours: 24 + 4,
     type: "fair.reminder_day_before",
-    buildBody: (title, code) => ({
-      title: `${title} is tomorrow`,
-      body: `Save your check-in code ${code} and your fair pass for offline use. We'll see you tomorrow!`,
+    buildBody: ({ driveTitle, checkInCode, fairMode }) => ({
+      title: `${driveTitle} is tomorrow`,
+      body:
+        fairMode === "ONLINE"
+          ? `Open your fair pass tomorrow — your booked interview slots have Join buttons that activate 30 min before each slot. Test your camera + mic now if you haven't already.`
+          : `Save your check-in code ${checkInCode} and your fair pass for offline use. We'll see you tomorrow!`,
     }),
   },
   {
@@ -81,9 +103,15 @@ const REMINDERS: ReminderDef[] = [
     windowFromHours: 1,
     windowToHours: 3,
     type: "fair.reminder_hour_before",
-    buildBody: (title, code, place) => ({
-      title: `Heading to ${title}?`,
-      body: `Doors open soon. Your check-in code is ${code}. Venue: ${place}.`,
+    buildBody: ({ driveTitle, checkInCode, place, fairMode }) => ({
+      title:
+        fairMode === "ONLINE"
+          ? `${driveTitle} starts soon — open your fair pass`
+          : `Heading to ${driveTitle}?`,
+      body:
+        fairMode === "ONLINE"
+          ? `Doors open soon. Open your fair pass and watch for Join buttons on your booked slots — they activate 30 min before each slot.`
+          : `Doors open soon. Your check-in code is ${checkInCode}. Venue: ${place}.`,
     }),
   },
 ];
@@ -115,6 +143,8 @@ export async function dispatchFairReminders() {
       select: {
         id: true,
         checkInCode: true,
+        // Phase 1 hybrid — fairMode drives the mode-aware copy branch.
+        fairMode: true,
         candidate: { select: { userId: true } },
         drive: { select: { id: true, slug: true, title: true, city: true, state: true } },
       },
@@ -124,7 +154,12 @@ export async function dispatchFairReminders() {
 
     for (const reg of due) {
       const place = [reg.drive.city, reg.drive.state].filter(Boolean).join(", ");
-      const { title, body } = r.buildBody(reg.drive.title, reg.checkInCode, place);
+      const { title, body } = r.buildBody({
+        driveTitle: reg.drive.title,
+        checkInCode: reg.checkInCode,
+        place,
+        fairMode: reg.fairMode,
+      });
       try {
         await notificationsQueue.add(`fair-reminder-${r.marker}`, {
           userId: reg.candidate.userId,

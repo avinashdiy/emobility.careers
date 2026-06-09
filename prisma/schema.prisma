@@ -274,6 +274,7 @@ model User {
   /// roster uploads this admin made.
   fairCheckInsConducted       RecruitmentDriveRegistration[] @relation("FairCheckInBy")
   fairRosterImports           RecruitmentDriveRosterImport[] @relation("FairRosterImporter")
+  fairIssuesResolved          FairConnectionIssue[]          @relation("FairIssueResolver")
   /// College placement-cell sign-ups the user filed (typically one
   /// per TPO) + the moderation audit trail for admins who reviewed.
   placementCellsCreated       CollegePlacementCell[]         @relation("PlacementCellCreator")
@@ -2971,6 +2972,14 @@ model Broadcast {
   /// broadcast's audit trail survives the drive being archived.
   targetDriveId  String?
   targetDrive    RecruitmentDrive?     @relation("BroadcastTargetDrive", fields: [targetDriveId], references: [id], onDelete: SetNull)
+  /// Phase 2 hybrid — optional further filter on a FAIR_REGISTERED_*
+  /// audience by the candidate's chosen attendance mode. Null = no
+  /// extra filter (everyone in the FAIR audience). Set to ONLINE to
+  /// blast "your Meet link is in your pass" only to Delhi-style
+  /// remote attendees; OFFLINE to send venue logistics only to
+  /// Pune-style in-person attendees; HYBRID to target the both-OK
+  /// segment. Ignored for non-FAIR targets.
+  targetFairMode RecruitathonAvailability?
   channels       NotificationChannel[]
   status         BroadcastStatus       @default(DRAFT)
   recipientCount Int                   @default(0)
@@ -4708,6 +4717,23 @@ model RecruitmentDriveInterviewSlot {
   /// 30-minute default matches the brochure's "interview bay"
   /// cadence; recruiter can override per slot.
   durationMinutes Int                     @default(30)
+  /// Hybrid Recruitathon (Phase 1) — slot delivery mode.
+  ///   ONSITE — physical booth at the venue (default; matches the
+  ///            historical assumption every slot was in-person).
+  ///   VIDEO  — online video interview; recruiter supplies a
+  ///            `meetingUrl` (Meet/Zoom/Teams). Candidate's fair
+  ///            pass surfaces a "Join" button at slot time.
+  ///   PHONE  — recruiter will call the candidate at the registered
+  ///            phone number. `meetingUrl` may optionally hold a
+  ///            tel: link for the recruiter's reference.
+  /// Filtering: a registration with fairMode=OFFLINE sees only
+  /// ONSITE slots; fairMode=ONLINE sees only VIDEO+PHONE; HYBRID
+  /// sees everything.
+  mode            InterviewMode           @default(ONSITE)
+  /// Required when mode=VIDEO (validated at create time, not in
+  /// schema, to keep the column additive for existing rows).
+  /// Optional for PHONE. Null for ONSITE.
+  meetingUrl      String?
   status          InterviewSlotStatus     @default(AVAILABLE)
   /// Booked-by candidate. Set on book, cleared on cancel. SetNull
   /// on candidate deletion so the audit trail ("slot was once
@@ -4722,6 +4748,9 @@ model RecruitmentDriveInterviewSlot {
   notes           String?                 @db.Text
   createdAt       DateTime                @default(now())
   updatedAt       DateTime                @updatedAt
+
+  /// Phase 3 hybrid — back-ref to issues reported against this slot.
+  connectionIssues FairConnectionIssue[]   @relation("ConnectionIssueSlot")
 
   @@index([driveCompanyId, startsAt])
   @@index([candidateId, startsAt])
@@ -4983,6 +5012,33 @@ model RecruitmentDriveRegistration {
   reminder3DaysSentAt      DateTime?
   reminderDayBeforeSentAt  DateTime?
   reminderHourBeforeSentAt DateTime?
+  // ─── Hybrid Recruitathon (Phase 2) ─────────────────────────
+  /// Set when an ONLINE/HYBRID candidate completes the camera +
+  /// mic self-test at /me/fairs/[slug]/test-call. Powers the
+  /// recruiter's "is this candidate setup-tested?" indicator on
+  /// the day-of-event slot board (green dot vs red dot). Null
+  /// for OFFLINE candidates (they don't need to test) and for
+  /// online candidates who haven't run the check yet.
+  interviewReadyAt         DateTime?
+  /// Last time the candidate hit `/me/fairs/[slug]/pass` (server-
+  /// side bump) or their presence-pinger fired (every 60s while
+  /// the pass page is open). Drives the live console's "X online
+  /// active right now" tile (last 5 min). Null for candidates who
+  /// haven't opened the pass at all post-registration.
+  lastActiveAt             DateTime?
+  // ─── Hybrid Recruitathon (Phase 3) ─────────────────────────
+  /// MinIO bucket key for the candidate's async video introduction
+  /// (max 2 min). Async fallback for candidates whose slot got
+  /// cancelled OR who registered ONLINE but couldn't book a slot
+  /// — recruiter sees the intro as a non-blocking review item.
+  /// Bucket = `docs` (private; pre-signed for recruiter view).
+  /// Null until the candidate uploads.
+  videoIntroUrl            String?
+  videoIntroUploadedAt     DateTime?
+  /// Open connection-issue reports the candidate has filed for
+  /// this registration. Drives the admin live console's "active
+  /// issues" queue + the per-registration history view.
+  connectionIssues         FairConnectionIssue[]
   /// FK to the CollegePlacementCell whose invite link the candidate
   /// followed when they registered. Null when the candidate found
   /// the fair directly (no TPO referral). Powers the TPO dashboard's
@@ -5021,6 +5077,49 @@ model RecruitmentDriveRegistration {
 // (`rowCount` = lines parsed, `invitedCount` = invites sent,
 // `registeredCount` = successful registrations, `failedCount` =
 // errors with a reason captured in `errorReport`).
+
+// ─── Hybrid Recruitathon (Phase 3) — connection-issue reports ─────
+//
+// Candidate-initiated SOS button on the fair pass. Captured per-
+// registration so the admin live console can show "active issues"
+// at a glance during the event. Resolved status flips when an admin
+// (or the fair's primary contact) marks the issue handled.
+//
+// Status flow: OPEN → RESOLVED. We don't model intermediate states
+// (TRIAGED / ESCALATED) because for a 1-2 day event the inbox
+// processing is fast-loop — the admin reads, calls/chats the
+// candidate, marks resolved. Re-opens are filed as new rows so the
+// history is append-only.
+
+enum FairConnectionIssueStatus {
+  OPEN
+  RESOLVED
+}
+
+model FairConnectionIssue {
+  id             String                       @id @default(cuid())
+  registrationId String
+  registration   RecruitmentDriveRegistration @relation(fields: [registrationId], references: [id], onDelete: Cascade)
+  /// Optional slot the candidate was on when the issue happened.
+  /// SetNull on slot delete so the issue record survives a slot
+  /// cleanup. Lets the admin see "Issue at 11:15 during the Tata
+  /// EV slot" without joining through the registration.
+  slotId         String?
+  slot           RecruitmentDriveInterviewSlot? @relation("ConnectionIssueSlot", fields: [slotId], references: [id], onDelete: SetNull)
+  /// Free-text candidate note ("video froze", "can't hear them",
+  /// "Meet won't load"). Max 500 chars enforced at the action layer
+  /// so a typo'd 50kb paste can't bloat the table.
+  message        String?                       @db.Text
+  status         FairConnectionIssueStatus     @default(OPEN)
+  reportedAt     DateTime                      @default(now())
+  resolvedAt     DateTime?
+  resolvedById   String?
+  resolvedBy     User?                         @relation("FairIssueResolver", fields: [resolvedById], references: [id], onDelete: SetNull)
+  resolutionNote String?                       @db.Text
+
+  @@index([registrationId, reportedAt])
+  @@index([status, reportedAt])
+}
 
 model RecruitmentDriveRosterImport {
   id              String           @id @default(cuid())

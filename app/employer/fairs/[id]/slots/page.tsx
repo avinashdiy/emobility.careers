@@ -19,6 +19,7 @@ import {
   createInterviewSlot,
   deleteInterviewSlot,
   markInterviewSlotOutcome,
+  rescheduleInterviewSlot,
 } from "@/server/recruitment-drives/slots";
 
 export const metadata: Metadata = { title: "Booth interview slots" };
@@ -89,6 +90,7 @@ export default async function FairSlotsPage({
       job: { select: { id: true, title: true } },
       candidate: {
         select: {
+          id: true,
           firstName: true,
           lastName: true,
           slug: true,
@@ -98,6 +100,68 @@ export default async function FairSlotsPage({
       },
     },
   });
+
+  // Phase 2 hybrid — pull the candidate's registration record for
+  // each BOOKED slot so the slot board can surface their setup-tested
+  // state and their online presence. One round-trip via a single
+  // findMany scoped to this drive + the booked candidates.
+  const bookedCandidateIds = slots
+    .filter((s) => s.status === "BOOKED" && s.candidate?.id)
+    .map((s) => s.candidate!.id);
+  const registrationsByCandidate = new Map<
+    string,
+    {
+      fairMode: "OFFLINE" | "ONLINE" | "HYBRID" | null;
+      interviewReadyAt: Date | null;
+      lastActiveAt: Date | null;
+    }
+  >();
+  if (bookedCandidateIds.length > 0) {
+    const regs = await db.recruitmentDriveRegistration.findMany({
+      where: {
+        driveId: drive.id,
+        candidateId: { in: bookedCandidateIds },
+      },
+      select: {
+        candidateId: true,
+        fairMode: true,
+        interviewReadyAt: true,
+        lastActiveAt: true,
+      },
+    });
+    for (const r of regs) {
+      registrationsByCandidate.set(r.candidateId, {
+        fairMode: r.fairMode,
+        interviewReadyAt: r.interviewReadyAt,
+        lastActiveAt: r.lastActiveAt,
+      });
+    }
+  }
+
+  // Phase 2 hybrid — "next 2 hours" split. Surfaces the upcoming
+  // ONSITE-mode + ONLINE-mode queues separately so the recruiter
+  // running a hybrid booth can see both streams without scrolling
+  // through a flat day's worth of slots. Past-but-recent slots
+  // (in the last 15 min) stay in the queue so a recruiter
+  // running 10 min late still sees their current candidate.
+  const now = new Date();
+  const queueOpenedAt = new Date(now.getTime() - 15 * 60 * 1000);
+  const queueClosesAt = new Date(now.getTime() + 2 * 60 * 60 * 1000);
+  const upcomingOnsite = slots.filter(
+    (s) =>
+      s.status === "BOOKED" &&
+      s.mode === "ONSITE" &&
+      s.startsAt >= queueOpenedAt &&
+      s.startsAt <= queueClosesAt,
+  );
+  const upcomingOnline = slots.filter(
+    (s) =>
+      s.status === "BOOKED" &&
+      (s.mode === "VIDEO" || s.mode === "PHONE") &&
+      s.startsAt >= queueOpenedAt &&
+      s.startsAt <= queueClosesAt,
+  );
+  const presenceWindow = new Date(now.getTime() - 5 * 60 * 1000);
 
   // Group slots by date (Asia/Kolkata local) so the recruiter
   // scans by fair-day rather than scrolling a long flat list.
@@ -133,6 +197,115 @@ export default async function FairSlotsPage({
           subtitle={`${availableCount} available · ${bookedCount} booked · ${slots.length} total`}
           backHref={`/employer/fairs/${drive.id}`}
         />
+
+        {/* Phase 2 hybrid — "Next 2 hours" split view. Renders only
+            when at least one booked slot is upcoming, so the rest of
+            the page (the bulk generator + single-add + full slot list)
+            isn't disturbed during off-event periods. */}
+        {(upcomingOnsite.length > 0 || upcomingOnline.length > 0) && (
+          <Card className="border-emce-mid/40 bg-emce-light-soft/40 p-5">
+            <h2 className="text-section text-emce-text">⏱ Next 2 hours</h2>
+            <p className="mt-1 text-hint text-emce-text-sec">
+              Your queue right now. Green dot = candidate&apos;s camera +
+              mic are tested. Pulse dot = candidate has the pass open
+              in the last 5 min.
+            </p>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-emce-mid-muted">
+                  📹 Online ({upcomingOnline.length})
+                </p>
+                {upcomingOnline.length === 0 ? (
+                  <p className="mt-2 text-hint text-emce-text-muted">
+                    No online interviews in the next 2 h.
+                  </p>
+                ) : (
+                  <ul className="mt-2 space-y-2">
+                    {upcomingOnline.slice(0, 6).map((s) => {
+                      const r = s.candidate ? registrationsByCandidate.get(s.candidate.id) : undefined;
+                      const ready = Boolean(r?.interviewReadyAt);
+                      const active =
+                        r?.lastActiveAt && r.lastActiveAt >= presenceWindow;
+                      return (
+                        <li
+                          key={s.id}
+                          className="flex items-center gap-2 rounded-md border border-emce-border bg-white p-2"
+                        >
+                          <span className="w-16 shrink-0 font-mono text-xs font-bold text-emce-text tabular-nums">
+                            {s.startsAt.toLocaleTimeString("en-IN", {
+                              timeZone: "Asia/Kolkata",
+                              hour: "numeric",
+                              minute: "2-digit",
+                              hour12: true,
+                            })}
+                          </span>
+                          <span
+                            title={ready ? "Setup tested" : "Not setup-tested yet"}
+                            aria-label={ready ? "Setup tested" : "Not setup-tested"}
+                            className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                              ready ? "bg-emce-mid" : "bg-emce-red"
+                            }`}
+                          />
+                          {active && (
+                            <span
+                              className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-emce-mid-deep"
+                              title="Online right now"
+                              aria-label="Online right now"
+                            />
+                          )}
+                          <span className="min-w-0 flex-1 truncate text-sm text-emce-text">
+                            {s.candidate?.firstName} {s.candidate?.lastName ?? ""}
+                          </span>
+                          {s.meetingUrl && (
+                            <a
+                              href={s.meetingUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="shrink-0 rounded-md bg-emce-dark px-2 py-1 text-xs font-bold text-emce-light hover:bg-emce-dark-deep"
+                            >
+                              Join
+                            </a>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-wider text-emce-mid-muted">
+                  📍 At the booth ({upcomingOnsite.length})
+                </p>
+                {upcomingOnsite.length === 0 ? (
+                  <p className="mt-2 text-hint text-emce-text-muted">
+                    No in-person interviews in the next 2 h.
+                  </p>
+                ) : (
+                  <ul className="mt-2 space-y-2">
+                    {upcomingOnsite.slice(0, 6).map((s) => (
+                      <li
+                        key={s.id}
+                        className="flex items-center gap-2 rounded-md border border-emce-border bg-white p-2"
+                      >
+                        <span className="w-16 shrink-0 font-mono text-xs font-bold text-emce-text tabular-nums">
+                          {s.startsAt.toLocaleTimeString("en-IN", {
+                            timeZone: "Asia/Kolkata",
+                            hour: "numeric",
+                            minute: "2-digit",
+                            hour12: true,
+                          })}
+                        </span>
+                        <span className="min-w-0 flex-1 truncate text-sm text-emce-text">
+                          {s.candidate?.firstName} {s.candidate?.lastName ?? ""}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Bulk generator — the "10 AM - 5 PM × 30 min" path. */}
         <Card className="p-5">
@@ -192,6 +365,29 @@ export default async function FairSlotsPage({
                 required
               />
             </div>
+            {/* Hybrid Recruitathon (Phase 1) — every slot generated by
+                this batch gets the same mode. Recruiters who want a
+                mixed day run the bulk twice (once ONSITE, once VIDEO). */}
+            <div>
+              <Label htmlFor="bulk-mode">Mode *</Label>
+              <NativeSelect id="bulk-mode" name="mode" defaultValue="ONSITE">
+                <option value="ONSITE">In-person at booth</option>
+                <option value="VIDEO">Online — video</option>
+                <option value="PHONE">Online — phone</option>
+              </NativeSelect>
+            </div>
+            <div>
+              <Label htmlFor="bulk-meeting-url">
+                Meeting URL <span className="text-emce-text-muted">(VIDEO only)</span>
+              </Label>
+              <Input
+                id="bulk-meeting-url"
+                name="meetingUrl"
+                type="url"
+                inputMode="url"
+                placeholder="https://meet.google.com/abc-defg-hij"
+              />
+            </div>
             <div className="sm:col-span-2">
               <Label htmlFor="bulk-job">
                 Pin to a job (optional)
@@ -245,6 +441,26 @@ export default async function FairSlotsPage({
                 inputMode="numeric"
               />
             </div>
+            <div>
+              <Label htmlFor="single-mode">Mode *</Label>
+              <NativeSelect id="single-mode" name="mode" defaultValue="ONSITE">
+                <option value="ONSITE">In-person at booth</option>
+                <option value="VIDEO">Online — video</option>
+                <option value="PHONE">Online — phone</option>
+              </NativeSelect>
+            </div>
+            <div>
+              <Label htmlFor="single-meeting-url">
+                Meeting URL <span className="text-emce-text-muted">(VIDEO only)</span>
+              </Label>
+              <Input
+                id="single-meeting-url"
+                name="meetingUrl"
+                type="url"
+                inputMode="url"
+                placeholder="https://meet.google.com/abc-defg-hij"
+              />
+            </div>
             <div className="sm:col-span-2">
               <Label htmlFor="single-job">Pin to a job (optional)</Label>
               <NativeSelect id="single-job" name="jobId" defaultValue="">
@@ -292,6 +508,23 @@ export default async function FairSlotsPage({
                         <span className="w-14 shrink-0 text-hint text-emce-text-muted">
                           {s.durationMinutes}m
                         </span>
+                        {/* Hybrid Recruitathon (Phase 1) — mode badge.
+                            Distinct visual treatment vs the job pill so
+                            recruiters can scan a day and immediately
+                            see the online/onsite mix. */}
+                        {s.mode === "VIDEO" ? (
+                          <Badge variant="default" size="sm" className="bg-emce-mid/20 text-emce-darkest">
+                            📹 Video
+                          </Badge>
+                        ) : s.mode === "PHONE" ? (
+                          <Badge variant="default" size="sm" className="bg-emce-mid/20 text-emce-darkest">
+                            📞 Phone
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" size="sm">
+                            📍 In person
+                          </Badge>
+                        )}
                         {s.job ? (
                           <Badge variant="default" size="sm">
                             {s.job.title}
@@ -325,6 +558,36 @@ export default async function FairSlotsPage({
                                   </p>
                                 )}
                               </div>
+                              {/* Phase 2 hybrid — readiness + presence
+                                  indicators on every booked online slot
+                                  in the full list (mirrors the next-2h
+                                  rail above so the recruiter has the
+                                  same signal in both places). */}
+                              {(s.mode === "VIDEO" || s.mode === "PHONE") &&
+                                (() => {
+                                  const r = registrationsByCandidate.get(s.candidate.id);
+                                  const ready = Boolean(r?.interviewReadyAt);
+                                  const active =
+                                    r?.lastActiveAt && r.lastActiveAt >= presenceWindow;
+                                  return (
+                                    <span className="flex items-center gap-1.5">
+                                      <span
+                                        title={ready ? "Setup tested" : "Not setup-tested yet"}
+                                        aria-label={ready ? "Setup tested" : "Not setup-tested"}
+                                        className={`h-2.5 w-2.5 shrink-0 rounded-full ${
+                                          ready ? "bg-emce-mid" : "bg-emce-red"
+                                        }`}
+                                      />
+                                      {active && (
+                                        <span
+                                          className="h-2 w-2 shrink-0 animate-pulse rounded-full bg-emce-mid-deep"
+                                          title="Online right now"
+                                          aria-label="Online right now"
+                                        />
+                                      )}
+                                    </span>
+                                  );
+                                })()}
                               <Badge variant="success" size="sm">✓ Booked</Badge>
                             </div>
                           ) : s.status === "AVAILABLE" ? (
@@ -339,10 +602,13 @@ export default async function FairSlotsPage({
                         </div>
                         {/* Post-interview close-out — only meaningful
                             for BOOKED slots that the recruiter has
-                            actually run. Two buttons collapse the
-                            common path (interview happened, mark
-                            complete) and the edge case (candidate
-                            didn't show up). */}
+                            actually run. Three buttons cover:
+                              ✓ Done       — interview happened
+                              ↻ Reschedule — needs a new time (Phase 3)
+                              ✗ No-show    — candidate didn't show
+                            Reschedule uses a native `details`+`summary`
+                            disclosure so the time picker is hidden by
+                            default — keeps the row visually quiet. */}
                         {s.status === "BOOKED" && (
                           <>
                             <form action={markInterviewSlotOutcome}>
@@ -357,6 +623,26 @@ export default async function FairSlotsPage({
                                 ✓ Done
                               </SubmitButton>
                             </form>
+                            <details className="group">
+                              <summary className="cursor-pointer list-none rounded-md px-2 py-1 text-xs font-bold text-emce-text-sec hover:bg-emce-light-soft hover:text-emce-text">
+                                ↻ Reschedule
+                              </summary>
+                              <form
+                                action={rescheduleInterviewSlot}
+                                className="absolute z-10 mt-1 flex items-center gap-2 rounded-md border border-emce-border bg-white p-2 shadow-emce-modal"
+                              >
+                                <input type="hidden" name="slotId" value={s.id} />
+                                <Input
+                                  type="datetime-local"
+                                  name="newStartsAt"
+                                  required
+                                  className="h-8 text-xs"
+                                />
+                                <SubmitButton size="sm" pendingLabel="…">
+                                  Move
+                                </SubmitButton>
+                              </form>
+                            </details>
                             <form action={markInterviewSlotOutcome}>
                               <input type="hidden" name="slotId" value={s.id} />
                               <input type="hidden" name="outcome" value="NO_SHOW" />

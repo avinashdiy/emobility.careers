@@ -696,3 +696,490 @@ export async function importDriveRoster(formData: FormData): Promise<void> {
     redirect("/admin/fairs?error=" + encodeURIComponent("Roster import failed — try again."));
   }
 }
+
+// ─── Phase 2 hybrid Recruitathon ─────────────────────────────────
+//
+// Three small mutators used by the candidate-side pass page + the
+// new camera/mic test page to mark presence + readiness without
+// going through the admin scanner flow.
+//
+// `markOnlineCheckedIn` — idempotent auto-check-in for ONLINE /
+// HYBRID candidates who hit the pass page during the event window.
+// Mirrors the physical scanner's `checkedInAt` set but leaves
+// `checkedInById` null so the live console can split "scanner
+// check-ins" (had an admin id) from "online check-ins" (null id +
+// fairMode != OFFLINE).
+//
+// `pingPresence` — bumps lastActiveAt to now(). Called server-side
+// on every pass-page render + by a 60-s client pinger while the
+// page stays open. Combined with the >5-min window in the live
+// console query, it gives a "currently active" headcount that
+// captures only candidates with a tab actually open.
+//
+// `markInterviewReady` — set by the camera/mic self-test page after
+// the candidate confirms their setup works. Surfaces a green-dot
+// readiness indicator on the recruiter's online slot board.
+
+async function resolveCallerRegistration(driveSlug: string): Promise<{
+  registrationId: string;
+  driveId: string;
+  fairMode: "OFFLINE" | "ONLINE" | "HYBRID" | null;
+  checkedInAt: Date | null;
+  driveStartsAt: Date;
+  driveEndsAt: Date;
+} | null> {
+  const session = await auth();
+  if (!session?.user) return null;
+  const profile = await db.candidateProfile.findUnique({
+    where: { userId: session.user.id },
+    select: { id: true },
+  });
+  if (!profile) return null;
+  // Pull the drive + registration in one round-trip. Slug → drive
+  // first; then the unique (drive, candidate) pair on registration.
+  const drive = await db.recruitmentDrive.findUnique({
+    where: { slug: driveSlug },
+    select: { id: true, startsAt: true, endsAt: true },
+  });
+  if (!drive) return null;
+  const reg = await db.recruitmentDriveRegistration.findUnique({
+    where: {
+      driveId_candidateId: { driveId: drive.id, candidateId: profile.id },
+    },
+    select: { id: true, fairMode: true, checkedInAt: true },
+  });
+  if (!reg) return null;
+  return {
+    registrationId: reg.id,
+    driveId: drive.id,
+    fairMode: reg.fairMode,
+    checkedInAt: reg.checkedInAt,
+    driveStartsAt: drive.startsAt,
+    driveEndsAt: drive.endsAt,
+  };
+}
+
+/**
+ * Auto-check-in for an ONLINE / HYBRID candidate who's actively on
+ * their pass page during the event window. Idempotent: if the
+ * candidate is already checked in (by anyone, anywhere), no-op.
+ * Outside the event window, no-op — we don't want a pre-event tab
+ * accidentally marking the candidate "present" the week before.
+ *
+ * OFFLINE candidates are explicitly skipped — they have to be
+ * physically scanned at the venue to count. (A HYBRID candidate
+ * who's online today gets auto-checked-in; if they later show up
+ * at the venue, the scanner becomes a no-op because checkedInAt
+ * is already set — the existing scanner action handles this case.)
+ */
+export async function markOnlineCheckedIn(driveSlug: string): Promise<{ ok: boolean }> {
+  try {
+    const ctx = await resolveCallerRegistration(driveSlug);
+    if (!ctx) return { ok: false };
+    if (ctx.fairMode === "OFFLINE") return { ok: false };
+    if (ctx.checkedInAt) return { ok: true }; // already in — no-op
+    const now = new Date();
+    if (now < ctx.driveStartsAt || now > ctx.driveEndsAt) {
+      return { ok: false }; // outside event window
+    }
+    await db.recruitmentDriveRegistration.update({
+      where: { id: ctx.registrationId },
+      data: {
+        checkedInAt: now,
+        // checkedInById stays null — that IS the "auto online" marker.
+        status: "CHECKED_IN",
+        lastActiveAt: now,
+      },
+    });
+    try {
+      await audit({
+        action: "fair.online_check_in",
+        entity: "RecruitmentDriveRegistration",
+        entityId: ctx.registrationId,
+        meta: { driveId: ctx.driveId, fairMode: ctx.fairMode },
+      });
+    } catch {/* best-effort */}
+    return { ok: true };
+  } catch (err) {
+    logger.warn({ err, driveSlug }, "[fair] markOnlineCheckedIn failed");
+    return { ok: false };
+  }
+}
+
+/**
+ * Presence bump. Called server-side on pass-page render AND by the
+ * client-side pinger every 60 s while the page is open. Cheap
+ * single-column update; we don't audit-log these (would flood the
+ * audit table) — the value of `lastActiveAt` alone is the signal.
+ */
+export async function pingPresence(driveSlug: string): Promise<{ ok: boolean }> {
+  try {
+    const ctx = await resolveCallerRegistration(driveSlug);
+    if (!ctx) return { ok: false };
+    await db.recruitmentDriveRegistration.update({
+      where: { id: ctx.registrationId },
+      data: { lastActiveAt: new Date() },
+    });
+    return { ok: true };
+  } catch (err) {
+    logger.warn({ err, driveSlug }, "[fair] pingPresence failed");
+    return { ok: false };
+  }
+}
+
+/**
+ * Candidate completed the camera + mic self-test. Stamps
+ * `interviewReadyAt` so the recruiter's slot board surfaces a
+ * green-dot readiness indicator. Idempotent — re-running just
+ * bumps the timestamp (signal: "tested again, still working").
+ *
+ * No event-window gate — a candidate can pre-test the night before
+ * and the recruiter still sees the green dot the next day.
+ */
+export async function markInterviewReady(driveSlug: string): Promise<{ ok: boolean }> {
+  try {
+    const ctx = await resolveCallerRegistration(driveSlug);
+    if (!ctx) return { ok: false };
+    const now = new Date();
+    await db.recruitmentDriveRegistration.update({
+      where: { id: ctx.registrationId },
+      data: { interviewReadyAt: now, lastActiveAt: now },
+    });
+    try {
+      await audit({
+        action: "fair.interview_ready",
+        entity: "RecruitmentDriveRegistration",
+        entityId: ctx.registrationId,
+        meta: { driveId: ctx.driveId, fairMode: ctx.fairMode },
+      });
+    } catch {/* best-effort */}
+    revalidatePath(`/me/fairs/${driveSlug}/pass`);
+    return { ok: true };
+  } catch (err) {
+    logger.warn({ err, driveSlug }, "[fair] markInterviewReady failed");
+    return { ok: false };
+  }
+}
+
+// ─── Phase 3 hybrid Recruitathon ─────────────────────────────────
+//
+// Connection-issue reporting + video intro upload — the
+// "something went wrong" recovery surface for online candidates.
+
+const ReportIssueSchema = z.object({
+  driveSlug: z.string().min(1),
+  slotId: z.string().min(1).optional(),
+  message: z.string().trim().max(500).optional(),
+});
+
+/**
+ * Candidate files an SOS from the pass page mid-event ("my video is
+ * frozen", "Meet won't load", "they can't hear me"). Creates a
+ * `FairConnectionIssue` row in OPEN state + notifies the fair's
+ * primary admin via in-app + WhatsApp (where available).
+ *
+ * Rate-limited to prevent a stuck retry from spam-filing 20 issues
+ * in 10 seconds. Idempotency window via the rate-limit bucket is
+ * enough — we don't dedup on (registration, slot) explicitly so the
+ * candidate CAN file two reports if the issue actually re-occurred.
+ */
+export async function reportConnectionIssue(input: {
+  driveSlug: string;
+  slotId?: string;
+  message?: string;
+}): Promise<{ ok: boolean; issueId?: string; error?: string }> {
+  try {
+    const session = await auth();
+    if (!session?.user) return { ok: false, error: "Sign in first." };
+
+    const parsed = ReportIssueSchema.safeParse(input);
+    if (!parsed.success) {
+      return { ok: false, error: parsed.error.issues[0]?.message ?? "Invalid input." };
+    }
+
+    try {
+      await rateLimitOrThrow(`fair-issue:${session.user.id}`, "saveItem");
+    } catch (err) {
+      if (isRouterControlError(err)) throw err;
+      return { ok: false, error: "Too many reports — give us a moment to respond to the last one." };
+    }
+
+    const ctx = await resolveCallerRegistration(parsed.data.driveSlug);
+    if (!ctx) return { ok: false, error: "You're not registered for this fair." };
+
+    // Validate slotId — if provided, it must belong to this candidate.
+    if (parsed.data.slotId) {
+      const slot = await db.recruitmentDriveInterviewSlot.findUnique({
+        where: { id: parsed.data.slotId },
+        select: { candidateId: true, driveCompany: { select: { driveId: true } } },
+      });
+      const profile = await db.candidateProfile.findUnique({
+        where: { userId: session.user.id },
+        select: { id: true },
+      });
+      if (
+        !slot ||
+        slot.candidateId !== profile?.id ||
+        slot.driveCompany.driveId !== ctx.driveId
+      ) {
+        return { ok: false, error: "That slot isn't yours." };
+      }
+    }
+
+    const issue = await db.fairConnectionIssue.create({
+      data: {
+        registrationId: ctx.registrationId,
+        slotId: parsed.data.slotId ?? null,
+        message: parsed.data.message ?? null,
+      },
+      select: { id: true },
+    });
+
+    // Page the fair's primary admin via in-app + WhatsApp. We pick
+    // the fair's `createdById` as the singular owner. For an event
+    // with a dedicated ops team, the admin live console's "active
+    // issues" rail surfaces all of these regardless of who got the
+    // direct ping — so a dropped notification doesn't strand the
+    // candidate.
+    const drive = await db.recruitmentDrive.findUnique({
+      where: { id: ctx.driveId },
+      select: { id: true, slug: true, title: true, createdById: true },
+    });
+    if (drive) {
+      try {
+        await dispatchNotification({
+          userId: drive.createdById,
+          type: "fair.connection_issue",
+          title: `⚠ Candidate reported a connection issue — ${drive.title}`,
+          body:
+            parsed.data.message
+              ? `"${parsed.data.message.slice(0, 140)}"`
+              : "No details — call them at the registered phone.",
+          link: `/admin/recruitathon/${drive.slug}/live#issues`,
+          channels: ["IN_APP", "WHATSAPP"],
+          groupKey: `issue-${issue.id}`,
+        });
+      } catch {/* best-effort */}
+    }
+
+    try {
+      await audit({
+        actorId: session.user.id,
+        action: "fair.connection_issue_reported",
+        entity: "FairConnectionIssue",
+        entityId: issue.id,
+        meta: { driveId: ctx.driveId, slotId: parsed.data.slotId },
+      });
+    } catch {/* best-effort */}
+
+    revalidatePath(`/me/fairs/${parsed.data.driveSlug}/pass`);
+    return { ok: true, issueId: issue.id };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.warn({ err }, "[fair] reportConnectionIssue failed");
+    return { ok: false, error: "Couldn't file the report — try once more." };
+  }
+}
+
+const ResolveIssueSchema = z.object({
+  issueId: z.string().min(1),
+  resolutionNote: z.string().trim().max(500).optional(),
+});
+
+/**
+ * Admin marks an OPEN connection-issue as RESOLVED. Idempotent —
+ * already-resolved issues are a no-op. Audit-logged.
+ */
+export async function resolveConnectionIssue(formData: FormData): Promise<void> {
+  try {
+    const session = await auth();
+    if (!session?.user) redirect("/signin");
+    if (session.user.role !== "ADMIN") redirect("/403");
+    const parsed = ResolveIssueSchema.safeParse(Object.fromEntries(formData));
+    if (!parsed.success) {
+      redirect("/admin/recruitathon?error=" + encodeURIComponent("Invalid input."));
+    }
+
+    const issue = await db.fairConnectionIssue.findUnique({
+      where: { id: parsed.data.issueId },
+      select: {
+        id: true,
+        status: true,
+        registration: { select: { drive: { select: { slug: true } } } },
+      },
+    });
+    if (!issue) {
+      redirect("/admin/recruitathon?error=" + encodeURIComponent("Issue not found."));
+    }
+    const driveSlug = issue.registration.drive.slug;
+
+    if (issue.status === "RESOLVED") {
+      // Idempotent — re-marking a resolved issue does nothing.
+      redirect(`/admin/recruitathon/${driveSlug}/live?notice=` + encodeURIComponent("Already resolved."));
+    }
+
+    await db.fairConnectionIssue.update({
+      where: { id: issue.id },
+      data: {
+        status: "RESOLVED",
+        resolvedAt: new Date(),
+        resolvedById: session.user.id,
+        resolutionNote: parsed.data.resolutionNote ?? null,
+      },
+    });
+    try {
+      await audit({
+        actorId: session.user.id,
+        action: "fair.connection_issue_resolved",
+        entity: "FairConnectionIssue",
+        entityId: issue.id,
+        meta: { driveSlug },
+      });
+    } catch {/* best-effort */}
+
+    revalidatePath(`/admin/recruitathon/${driveSlug}/live`);
+    redirect(`/admin/recruitathon/${driveSlug}/live?notice=` + encodeURIComponent("Issue resolved."));
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.warn({ err }, "[fair] resolveConnectionIssue failed");
+    redirect("/admin/recruitathon?error=" + encodeURIComponent("Couldn't resolve — try again."));
+  }
+}
+
+// Video-intro upload limits — 50MB cap (2-min phone video at 720p
+// lands well under this) and an allowlist of video MIME types we
+// know browsers + MinIO handle cleanly. Bigger uploads would need
+// the presigned-PUT path; for v1 stream through the server action.
+const MAX_VIDEO_INTRO_BYTES = 50 * 1024 * 1024;
+const ALLOWED_VIDEO_INTRO_MIME = new Set<string>([
+  "video/mp4",
+  "video/quicktime",
+  "video/webm",
+  "video/x-matroska",
+]);
+
+/**
+ * Async-fallback: candidate uploads a 2-min video intro that the
+ * recruiter sees as a non-blocking review item. Useful when:
+ *   • their interview slot got cancelled and they can't reschedule
+ *   • they registered ONLINE but couldn't book a slot in time
+ *   • they want to give the recruiter a face / voice before a
+ *     written-only application is reviewed
+ *
+ * Files land in the `docs` (private) bucket. The candidate's own
+ * fair pass shows them their upload; recruiters reading an
+ * application from this fair see a "Watch video intro" CTA.
+ */
+export async function uploadFairVideoIntro(
+  formData: FormData,
+): Promise<{ ok: boolean; error?: string }> {
+  const { putObject, objectKey } = await import("@/lib/storage");
+  try {
+    const session = await auth();
+    if (!session?.user) return { ok: false, error: "Sign in first." };
+    const driveSlug = z.string().min(1).parse(formData.get("driveSlug"));
+    const file = formData.get("video") as File | null;
+    if (!file || file.size === 0) return { ok: false, error: "Pick a file first." };
+    if (file.size > MAX_VIDEO_INTRO_BYTES) {
+      return { ok: false, error: "Video over 50 MB. Trim or compress and try again." };
+    }
+    if (!ALLOWED_VIDEO_INTRO_MIME.has(file.type)) {
+      return { ok: false, error: "Use an MP4 / MOV / WebM video file." };
+    }
+
+    const ctx = await resolveCallerRegistration(driveSlug);
+    if (!ctx) return { ok: false, error: "You're not registered for this fair." };
+
+    const ext = (() => {
+      const dot = file.name.lastIndexOf(".");
+      if (dot < 0) return "mp4";
+      const candidate = file.name.slice(dot + 1).toLowerCase();
+      return /^[a-z0-9]{1,5}$/.test(candidate) ? candidate : "mp4";
+    })();
+    const key = objectKey(`fair-intros/${ctx.driveId}`, ext);
+    const buffer = Buffer.from(await file.arrayBuffer());
+    await putObject("docs", key, buffer, file.type);
+
+    await db.recruitmentDriveRegistration.update({
+      where: { id: ctx.registrationId },
+      data: {
+        videoIntroUrl: key,
+        videoIntroUploadedAt: new Date(),
+      },
+    });
+    try {
+      await audit({
+        actorId: session.user.id,
+        action: "fair.video_intro_uploaded",
+        entity: "RecruitmentDriveRegistration",
+        entityId: ctx.registrationId,
+        meta: { driveId: ctx.driveId, size: file.size, contentType: file.type },
+      });
+    } catch {/* best-effort */}
+
+    revalidatePath(`/me/fairs/${driveSlug}/pass`);
+    return { ok: true };
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.warn({ err }, "[fair] uploadFairVideoIntro failed");
+    return { ok: false, error: "Upload failed — try again." };
+  }
+}
+
+/**
+ * Server action that returns a presigned GET URL for a candidate's
+ * video intro. Auth-gated — only the candidate themselves, an admin,
+ * or a recruiter at a company that the candidate has applied to in
+ * THIS fair can fetch the URL. URL is short-lived (5 min); the
+ * candidate's pass page calls it on click, same pattern as the
+ * messages-attachment download.
+ */
+export async function getFairVideoIntroUrl(
+  registrationId: string,
+): Promise<{ url: string | null }> {
+  const { presignDownload } = await import("@/lib/storage");
+  try {
+    const session = await auth();
+    if (!session?.user) return { url: null };
+    const reg = await db.recruitmentDriveRegistration.findUnique({
+      where: { id: registrationId },
+      select: {
+        videoIntroUrl: true,
+        candidateId: true,
+        driveId: true,
+        candidate: { select: { userId: true } },
+      },
+    });
+    if (!reg?.videoIntroUrl) return { url: null };
+
+    // Self, admin, OR recruiter at a company the candidate has applied to
+    // (via a JobPosting attached to this fair).
+    if (session.user.role !== "ADMIN" && reg.candidate.userId !== session.user.id) {
+      const employer = await db.employerProfile.findUnique({
+        where: { userId: session.user.id },
+        select: { companyId: true },
+      });
+      if (!employer) return { url: null };
+      const app = await db.application.findFirst({
+        where: {
+          candidateId: reg.candidateId,
+          job: {
+            companyId: employer.companyId,
+            recruitmentDriveJobs: { some: { driveId: reg.driveId } },
+          },
+        },
+        select: { id: true },
+      });
+      if (!app) return { url: null };
+    }
+
+    const url = await presignDownload("docs", reg.videoIntroUrl, 60 * 5, {
+      inline: true,
+      contentType: "video/mp4",
+    });
+    return { url };
+  } catch (err) {
+    logger.warn({ err, registrationId }, "[fair] getFairVideoIntroUrl failed");
+    return { url: null };
+  }
+}
