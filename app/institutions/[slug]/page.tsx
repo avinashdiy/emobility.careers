@@ -96,7 +96,9 @@ export async function generateMetadata({
       [inst.city, inst.state].filter(Boolean).join(", ") || inst.country
     }. View programs, alumni, placements and reviews on emobility.careers.`;
   const url = `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/institutions/${slug}`;
-  const heroImage = inst.bannerUrl ?? inst.logoUrl;
+  // Branded /og/home.jpg fallback so the card is never imageless when
+  // the institution has neither a banner nor a logo.
+  const heroImage = inst.bannerUrl ?? inst.logoUrl ?? "/og/home.jpg";
   return {
     title: `${inst.name} — Programs, Alumni, Reviews`,
     description,
@@ -107,12 +109,13 @@ export async function generateMetadata({
       title: inst.name,
       description,
       siteName: "eMobility Careers",
-      images: heroImage ? [{ url: heroImage }] : undefined,
+      images: [{ url: heroImage }],
     },
     twitter: {
-      card: heroImage ? "summary_large_image" : "summary",
+      card: "summary_large_image",
       title: inst.name,
       description,
+      images: [heroImage],
     },
   };
 }

@@ -69,7 +69,14 @@ export async function generateMetadata({
   const description = company.description ?? `${company.name} on eMobility Careers`;
   // Banner is the wide hero — preferred for summary_large_image.
   // Logo is square — usable as a fallback (Twitter "summary" / LinkedIn).
-  const heroImage = company.bannerUrl ?? company.logoUrl ?? null;
+  // Banner is the wide hero — preferred for summary_large_image.
+  // Logo is square — usable as a fallback. When the company has
+  // neither, fall back to the branded /og/home.jpg so the share card
+  // is never imageless (which dropped to a favicon on WhatsApp). The
+  // og:title still carries the company name, so the fallback reads as
+  // "<Company> · eMobility Careers" with our branded card.
+  const heroImage = company.bannerUrl ?? company.logoUrl ?? "/og/home.jpg";
+  const isWide = Boolean(company.bannerUrl) || heroImage === "/og/home.jpg";
   return {
     title: company.name,
     description,
@@ -80,13 +87,13 @@ export async function generateMetadata({
       title: company.name,
       description,
       siteName: "eMobility Careers",
-      images: heroImage ? [{ url: heroImage }] : undefined,
+      images: [{ url: heroImage }],
     },
     twitter: {
-      card: company.bannerUrl ? "summary_large_image" : "summary",
+      card: isWide ? "summary_large_image" : "summary",
       title: company.name,
       description,
-      images: heroImage ? [heroImage] : undefined,
+      images: [heroImage],
     },
   };
 }

@@ -55,14 +55,17 @@ export async function generateMetadata({
   const url = `${env.NEXT_PUBLIC_APP_URL}/posts/${id}`;
   // Pick the best per-post hero image so LinkedIn / X / WhatsApp render a
   // proper card when someone shares the URL. Priority: article cover →
-  // first image attachment → embed thumbnail (YouTube). When none of
-  // these exist we fall through to the site-wide /opengraph-image
-  // inherited from app/layout.tsx, so there's always *some* image.
+  // first image attachment → embed thumbnail (YouTube) → branded
+  // /og/home.jpg fallback. The earlier comment claimed an imageless
+  // post would fall through to the site-wide /opengraph-image, but the
+  // explicit openGraph block here suppresses that merge (Next.js route
+  // metadata gotcha), so an imageless post emitted NO og:image at all
+  // and unfurled as a favicon. Always provide an image.
   const heroImage =
     (post.kind === "ARTICLE" && post.articleCoverUrl) ||
     post.attachments[0]?.url ||
     (post.kind === "EMBED" && post.embedThumbnailUrl) ||
-    null;
+    "/og/home.jpg";
   const title =
     post.kind === "ARTICLE" && post.articleTitle
       ? post.articleTitle
@@ -78,13 +81,13 @@ export async function generateMetadata({
       title,
       description,
       siteName: "eMobility Careers",
-      images: heroImage ? [{ url: heroImage }] : undefined,
+      images: [{ url: heroImage }],
     },
     twitter: {
-      card: heroImage ? "summary_large_image" : "summary",
+      card: "summary_large_image",
       title,
       description,
-      images: heroImage ? [heroImage] : undefined,
+      images: [heroImage],
     },
   };
 }

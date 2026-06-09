@@ -43,10 +43,24 @@ export async function generateMetadata({
   // so `<p>` / `<strong>` / `<a>` would otherwise leak into the
   // meta-description tag and OG / Twitter cards.
   const metaDescription = stripHtml(event.description).slice(0, 200);
+  // Branded /og/home.jpg fallback so an event without a cover image
+  // still unfurls with an image rather than a favicon.
+  const ogImage = event.coverImageUrl ?? "/og/home.jpg";
   return {
     title: `${event.title} — ${event.company.name}`,
     description: metaDescription,
-    openGraph: { images: event.coverImageUrl ? [{ url: event.coverImageUrl }] : undefined },
+    openGraph: {
+      title: `${event.title} — ${event.company.name}`,
+      description: metaDescription,
+      images: [{ url: ogImage }],
+      siteName: "eMobility Careers",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${event.title} — ${event.company.name}`,
+      description: metaDescription,
+      images: [ogImage],
+    },
     alternates: { canonical: `${env.NEXT_PUBLIC_APP_URL}/events/${slug}` },
   };
 }

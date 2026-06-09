@@ -75,7 +75,9 @@ export async function generateMetadata({
   // Prefer hero (16:9, designed for social) over banner (3:1, designed
   // for /fairs grid). Both are public-read S3 URLs so OG crawlers
   // (WhatsApp, LinkedIn, Twitter) can fetch them directly.
-  const ogImage = drive.heroImageUrl || drive.bannerImageUrl || undefined;
+  // Branded /og/home.jpg fallback so a fair without a hero/banner
+  // still unfurls with an image instead of dropping to a favicon.
+  const ogImage = drive.heroImageUrl || drive.bannerImageUrl || "/og/home.jpg";
   return {
     title: `${drive.title} · ${drive.city}`,
     description,
@@ -85,14 +87,14 @@ export async function generateMetadata({
       url: `${env.NEXT_PUBLIC_APP_URL}/fairs/${slug}`,
       title: drive.title,
       description,
-      images: ogImage ? [ogImage] : undefined,
+      images: [ogImage],
       siteName: "emobility.careers",
     },
     twitter: {
-      card: ogImage ? "summary_large_image" : "summary",
+      card: "summary_large_image",
       title: drive.title,
       description,
-      images: ogImage ? [ogImage] : undefined,
+      images: [ogImage],
     },
   };
 }

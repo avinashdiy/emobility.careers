@@ -22,10 +22,28 @@ export async function generateMetadata({
   const { slug } = await params;
   const g = await db.group.findUnique({ where: { slug } });
   if (!g) return { title: "Group not found" };
+  const description =
+    g.tagline ?? `${g.memberCount} members discussing ${g.name} in the EV industry.`;
+  // Group banner when set, else the branded /og/home.jpg fallback so
+  // the card always carries an image.
+  const ogImage = g.bannerUrl ?? "/og/home.jpg";
   return {
     title: `${g.name} — EV community group`,
-    description: g.tagline ?? `${g.memberCount} members discussing ${g.name} in the EV industry.`,
+    description,
     alternates: { canonical: `${env.NEXT_PUBLIC_APP_URL}/groups/${slug}` },
+    openGraph: {
+      type: "website",
+      title: `${g.name} — EV community group`,
+      description,
+      siteName: "eMobility Careers",
+      images: [{ url: ogImage }],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: `${g.name} — EV community group`,
+      description,
+      images: [ogImage],
+    },
   };
 }
 
