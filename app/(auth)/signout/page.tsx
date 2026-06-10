@@ -5,7 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { SubmitButton } from "@/components/ui/submit-button";
-import { signOutToConfirmation } from "@/server/auth/actions";
+import { signOutAction } from "@/server/auth/actions";
 
 export const metadata: Metadata = {
   title: "Sign out",
@@ -23,10 +23,13 @@ export const dynamic = "force-dynamic";
  *
  * Two states:
  *   • Signed in  → a clean confirmation card (who you are + Sign out /
- *     Stay signed in). The Sign out button runs signOutToConfirmation,
- *     which clears the session and redirects BACK here…
- *   • Signed out → the "see you soon" acknowledgment with sign-back-in
- *     + homepage CTAs.
+ *     Stay signed in). The Sign out button runs signOutAction, which
+ *     clears the session and redirects to the homepage (a DIFFERENT
+ *     URL — redirecting back here would be a same-URL no-op that hangs
+ *     the submit button's pending state).
+ *   • Signed out → a "see you soon" acknowledgment with sign-back-in +
+ *     homepage CTAs. Shown on a direct visit to /signout while already
+ *     logged out (the normal flow lands on "/").
  *
  * Inherits the (auth) route-group layout — the animated mesh-gradient
  * split screen — so it matches the sign-in page for free.
@@ -89,7 +92,7 @@ export default async function SignOutPage() {
         </p>
       </div>
 
-      <form action={signOutToConfirmation} className="mt-6">
+      <form action={signOutAction} className="mt-6">
         <SubmitButton className="w-full" size="lg" pendingLabel="Signing you out…">
           Sign out
         </SubmitButton>

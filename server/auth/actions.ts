@@ -325,19 +325,14 @@ export async function linkedinSignInWithNext(formData: FormData) {
 
 export async function signOutAction() {
   const { signOut } = await import("@/lib/auth");
+  // Redirect to the homepage (a DIFFERENT URL than the /signout confirm
+  // page). Redirecting back to /signout — the page the form lives on —
+  // is a same-URL navigation that Next.js treats as a no-op, so the
+  // page never re-renders and the submit button's useFormStatus stays
+  // pending forever ("Signing you out…" hangs) even though the session
+  // was actually cleared. Landing on "/" logged-out is the standard
+  // post-signout destination and renders fresh.
   await signOut({ redirectTo: "/" });
-}
-
-/**
- * Sign out and land on the branded /signout page, which (now that the
- * session is gone) renders the "You're signed out — see you soon"
- * acknowledgment with sign-back-in / homepage CTAs. Used by the
- * confirmation button on /signout so the user gets a clear, branded
- * "logout succeeded" state instead of the old blank Auth.js screen.
- */
-export async function signOutToConfirmation() {
-  const { signOut } = await import("@/lib/auth");
-  await signOut({ redirectTo: "/signout" });
 }
 
 // ─── Password reset ─────────────────────────────────────────

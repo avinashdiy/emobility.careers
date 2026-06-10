@@ -1,3 +1,5 @@
+"use client";
+
 import * as React from "react";
 import Image from "next/image";
 import { cn } from "@/lib/utils";
@@ -78,6 +80,17 @@ const ringSize = {
  * the platform is half-built.
  */
 export function Avatar({ src, name, size = "md", className, openToWork, hiring, priority = false, ...props }: AvatarProps) {
+  // Fall back to the silhouette when the image fails to load — a
+  // remote source can 403 (e.g. a LinkedIn OAuth photo, which blocks
+  // hotlinking) or 404 (deleted MinIO object). Without this the
+  // <Image> rendered broken and leaked the `alt` text (the user's
+  // full name) into the disc instead of a clean placeholder.
+  const [failed, setFailed] = React.useState(false);
+  // Reset the failure flag if the src changes (e.g. the user uploads a
+  // new photo and the component is reused).
+  React.useEffect(() => setFailed(false), [src]);
+  const showImage = Boolean(src) && !failed;
+
   // Hiring wins when both are accidentally set (more deliberate signal).
   const status: "hiring" | "open" | null = hiring ? "hiring" : openToWork ? "open" : null;
   // The chip overlay would obscure most of an `sm` avatar — keep the ring
@@ -102,11 +115,11 @@ export function Avatar({ src, name, size = "md", className, openToWork, hiring, 
         showRing && `${ringSize[size]} ${ringColor} ring-offset-2 ring-offset-white`,
         className,
       )}
-      role={src ? undefined : "img"}
-      aria-label={src ? undefined : (name ? `${name} avatar` : "Avatar")}
+      role={showImage ? undefined : "img"}
+      aria-label={showImage ? undefined : (name ? `${name} avatar` : "Avatar")}
       {...props}
     >
-      {src ? (
+      {showImage ? (
         // Next/Image gets explicit pixel dimensions from `pixelMap`
         // so the responsive `srcset` is sized to what we actually
         // render (32/48/64/96 px) — the browser never downloads a
@@ -114,22 +127,24 @@ export function Avatar({ src, name, size = "md", className, openToWork, hiring, 
         // the WebP we now ship from `uploadAvatar`'s sharp pipeline;
         // higher values would re-encode for no perceptible gain.
         <Image
-          src={src}
+          src={src as string}
           alt={name ?? ""}
           width={pixelMap[size]}
           height={pixelMap[size]}
           quality={80}
           priority={priority}
-          // Hint to the loader — `(max-width: 0px) 0px, Npx` collapses
-          // to the literal pixel size at every breakpoint, so we get
-          // a single 1x + 2x srcset entry per avatar.
           sizes={`${pixelMap[size]}px`}
           className="h-full w-full object-cover"
-          // The avatar disc is small enough that `unoptimized` for
-          // SVG / blob: URLs would be cheaper to render than to
-          // process — but every avatar in our DB is a remote URL
-          // (MinIO public bucket), so the default optimizer path
-          // wins. No special-case here.
+          onError={() => setFailed(true)}
+          // `unoptimized` bypasses the /_next/image optimizer, which
+          // is currently broken on this standalone deploy (returns
+          // null/4xx for both local and MinIO-hosted images — see the
+          // BACKLOG infra note). Avatars are tiny remote URLs from the
+          // public MinIO bucket, so serving the raw object directly is
+          // correct and reliable; the optimizer gave us nothing here
+          // but breakage. onError above still catches genuinely
+          // broken sources (403/404) and shows the silhouette.
+          unoptimized
         />
       ) : (
         <PersonSilhouette />
