@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { signOutAction } from "@/server/auth/actions";
+import { getUserMenuViewerData } from "@/lib/header-user-menu-data";
 
 export const metadata: Metadata = {
   title: "Sign out",
@@ -64,15 +65,30 @@ export default async function SignOutPage() {
   }
 
   // ── Signed in: branded confirmation ──────────────────────────────
-  const fullName = session.user.name ?? null;
+  // Resolve the avatar from the SAME canonical source as the header
+  // (candidateProfile.profilePhotoUrl in MinIO, else the employer
+  // company logo) — NOT session.user.image, which for this platform is
+  // often a stale OAuth/import path (e.g. a /media/avatars/* file that
+  // 404s, or a LinkedIn hotlink that 403s) and rendered as a blank
+  // silhouette. getUserMenuViewerData returns the photo the rest of
+  // the app already shows for this user.
+  const viewer = await getUserMenuViewerData({
+    id: session.user.id,
+    email: session.user.email,
+    name: session.user.name,
+    role: (session.user as { role?: string }).role ?? "CANDIDATE",
+  });
+  const fullName = viewer?.name ?? session.user.name ?? null;
+  const email = viewer?.email || session.user.email || null;
+  const avatarUrl = viewer?.avatarUrl ?? viewer?.employerCompany?.logoUrl ?? undefined;
   const firstName = fullName?.trim().split(/\s+/)[0] ?? null;
 
   return (
     <Card className="p-8 text-center">
       <div className="flex flex-col items-center">
         <Avatar
-          src={session.user.image ?? undefined}
-          name={fullName ?? session.user.email ?? "You"}
+          src={avatarUrl}
+          name={fullName ?? email ?? "You"}
           size="lg"
         />
         <h1 className="mt-4 text-2xl font-extrabold text-emce-text">
@@ -80,11 +96,11 @@ export default async function SignOutPage() {
         </h1>
         <p className="mt-2 text-sm text-emce-text-sec">
           You&apos;re currently signed in
-          {session.user.email ? (
+          {email ? (
             <>
               {" "}as{" "}
               <span className="font-semibold text-emce-text">
-                {session.user.email}
+                {email}
               </span>
             </>
           ) : null}
