@@ -65,35 +65,41 @@ export default async function FairRegisterPage({
   // CSVs / TPO stats use the token-id link.
   const tpoToken = typeof sp.tpo === "string" && sp.tpo.length <= 64 ? sp.tpo : null;
 
-  const drive = await db.recruitmentDrive.findUnique({
-    where: { slug },
-    select: {
-      id: true,
-      slug: true,
-      title: true,
-      tagline: true,
-      city: true,
-      state: true,
-      startsAt: true,
-      endsAt: true,
-      status: true,
-      registrationClosesAt: true,
-    },
-  });
+  // Fetch the drive, the session, and (only when a TPO token is
+  // present) the referring cell IN PARALLEL. These were three
+  // sequential awaits — on the shared Postgres that's three serial
+  // round-trips before anything renders, which is most of the
+  // pre-render latency employers were feeling. They're independent,
+  // so Promise.all collapses them into one round-trip's worth of wait.
+  const [drive, session, tpoReferral] = await Promise.all([
+    db.recruitmentDrive.findUnique({
+      where: { slug },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        tagline: true,
+        city: true,
+        state: true,
+        startsAt: true,
+        endsAt: true,
+        status: true,
+        registrationClosesAt: true,
+      },
+    }),
+    auth(),
+    tpoToken
+      ? db.collegePlacementCell.findUnique({
+          where: { inviteToken: tpoToken },
+          select: {
+            status: true,
+            institution: { select: { name: true } },
+            contactName: true,
+          },
+        })
+      : Promise.resolve(null),
+  ]);
   if (!drive) notFound();
-
-  // Look up the TPO cell only when the token is present — most
-  // visits don't use a TPO link so we skip the round-trip.
-  const tpoReferral = tpoToken
-    ? await db.collegePlacementCell.findUnique({
-        where: { inviteToken: tpoToken },
-        select: {
-          status: true,
-          institution: { select: { name: true } },
-          contactName: true,
-        },
-      })
-    : null;
   const tpoActive = tpoReferral?.status === "APPROVED" ? tpoReferral : null;
 
   // ─── Signed-in session + pre-redirect for already-registered ───
@@ -102,7 +108,6 @@ export default async function FairRegisterPage({
   // has already completed the relevant registration — avoids them
   // staring at a form they'd just hit "already registered" on. The
   // welcome screen already handles the post-registration UX cleanly.
-  const session = await auth();
   const signedInUser = session?.user
     ? { name: session.user.name ?? null, email: session.user.email ?? "" }
     : null;
@@ -161,6 +166,13 @@ export default async function FairRegisterPage({
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
   const place = [drive.city, drive.state].filter(Boolean).join(", ");
+  // Resolve viewer status once here rather than awaiting inside the
+  // JSX prop below — an inline `await` in the render tree blocks the
+  // whole subtree at that point.
+  const viewerStatus = await getRecruitathonViewerStatus(
+    session?.user?.id ?? null,
+    drive.id,
+  );
 
   return (
     <>
@@ -169,7 +181,7 @@ export default async function FairRegisterPage({
         driveSlug={drive.slug}
         driveTitle={drive.title}
         registrationOpen={!registrationClosed}
-        viewerStatus={await getRecruitathonViewerStatus(session?.user?.id ?? null, drive.id)}
+        viewerStatus={viewerStatus}
       />
       <div className="container max-w-3xl py-8 md:py-12">
         <Link href={`/fairs/${drive.slug}`} className="text-xs font-bold text-emce-dark hover:underline">
