@@ -148,7 +148,26 @@ const EditSchema = z.object({
     .length(2, { message: "Country must be a 2-letter ISO code (e.g. IN, GB)" })
     .toUpperCase(),
   website: z.string().trim().max(500).optional(),
+  // Comma / newline separated. Power the Recruitathon auto-attribution:
+  // a student whose signup email is on one of these domains (or who
+  // types one of these aliases) is auto-linked to this institution and
+  // its TPO cell even when they register directly with a sloppy name.
+  emailDomains: z.string().trim().max(600).optional(),
+  aliases: z.string().trim().max(600).optional(),
 });
+
+/** Split a comma/semicolon/newline list into a clean, deduped array. */
+function parseList(raw: string | undefined, lower: boolean): string[] {
+  if (!raw) return [];
+  return Array.from(
+    new Set(
+      raw
+        .split(/[,;\n]/)
+        .map((s) => (lower ? s.trim().toLowerCase() : s.trim()))
+        .filter((s) => s.length > 0 && s.length <= 120),
+    ),
+  ).slice(0, 25);
+}
 
 /**
  * Lets admin clean up a candidate-submitted institution before
@@ -175,6 +194,11 @@ export async function adminEditInstitution(formData: FormData): Promise<void> {
         state: state || null,
         country,
         website: website || null,
+        // Email domains are lowercased (DNS is case-insensitive);
+        // aliases keep their display case but match case-insensitively
+        // at resolve time.
+        emailDomains: parseList(parsed.data.emailDomains, true),
+        aliases: parseList(parsed.data.aliases, false),
       },
     });
 

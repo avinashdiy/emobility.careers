@@ -119,6 +119,8 @@ export default async function AdminInstitutionsPage({
         verificationStatus: true,
         createdById: true,
         createdAt: true,
+        emailDomains: true,
+        aliases: true,
         _count: { select: { educationLinks: true } },
       },
     }),
@@ -495,6 +497,32 @@ export default async function AdminInstitutionsPage({
                             placeholder="https://..."
                             maxLength={500}
                           />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label htmlFor={`edit-domains-${inst.id}`}>Email domains</Label>
+                          <Input
+                            id={`edit-domains-${inst.id}`}
+                            name="emailDomains"
+                            defaultValue={inst.emailDomains.join(", ")}
+                            placeholder="adypu.edu.in, ajeenkya.edu.in"
+                            maxLength={600}
+                          />
+                          <p className="mt-1 text-hint text-emce-text-muted">
+                            Comma-separated. A Recruitathon registrant whose signup email is on one of these is auto-linked to this college + its TPO cell.
+                          </p>
+                        </div>
+                        <div className="sm:col-span-2">
+                          <Label htmlFor={`edit-aliases-${inst.id}`}>Aliases / abbreviations</Label>
+                          <Input
+                            id={`edit-aliases-${inst.id}`}
+                            name="aliases"
+                            defaultValue={inst.aliases.join(", ")}
+                            placeholder="ADYPU, Ajeenkya DY Patil"
+                            maxLength={600}
+                          />
+                          <p className="mt-1 text-hint text-emce-text-muted">
+                            Comma-separated. Acronyms / common names students type instead of the full name. Exact (case-insensitive) matches auto-attribute; typos are caught by fuzzy search.
+                          </p>
                         </div>
                         <div className="sm:col-span-2 flex justify-end">
                           <SubmitButton size="sm" variant="outline" pendingLabel="Saving…">

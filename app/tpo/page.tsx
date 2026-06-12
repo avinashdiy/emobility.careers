@@ -17,6 +17,7 @@ import {
 import { relativeTime } from "@/lib/utils";
 import { TpoInviteLinkCard } from "@/components/recruitathon/TpoInviteLinkCard";
 import { TpoLiveCheckInCard } from "@/components/recruitathon/TpoLiveCheckInCard";
+import { claimRecruitathonStudent } from "@/server/colleges/actions";
 
 export const metadata = { title: "Placement dashboard" };
 
@@ -60,12 +61,13 @@ export default async function TpoDashboard({
   // TPO's shareable invite URL + how many students have used it
   // so far per fair.
   const session = await auth();
-  const [inviteData, roster] = session?.user
+  const [inviteData, roster, claimQueue] = session?.user
     ? await Promise.all([
         loadInviteLinkData(session.user.id),
         loadTpoStudentRoster(session.user.id),
+        loadTpoClaimQueue(session.user.id),
       ])
-    : [null, null];
+    : [null, null, null];
 
   const peakReached = Math.max(1, ...funnel.map((f) => f.reached));
 
@@ -123,6 +125,50 @@ export default async function TpoDashboard({
           inviteUrls={inviteData.inviteUrls}
           perFair={inviteData.perFair}
         />
+      )}
+
+      {/* Claim queue — students who registered directly (not via your
+          link) whose college matches yours but who weren't auto-
+          attributed (a fuzzy name match, or a typo). One click adds
+          them to your roster. */}
+      {claimQueue && claimQueue.candidates.length > 0 && (
+        <Card className="border-emce-amber/50 bg-emce-amber-soft/40">
+          <SectionTitle
+            title={`Students who look like yours · ${claimQueue.candidates.length}`}
+            description={`These registered directly (not via your link) and typed a college that matches ${claimQueue.collegeName}, but weren't auto-matched. Claim the ones that are yours.`}
+          />
+          <ul className="mt-4 space-y-2">
+            {claimQueue.candidates.map((c) => (
+              <li
+                key={c.registrationId}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-emce-border bg-white p-3"
+              >
+                <div className="min-w-0">
+                  {c.slug ? (
+                    <Link href={`/${c.slug}`} className="font-bold text-emce-dark hover:underline">
+                      {c.name}
+                    </Link>
+                  ) : (
+                    <span className="font-bold text-emce-text">{c.name}</span>
+                  )}
+                  <div className="text-hint text-emce-text-muted">
+                    Typed &ldquo;{c.typedCollege}&rdquo; · {c.driveTitle}
+                    {c.linked ? " · auto-linked to your college" : " · name match"}
+                  </div>
+                </div>
+                <form action={claimRecruitathonStudent}>
+                  <input type="hidden" name="registrationId" value={c.registrationId} />
+                  <button
+                    type="submit"
+                    className="rounded-md bg-emce-dark px-3 py-1.5 text-sm font-bold text-white hover:bg-emce-darkest"
+                  >
+                    + Add to my roster
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        </Card>
       )}
 
       {/* Registered-students roster — the named list of every student
@@ -604,6 +650,83 @@ async function loadTpoStudentRoster(userId: string): Promise<{
       profileCompleteness: r.candidate.profileCompleteness,
       checkedIn: Boolean(r.checkedInAt),
       registeredAt: r.createdAt,
+    })),
+  };
+}
+
+/**
+ * Students who registered DIRECTLY (viaTpoCellId IS NULL) but whose
+ * college matches this TPO's institution — either their Education was
+ * fuzzy-linked to the canonical institution, or their typed college
+ * name is a strong trigram match. These weren't auto-attributed (only
+ * picked/email/alias matches are), so the TPO confirms them by hand.
+ * Excludes anyone already attributed to any cell.
+ */
+async function loadTpoClaimQueue(userId: string): Promise<{
+  collegeName: string;
+  candidates: {
+    registrationId: string;
+    name: string;
+    slug: string | null;
+    typedCollege: string;
+    driveTitle: string;
+    linked: boolean;
+  }[];
+} | null> {
+  const cell = await db.collegePlacementCell.findFirst({
+    where: { createdById: userId, status: "APPROVED" },
+    select: {
+      institutionId: true,
+      institution: { select: { name: true, shortName: true } },
+    },
+  });
+  if (!cell) return null;
+
+  const rows = await db.$queryRaw<
+    {
+      registrationId: string;
+      firstName: string;
+      lastName: string | null;
+      slug: string | null;
+      typedCollege: string | null;
+      driveTitle: string;
+      linked: boolean;
+    }[]
+  >`
+    SELECT reg.id AS "registrationId",
+           cand."firstName", cand."lastName", cand.slug,
+           edu.institution AS "typedCollege",
+           drive.title AS "driveTitle",
+           (edu."institutionId" = ${cell.institutionId}) AS "linked"
+    FROM "RecruitmentDriveRegistration" reg
+    JOIN "CandidateProfile" cand ON cand.id = reg."candidateId"
+    JOIN "RecruitmentDrive" drive ON drive.id = reg."driveId"
+    LEFT JOIN LATERAL (
+      SELECT institution, "institutionId"
+      FROM "Education" e
+      WHERE e."candidateId" = cand.id
+      ORDER BY e."createdAt" ASC
+      LIMIT 1
+    ) edu ON true
+    WHERE reg."viaTpoCellId" IS NULL
+      AND (
+        edu."institutionId" = ${cell.institutionId}
+        OR similarity(coalesce(edu.institution, ''), ${cell.institution.name}) > 0.4
+        OR similarity(coalesce(edu.institution, ''), ${cell.institution.shortName ?? ""}) > 0.4
+      )
+    ORDER BY reg."createdAt" DESC
+    LIMIT 30
+  `.catch(() => []);
+
+  return {
+    collegeName: cell.institution.name,
+    candidates: rows.map((r) => ({
+      registrationId: r.registrationId,
+      name: `${r.firstName} ${r.lastName ?? ""}`.trim(),
+      slug: r.slug,
+      typedCollege: r.typedCollege ?? "—",
+      driveTitle: r.driveTitle,
+      linked: Boolean(r.linked),
     })),
   };
 }

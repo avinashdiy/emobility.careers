@@ -566,3 +566,108 @@ export async function revokeCollegePlacementCell(formData: FormData): Promise<vo
     redirect("/admin/colleges?error=" + encodeURIComponent("Revoke failed. Try again."));
   }
 }
+
+/**
+ * TPO claims a directly-registered student into their placement cell.
+ *
+ * Used by the /tpo "students who look like yours" queue — registrations
+ * that weren't auto-attributed (fuzzy-linked, or typed a sloppy name)
+ * but whose college matches this TPO's institution. Claiming sets
+ * viaTpoCellId so the student joins the roster + CSV.
+ *
+ * Guardrails (this is a semi-trusted role): the registration must be
+ * (a) currently unattributed, and (b) genuinely tied to THIS TPO's
+ * institution — either the candidate's Education already points at the
+ * canonical institutionId, or their typed college name is a strong
+ * trigram match for it. We re-verify server-side so a forged
+ * registrationId can't be claimed. Every claim is audit-logged.
+ */
+export async function claimRecruitathonStudent(formData: FormData): Promise<void> {
+  try {
+    const session = await auth();
+    if (!session?.user) redirect("/signin?next=/tpo");
+    const registrationId = String(formData.get("registrationId") ?? "");
+    if (!registrationId) redirect("/tpo?error=" + encodeURIComponent("Missing student."));
+
+    const cell = await db.collegePlacementCell.findFirst({
+      where: { createdById: session.user.id, status: "APPROVED" },
+      select: {
+        id: true,
+        institutionId: true,
+        institution: { select: { name: true, shortName: true } },
+      },
+    });
+    if (!cell) redirect("/tpo?error=" + encodeURIComponent("No approved placement cell."));
+
+    const reg = await db.recruitmentDriveRegistration.findUnique({
+      where: { id: registrationId },
+      select: {
+        id: true,
+        viaTpoCellId: true,
+        candidate: {
+          select: {
+            id: true,
+            education: {
+              orderBy: { createdAt: "asc" },
+              take: 1,
+              select: { id: true, institution: true, institutionId: true },
+            },
+          },
+        },
+      },
+    });
+    if (!reg) redirect("/tpo?error=" + encodeURIComponent("Student not found."));
+    if (reg.viaTpoCellId) {
+      redirect("/tpo?notice=" + encodeURIComponent("That student is already attributed."));
+    }
+
+    // Re-verify the match server-side (defence against a forged id).
+    const edu = reg.candidate.education[0];
+    let matches = edu?.institutionId === cell!.institutionId;
+    if (!matches && edu?.institution) {
+      const rows = await db.$queryRaw<{ ok: boolean }[]>`
+        SELECT (
+          GREATEST(
+            similarity(${edu.institution}, ${cell!.institution.name}),
+            similarity(${edu.institution}, ${cell!.institution.shortName ?? ""})
+          ) > 0.4
+        ) AS ok
+      `.catch(() => [{ ok: false }]);
+      matches = rows[0]?.ok === true;
+    }
+    if (!matches) {
+      redirect("/tpo?error=" + encodeURIComponent("That student's college doesn't match yours."));
+    }
+
+    await db.$transaction(async (tx) => {
+      await tx.recruitmentDriveRegistration.update({
+        where: { id: reg.id },
+        data: { viaTpoCellId: cell!.id, source: "RECRUITATHON_TPO_CLAIMED" },
+      });
+      // Canonicalise the Education link too so future grouping is clean.
+      if (edu && edu.institutionId !== cell!.institutionId) {
+        await tx.education.update({
+          where: { id: edu.id },
+          data: { institutionId: cell!.institutionId },
+        });
+      }
+    });
+
+    try {
+      await audit({
+        actorId: session.user.id,
+        action: "recruitathon.student_claimed",
+        entity: "RecruitmentDriveRegistration",
+        entityId: reg.id,
+        meta: { cellId: cell!.id, institutionId: cell!.institutionId },
+      });
+    } catch {/* best-effort */}
+
+    revalidatePath("/tpo");
+    redirect("/tpo?notice=" + encodeURIComponent("Student added to your roster."));
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    logger.error({ err }, "[claimRecruitathonStudent] failed");
+    redirect("/tpo?error=" + encodeURIComponent("Couldn't claim that student. Try again."));
+  }
+}
