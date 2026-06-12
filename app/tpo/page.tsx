@@ -60,7 +60,12 @@ export default async function TpoDashboard({
   // TPO's shareable invite URL + how many students have used it
   // so far per fair.
   const session = await auth();
-  const inviteData = session?.user ? await loadInviteLinkData(session.user.id) : null;
+  const [inviteData, roster] = session?.user
+    ? await Promise.all([
+        loadInviteLinkData(session.user.id),
+        loadTpoStudentRoster(session.user.id),
+      ])
+    : [null, null];
 
   const peakReached = Math.max(1, ...funnel.map((f) => f.reached));
 
@@ -118,6 +123,85 @@ export default async function TpoDashboard({
           inviteUrls={inviteData.inviteUrls}
           perFair={inviteData.perFair}
         />
+      )}
+
+      {/* Registered-students roster — the named list of every student
+          who registered via this college's invite link, across all
+          fairs. Answers "exactly who registered", complementing the
+          counts in the invite-link card. Most-recent 50 shown inline;
+          the full set (and richer columns) is one click away via the
+          CSV export. */}
+      {roster && roster.total > 0 && (
+        <Card>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <SectionTitle
+              title={`Registered students · ${roster.total}`}
+              description={`Everyone from ${roster.collegeName} who registered via your invite link.`}
+            />
+            <a
+              href="/tpo/students.csv"
+              className="shrink-0 rounded-md border border-emce-border bg-white px-3 py-1.5 text-sm font-bold text-emce-dark hover:bg-emce-light-soft"
+            >
+              ⬇ Download CSV
+            </a>
+          </div>
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead>
+                <tr className="border-b border-emce-border text-hint uppercase tracking-wide text-emce-text-muted">
+                  <th className="py-2 pr-3 font-bold">Student</th>
+                  <th className="py-2 pr-3 font-bold">Fair</th>
+                  <th className="py-2 pr-3 font-bold">Mode</th>
+                  <th className="py-2 pr-3 font-bold">Profile</th>
+                  <th className="py-2 pr-3 font-bold">Status</th>
+                  <th className="py-2 pr-3 font-bold">Registered</th>
+                </tr>
+              </thead>
+              <tbody>
+                {roster.students.map((s, i) => (
+                  <tr key={i} className="border-b border-emce-border/60">
+                    <td className="py-2 pr-3">
+                      {s.slug ? (
+                        <Link href={`/${s.slug}`} className="font-bold text-emce-dark hover:underline">
+                          {s.name}
+                        </Link>
+                      ) : (
+                        <span className="font-bold text-emce-text">{s.name}</span>
+                      )}
+                      <div className="text-hint text-emce-text-muted">
+                        {[s.email, s.phone].filter(Boolean).join(" · ")}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-3 text-emce-text-sec">{s.driveTitle}</td>
+                    <td className="py-2 pr-3">
+                      {s.fairMode ? <Badge variant="default">{s.fairMode}</Badge> : "—"}
+                    </td>
+                    <td className="py-2 pr-3 tabular-nums text-emce-text-sec">
+                      {s.profileCompleteness}%
+                    </td>
+                    <td className="py-2 pr-3">
+                      {s.checkedIn ? (
+                        <Badge variant="success">Checked in</Badge>
+                      ) : (
+                        <span className="text-emce-text-muted">Registered</span>
+                      )}
+                    </td>
+                    <td className="py-2 pr-3 text-hint text-emce-text-muted">
+                      {relativeTime(s.registeredAt)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {roster.total > roster.students.length && (
+            <p className="mt-3 text-hint text-emce-text-muted">
+              Showing the most recent {roster.students.length} of {roster.total}.
+              Download the CSV for the full list with contact details, skills,
+              EV domains and more.
+            </p>
+          )}
+        </Card>
       )}
 
       {/* KPI strip — six tiles, LinkedIn-density */}
@@ -451,5 +535,75 @@ async function loadInviteLinkData(userId: string): Promise<
     inviteUrls,
     perFair,
     liveFairs,
+  };
+}
+
+/**
+ * Named roster of every student who registered for any Recruitathon via
+ * this TPO's invite link (viaTpoCellId = cell.id). The dashboard renders
+ * the most-recent 50 inline; the full set is exported by
+ * /tpo/students.csv. Returns null when the viewer has no approved cell
+ * (admins, pending applications) so the section hides cleanly.
+ */
+async function loadTpoStudentRoster(userId: string): Promise<{
+  collegeName: string;
+  total: number;
+  students: {
+    name: string;
+    email: string | null;
+    phone: string | null;
+    slug: string | null;
+    driveTitle: string;
+    fairMode: string | null;
+    profileCompleteness: number;
+    checkedIn: boolean;
+    registeredAt: Date;
+  }[];
+} | null> {
+  const cell = await db.collegePlacementCell.findFirst({
+    where: { createdById: userId, status: "APPROVED" },
+    select: { id: true, institution: { select: { name: true } } },
+  });
+  if (!cell) return null;
+
+  const [total, regs] = await Promise.all([
+    db.recruitmentDriveRegistration.count({ where: { viaTpoCellId: cell.id } }),
+    db.recruitmentDriveRegistration.findMany({
+      where: { viaTpoCellId: cell.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      select: {
+        createdAt: true,
+        checkedInAt: true,
+        fairMode: true,
+        drive: { select: { title: true } },
+        candidate: {
+          select: {
+            firstName: true,
+            lastName: true,
+            email: true,
+            phone: true,
+            slug: true,
+            profileCompleteness: true,
+          },
+        },
+      },
+    }),
+  ]);
+
+  return {
+    collegeName: cell.institution.name,
+    total,
+    students: regs.map((r) => ({
+      name: `${r.candidate.firstName} ${r.candidate.lastName ?? ""}`.trim(),
+      email: r.candidate.email,
+      phone: r.candidate.phone,
+      slug: r.candidate.slug,
+      driveTitle: r.drive.title,
+      fairMode: r.fairMode,
+      profileCompleteness: r.candidate.profileCompleteness,
+      checkedIn: Boolean(r.checkedInAt),
+      registeredAt: r.createdAt,
+    })),
   };
 }
