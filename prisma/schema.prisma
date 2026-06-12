@@ -2054,6 +2054,19 @@ model Institution {
   name               String
   type               InstitutionType         @default(COLLEGE)
   shortName          String? // common abbreviation (e.g. "IIT Delhi")
+  /// College email domains (e.g. ["adypu.edu.in", "ajeenkya.edu.in"]).
+  /// A candidate whose signup email is on one of these is auto-linked
+  /// to this institution at Recruitathon registration AND auto-
+  /// attributed to this college's approved placement cell — even if
+  /// they registered directly (not via the TPO invite link) or typed
+  /// a sloppy college name. High-confidence signal.
+  emailDomains       String[]                @default([])
+  /// Alternate names / abbreviations students might type instead of
+  /// the canonical name (e.g. ["ADYPU", "Ajeenkya DY Patil"]). Admin-
+  /// curated, so an exact alias match is high-confidence (auto-
+  /// attributes). Trigram fuzzy matching covers the long tail of typos
+  /// that aren't worth listing explicitly.
+  aliases            String[]                @default([])
   city               String?
   state              String?
   country            String                  @default("IN")

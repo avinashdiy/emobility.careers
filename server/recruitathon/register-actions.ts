@@ -43,6 +43,7 @@ import {
   RECRUITATHON_EV_DOMAIN_LABEL,
   MAX_EV_DOMAINS,
 } from "@/lib/recruitathon/registration-fields";
+import { resolveInstitution } from "@/lib/recruitathon/resolve-institution";
 import {
   clientIp,
   clientUserAgent,
@@ -216,6 +217,15 @@ function relocationPrefFor(openToRelocation: "yes" | "no"): "ANYWHERE" | "HOMETO
   return openToRelocation === "yes" ? "ANYWHERE" : "HOMETOWN_ONLY";
 }
 
+/** Source label for a registration given how it was attributed to a TPO. */
+function attributionSource(via: "link" | "automatch" | null): string {
+  return via === "link"
+    ? "RECRUITATHON_TPO_LINK"
+    : via === "automatch"
+      ? "RECRUITATHON_TPO_AUTOMATCH"
+      : "RECRUITATHON_INLINE";
+}
+
 /** Parse the optional "years of experience" string into whole months. */
 function expYearsToMonths(years: string | undefined): number {
   if (!years) return 0;
@@ -357,6 +367,7 @@ export async function registerCandidateInline(
   // critical path. Token mismatch is a silent no-op (the registration
   // succeeds with viaTpoCellId=null) — better UX than a hard reject.
   let tpoCellId: string | null = null;
+  let attributionVia: "link" | "automatch" | null = null;
   if (d.tpoToken && d.tpoToken.length > 0) {
     const cell = await db.collegePlacementCell.findUnique({
       where: { inviteToken: d.tpoToken },
@@ -364,7 +375,23 @@ export async function registerCandidateInline(
     });
     if (cell && cell.status === "APPROVED") {
       tpoCellId = cell.id;
+      attributionVia = "link";
     }
+  }
+
+  // Resolve the typed/picked college to a canonical Institution (and,
+  // for high-confidence matches, to its placement cell) so a student
+  // who registered directly with a sloppy college name still gets
+  // linked + attributed. Fuzzy matches link the institution but don't
+  // auto-credit a TPO (they surface in the TPO claim queue instead).
+  const resolved = await resolveInstitution({
+    typedName: d.college,
+    pickedId: d.institutionId && d.institutionId.length > 0 ? d.institutionId : null,
+    email: d.email,
+  });
+  if (!tpoCellId && resolved.autoAttribute && resolved.placementCellId) {
+    tpoCellId = resolved.placementCellId;
+    attributionVia = "automatch";
   }
 
   let userId: string;
@@ -437,7 +464,10 @@ export async function registerCandidateInline(
         // Picked-from-typeahead institution wins; otherwise leave the
         // FK null and let the entry stay as plain text (admin can
         // canonicalise later from the institutions queue).
-        institutionId: d.institutionId && d.institutionId.length > 0 ? d.institutionId : null,
+        // Resolved canonical institution (explicit pick, email-domain,
+        // alias, or fuzzy match) — null only when nothing matched, in
+        // which case it stays free-text for the admin merge queue.
+        institutionId: resolved.institutionId,
         // degree = the structured qualification (B.Tech / Diploma / …);
         // field = the branch / specialization free text. Previously both
         // were the same `course` string.
@@ -496,11 +526,15 @@ export async function registerCandidateInline(
             candidateId: profile.id,
             checkInCode: code,
             // Annotate source so the admin CSV + dashboards can
-            // distinguish TPO-driven signups from straight self-
-            // registrations. Both flow through this action; the
-            // viaTpoCellId column is the canonical link, source is
-            // a denormalised aid for filtering.
-            source: tpoCellId ? "RECRUITATHON_TPO_LINK" : "RECRUITATHON_INLINE",
+            // distinguish how a registration was attributed to a TPO:
+            // via the invite link, via an email/alias auto-match, or
+            // not at all. The viaTpoCellId column is the canonical link.
+            source:
+              attributionVia === "link"
+                ? "RECRUITATHON_TPO_LINK"
+                : attributionVia === "automatch"
+                  ? "RECRUITATHON_TPO_AUTOMATCH"
+                  : "RECRUITATHON_INLINE",
             viaTpoCellId: tpoCellId,
             fairMode: d.fairMode,
             intendedRoles: d.intendedRoles,
@@ -535,7 +569,7 @@ export async function registerCandidateInline(
       action: "recruitathon.candidate_registered",
       entity: "RecruitmentDrive",
       entityId: drive.id,
-      meta: { source: "RECRUITATHON_INLINE", profileId: candidateProfileId },
+      meta: { source: attributionSource(attributionVia), profileId: candidateProfileId },
     });
   } catch (err) {
     logger.warn({ err }, "[recruitathon] audit failed");
@@ -622,7 +656,13 @@ async function registerCandidateForFair(userId: string, formData: FormData): Pro
 
   const profile = await db.candidateProfile.findUnique({
     where: { userId },
-    select: { id: true, phone: true, linkedinUrl: true },
+    select: {
+      id: true,
+      phone: true,
+      linkedinUrl: true,
+      email: true,
+      user: { select: { email: true } },
+    },
   });
   if (!profile) {
     // Edge case: signed-in user has no CandidateProfile. Shouldn't
@@ -644,6 +684,7 @@ async function registerCandidateForFair(userId: string, formData: FormData): Pro
 
   // Resolve optional TPO referral the same way the signed-out path does.
   let tpoCellId: string | null = null;
+  let attributionVia: "link" | "automatch" | null = null;
   if (d.tpoToken && d.tpoToken.length > 0) {
     const cell = await db.collegePlacementCell.findUnique({
       where: { inviteToken: d.tpoToken },
@@ -651,7 +692,19 @@ async function registerCandidateForFair(userId: string, formData: FormData): Pro
     });
     if (cell && cell.status === "APPROVED") {
       tpoCellId = cell.id;
+      attributionVia = "link";
     }
+  }
+
+  // Canonical-institution resolve + email/alias auto-attribution.
+  const resolved = await resolveInstitution({
+    typedName: d.college,
+    pickedId: d.institutionId && d.institutionId.length > 0 ? d.institutionId : null,
+    email: profile.email ?? profile.user?.email ?? null,
+  });
+  if (!tpoCellId && resolved.autoAttribute && resolved.placementCellId) {
+    tpoCellId = resolved.placementCellId;
+    attributionVia = "automatch";
   }
 
   // Backfill profile fields that are empty — never overwrite existing
@@ -677,7 +730,7 @@ async function registerCandidateForFair(userId: string, formData: FormData): Pro
       data: {
         candidateId: profile.id,
         institution: d.college,
-        institutionId: d.institutionId && d.institutionId.length > 0 ? d.institutionId : null,
+        institutionId: resolved.institutionId,
         degree: d.qualification,
         field: d.course,
         endYear: Number(d.graduationYear),
@@ -730,7 +783,7 @@ async function registerCandidateForFair(userId: string, formData: FormData): Pro
           driveId: drive.id,
           candidateId: profile.id,
           checkInCode: code,
-          source: tpoCellId ? "RECRUITATHON_TPO_LINK" : "RECRUITATHON_INLINE",
+          source: attributionSource(attributionVia),
           viaTpoCellId: tpoCellId,
           fairMode: d.fairMode,
           intendedRoles: d.intendedRoles,
@@ -757,7 +810,7 @@ async function registerCandidateForFair(userId: string, formData: FormData): Pro
       action: "recruitathon.candidate_registered",
       entity: "RecruitmentDrive",
       entityId: drive.id,
-      meta: { source: tpoCellId ? "RECRUITATHON_TPO_LINK" : "RECRUITATHON_INLINE", signedIn: true },
+      meta: { source: attributionSource(attributionVia), signedIn: true },
     });
   } catch (err) {
     logger.warn({ err }, "[recruitathon] signed-in candidate audit failed");
