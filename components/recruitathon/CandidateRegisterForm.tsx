@@ -33,6 +33,12 @@ import { registerCandidateInline } from "@/server/recruitathon/register-actions"
 import { searchInstitutions, type InstitutionMatch } from "@/server/entities/actions";
 import { EntityAutocomplete } from "@/components/recruitathon/EntityAutocomplete";
 import { emptyFormState } from "@/lib/form-state";
+import {
+  QUALIFICATION_OPTIONS,
+  RECRUITATHON_EV_DOMAINS,
+  MAX_EV_DOMAINS,
+  graduationYearOptions,
+} from "@/lib/recruitathon/registration-fields";
 
 export function CandidateRegisterForm({
   driveSlug,
@@ -60,6 +66,9 @@ export function CandidateRegisterForm({
 }) {
   const [state, formAction] = useActionState(registerCandidateInline, emptyFormState);
   const [startedAt] = useState(() => Date.now());
+  // Graduation-year dropdown — computed once on the client from the
+  // current year (current+6 … current-8, newest first).
+  const [gradYears] = useState(() => graduationYearOptions(new Date().getFullYear()));
   // OAuth `next` must preserve the TPO referral across the auth hop
   // so a candidate who clicks "Continue with LinkedIn" still gets
   // credited to the TPO who shared the link.
@@ -186,10 +195,39 @@ export function CandidateRegisterForm({
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <Label htmlFor="cand-course">Course + specialization *</Label>
-              <Input id="cand-course" name="course" required placeholder="B.Tech ECE, M.Tech Power Electronics, …" aria-invalid={!!state.fieldErrors?.course} />
+              <Label htmlFor="cand-city">Current city &amp; state *</Label>
+              <Input id="cand-city" name="currentCityState" required placeholder="Pune, Maharashtra" aria-invalid={!!state.fieldErrors?.currentCityState} />
+              <FieldError error={state.fieldErrors?.currentCityState} />
+            </div>
+            <div>
+              <Label htmlFor="cand-qual">Highest qualification *</Label>
+              <NativeSelect id="cand-qual" name="qualification" required defaultValue="" aria-invalid={!!state.fieldErrors?.qualification}>
+                <option value="" disabled>Select…</option>
+                {QUALIFICATION_OPTIONS.map((q) => (
+                  <option key={q} value={q}>{q}</option>
+                ))}
+              </NativeSelect>
+              <FieldError error={state.fieldErrors?.qualification} />
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <Label htmlFor="cand-course">Branch / specialization *</Label>
+              <Input id="cand-course" name="course" required placeholder="ECE, Mechanical, Power Electronics, …" aria-invalid={!!state.fieldErrors?.course} />
               <FieldError error={state.fieldErrors?.course} />
             </div>
+            <div>
+              <Label htmlFor="cand-gradyear">Graduation year *</Label>
+              <NativeSelect id="cand-gradyear" name="graduationYear" required defaultValue="" aria-invalid={!!state.fieldErrors?.graduationYear}>
+                <option value="" disabled>Select…</option>
+                {gradYears.map((y) => (
+                  <option key={y} value={String(y)}>{y}</option>
+                ))}
+              </NativeSelect>
+              <FieldError error={state.fieldErrors?.graduationYear} />
+            </div>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <Label htmlFor="cand-year">Year of study *</Label>
               <NativeSelect id="cand-year" name="yearOfStudy" required defaultValue="" aria-invalid={!!state.fieldErrors?.yearOfStudy}>
@@ -203,6 +241,20 @@ export function CandidateRegisterForm({
                 <option value="EXPERIENCED">Working professional</option>
               </NativeSelect>
               <FieldError error={state.fieldErrors?.yearOfStudy} />
+            </div>
+            <div>
+              <p className="mb-1 text-sm font-bold text-emce-text">Open to relocation? *</p>
+              <div className="flex gap-3 pt-1.5">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" name="openToRelocation" value="yes" className="h-4 w-4 accent-emce-dark" />
+                  Yes
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" name="openToRelocation" value="no" className="h-4 w-4 accent-emce-dark" />
+                  No
+                </label>
+              </div>
+              <FieldError error={state.fieldErrors?.openToRelocation} />
             </div>
           </div>
           <div>
@@ -234,6 +286,20 @@ export function CandidateRegisterForm({
             <Input id="cand-skills" name="technicalSkills" required placeholder="Python, MATLAB, Embedded C, CAN bus, ANSYS, …" aria-invalid={!!state.fieldErrors?.technicalSkills} />
             <p className="mt-1 text-hint text-emce-text-muted">Comma-separated. We&apos;ll seed your profile with these.</p>
             <FieldError error={state.fieldErrors?.technicalSkills} />
+          </div>
+          <div>
+            <p className="mb-1 text-sm font-bold text-emce-text">
+              Preferred EV domains * <span className="font-normal text-emce-text-muted">(pick up to {MAX_EV_DOMAINS})</span>
+            </p>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {RECRUITATHON_EV_DOMAINS.map((dom) => (
+                <label key={dom.slug} className="flex items-center gap-2 rounded-md border border-emce-border p-2 text-sm">
+                  <input type="checkbox" name="evDomains" value={dom.slug} className="h-4 w-4 accent-emce-dark" />
+                  {dom.label}
+                </label>
+              ))}
+            </div>
+            <FieldError error={state.fieldErrors?.evDomains} />
           </div>
           <div>
             <Label htmlFor="cand-internships">Internships / projects (optional)</Label>

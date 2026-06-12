@@ -38,6 +38,12 @@ import { dispatchNotification } from "@/lib/notifications/dispatch";
 import { logger } from "@/lib/logger";
 import { type FormState, zodErrorsToFieldErrors } from "@/lib/form-state";
 import {
+  QUALIFICATION_OPTIONS,
+  RECRUITATHON_EV_DOMAIN_SLUGS,
+  RECRUITATHON_EV_DOMAIN_LABEL,
+  MAX_EV_DOMAINS,
+} from "@/lib/recruitathon/registration-fields";
+import {
   clientIp,
   clientUserAgent,
   honeypotTriggered,
@@ -150,6 +156,23 @@ const candidateRecruitathonFields = {
   linkedinUrl: z.string().trim().url("Enter a valid LinkedIn URL").max(300).optional().or(z.literal("")),
   driveSlug: z.string().trim().min(1),
   tpoToken: z.string().trim().max(64).optional().or(z.literal("")),
+  // ─── Added student-data fields (replacing the team's Google form) ──
+  currentCityState: z.string().trim().min(2, "Enter your current city & state").max(160),
+  qualification: z.enum(QUALIFICATION_OPTIONS, {
+    errorMap: () => ({ message: "Select your highest qualification" }),
+  }),
+  // 4-digit year as a string from the <select>; coerced to Int for the
+  // CandidateProfile.graduationYear column at write time.
+  graduationYear: z
+    .string()
+    .trim()
+    .regex(/^\d{4}$/, "Select your graduation year"),
+  openToRelocation: z.enum(["yes", "no"], {
+    errorMap: () => ({ message: "Let us know if you're open to relocating" }),
+  }),
+  // NOTE: preferred EV domains are a multi-checkbox field — Object
+  // .fromEntries(formData) collapses repeated keys, so they're read via
+  // formData.getAll("evDomains") in each action below, not here.
 } as const;
 
 const candidateSchema = z.object({
@@ -166,6 +189,84 @@ const candidateSchema = z.object({
 // so auth + acceptTerms (accepted at original signup) are skipped.
 // Only the Recruitathon-specific fields are required.
 const candidateSignedInSchema = z.object(candidateRecruitathonFields);
+
+/**
+ * Preferred EV domains are a multi-checkbox field, so they arrive as
+ * repeated form keys that Object.fromEntries() would collapse. Read
+ * them with getAll, drop anything that isn't a known canonical slug,
+ * dedupe, and cap at MAX_EV_DOMAINS.
+ */
+function parseEvDomains(formData: FormData): string[] {
+  const raw = formData.getAll("evDomains").map((v) => String(v));
+  const valid = raw.filter((s) => RECRUITATHON_EV_DOMAIN_SLUGS.includes(s));
+  return Array.from(new Set(valid)).slice(0, MAX_EV_DOMAINS);
+}
+
+/** Map the Yes/No "open to relocation" answer onto RelocationPref. */
+function relocationPrefFor(openToRelocation: "yes" | "no"): "ANYWHERE" | "HOMETOWN_ONLY" {
+  return openToRelocation === "yes" ? "ANYWHERE" : "HOMETOWN_ONLY";
+}
+
+/**
+ * Seed CandidateEVDomain links from the picked slugs (best-effort,
+ * inside the caller's transaction). Mirrors the pattern in
+ * server/candidates/actions.ts — looks up the canonical EVDomain rows
+ * and links them. The CandidateEVDomain table was never populated at
+ * signup before; this is the platform's EV-matching signal.
+ */
+async function seedCandidateEvDomains(
+  tx: Parameters<Parameters<typeof db.$transaction>[0]>[0],
+  candidateId: string,
+  slugs: string[],
+): Promise<void> {
+  if (slugs.length === 0) return;
+  const domains = await tx.eVDomain.findMany({
+    where: { slug: { in: slugs } },
+    select: { id: true },
+  });
+  for (const dom of domains) {
+    try {
+      await tx.candidateEVDomain.create({
+        data: { candidateId, evDomainId: dom.id },
+      });
+    } catch {
+      // Composite-PK conflict — already linked via another path. Ignore.
+    }
+  }
+}
+
+/** The extra answers stored in RecruitmentDriveRegistration.formAnswers. */
+function recruitathonFormAnswers(
+  d: {
+    yearOfStudy: string;
+    experienceLevel: string;
+    internshipSummary?: string;
+    hasEvExperience: "yes" | "no";
+    isDIYguruStudent: "yes" | "no";
+    currentCityState: string;
+    qualification: string;
+    graduationYear: string;
+    openToRelocation: "yes" | "no";
+  },
+  evDomains: string[],
+) {
+  return {
+    yearOfStudy: d.yearOfStudy,
+    experienceLevel: d.experienceLevel,
+    internshipSummary: d.internshipSummary ?? "",
+    hasEvExperience: d.hasEvExperience === "yes",
+    isDIYguruStudent: d.isDIYguruStudent === "yes",
+    // New student-data fields (also mirrored onto dedicated columns
+    // where available; kept here too so the CSV exports are complete
+    // regardless of profile edits later).
+    currentCityState: d.currentCityState,
+    qualification: d.qualification,
+    graduationYear: d.graduationYear,
+    openToRelocation: d.openToRelocation,
+    evDomains: evDomains.map((s) => RECRUITATHON_EV_DOMAIN_LABEL[s] ?? s),
+    evDomainSlugs: evDomains,
+  };
+}
 
 export async function registerCandidateInline(
   _prev: FormState,
@@ -197,6 +298,14 @@ export async function registerCandidateInline(
     };
   }
   const d = parsed.data;
+  const evDomains = parseEvDomains(formData);
+  if (evDomains.length === 0) {
+    return {
+      ok: false,
+      message: "Please fix the errors below.",
+      fieldErrors: { evDomains: "Pick at least one EV domain you're interested in" },
+    };
+  }
 
   // Rate-limit shared with regular signup so a determined abuser can't
   // burn through quota by alternating between forms.
@@ -280,6 +389,12 @@ export async function registerCandidateInline(
           email: d.email,
           phone: d.phone,
           linkedinUrl: d.linkedinUrl && d.linkedinUrl.length > 0 ? d.linkedinUrl : null,
+          // New structured fields — set on the profile so the rest of
+          // the platform (recruiter search filters, "near me", relocation
+          // matching) sees them, not just the fair CSV.
+          city: d.currentCityState,
+          graduationYear: Number(d.graduationYear),
+          relocationPref: relocationPrefFor(d.openToRelocation),
           // NOTE: isDIYguruVerified is INTENTIONALLY NOT set from
           // d.isDIYguruStudent. That flag drives the platform-wide
           // ⭐ DIYguru trust badge and is only legitimate when the
@@ -303,15 +418,18 @@ export async function registerCandidateInline(
         // FK null and let the entry stay as plain text (admin can
         // canonicalise later from the institutions queue).
         institutionId: d.institutionId && d.institutionId.length > 0 ? d.institutionId : null,
-        degree: d.course,
+        // degree = the structured qualification (B.Tech / Diploma / …);
+        // field = the branch / specialization free text. Previously both
+        // were the same `course` string.
+        degree: d.qualification,
         field: d.course,
-        // yearOfStudy is descriptive (FRESHER, 1, 2, ...). We don't
-        // map to start/end year here — the candidate completes that
-        // later in /me/profile.
         startYear: null,
-        endYear: null,
+        endYear: Number(d.graduationYear),
       },
     });
+    // Seed preferred EV domains — populates CandidateEVDomain (the
+    // platform's matching signal), which inline signup never did before.
+    await seedCandidateEvDomains(tx, profile.id, evDomains);
     // Seed skills — split the free-text input by comma, dedupe, cap
     // at 15. The candidate's full skill graph (with proficiency +
     // years of experience) gets built in /me/profile; this is just
@@ -367,13 +485,7 @@ export async function registerCandidateInline(
             fairMode: d.fairMode,
             intendedRoles: d.intendedRoles,
             willingLocations: d.willingLocations,
-            formAnswers: {
-              yearOfStudy: d.yearOfStudy,
-              experienceLevel: d.experienceLevel,
-              internshipSummary: d.internshipSummary ?? "",
-              hasEvExperience: d.hasEvExperience === "yes",
-              isDIYguruStudent: d.isDIYguruStudent === "yes",
-            },
+            formAnswers: recruitathonFormAnswers(d, evDomains),
           },
         });
         checkInCode = code;
@@ -470,6 +582,14 @@ async function registerCandidateForFair(userId: string, formData: FormData): Pro
     };
   }
   const d = parsed.data;
+  const evDomains = parseEvDomains(formData);
+  if (evDomains.length === 0) {
+    return {
+      ok: false,
+      message: "Please fix the errors below.",
+      fieldErrors: { evDomains: "Pick at least one EV domain you're interested in" },
+    };
+  }
 
   const drive = await db.recruitmentDrive.findUnique({
     where: { slug: d.driveSlug },
@@ -538,11 +658,17 @@ async function registerCandidateForFair(userId: string, formData: FormData): Pro
         candidateId: profile.id,
         institution: d.college,
         institutionId: d.institutionId && d.institutionId.length > 0 ? d.institutionId : null,
-        degree: d.course,
+        degree: d.qualification,
         field: d.course,
+        endYear: Number(d.graduationYear),
       },
     });
   }
+
+  // Seed preferred EV domains — additive (per-domain create catches the
+  // composite-PK conflict if the candidate already had a domain), so a
+  // signed-in user's existing picks aren't disturbed.
+  await seedCandidateEvDomains(db, profile.id, evDomains);
 
   // Seed skills — additive. Catch unique-constraint errors so an
   // already-tagged skill doesn't blow up the request.
@@ -589,13 +715,7 @@ async function registerCandidateForFair(userId: string, formData: FormData): Pro
           fairMode: d.fairMode,
           intendedRoles: d.intendedRoles,
           willingLocations: d.willingLocations,
-          formAnswers: {
-            yearOfStudy: d.yearOfStudy,
-            experienceLevel: d.experienceLevel,
-            internshipSummary: d.internshipSummary ?? "",
-            hasEvExperience: d.hasEvExperience === "yes",
-            isDIYguruStudent: d.isDIYguruStudent === "yes",
-          },
+          formAnswers: recruitathonFormAnswers(d, evDomains),
         },
       });
       break;
