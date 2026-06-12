@@ -170,6 +170,15 @@ const candidateRecruitathonFields = {
   openToRelocation: z.enum(["yes", "no"], {
     errorMap: () => ({ message: "Let us know if you're open to relocating" }),
   }),
+  // Optional — only meaningful for working professionals. Years as a
+  // string ("0"–"50", one optional decimal); converted to months for
+  // CandidateProfile.totalExperienceMonths at write time.
+  totalExperienceYears: z
+    .string()
+    .trim()
+    .regex(/^\d{1,2}(\.\d)?$/, "Enter your experience in years, e.g. 2 or 3.5")
+    .optional()
+    .or(z.literal("")),
   // NOTE: preferred EV domains are a multi-checkbox field — Object
   // .fromEntries(formData) collapses repeated keys, so they're read via
   // formData.getAll("evDomains") in each action below, not here.
@@ -205,6 +214,14 @@ function parseEvDomains(formData: FormData): string[] {
 /** Map the Yes/No "open to relocation" answer onto RelocationPref. */
 function relocationPrefFor(openToRelocation: "yes" | "no"): "ANYWHERE" | "HOMETOWN_ONLY" {
   return openToRelocation === "yes" ? "ANYWHERE" : "HOMETOWN_ONLY";
+}
+
+/** Parse the optional "years of experience" string into whole months. */
+function expYearsToMonths(years: string | undefined): number {
+  if (!years) return 0;
+  const n = parseFloat(years);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.round(Math.min(n, 60) * 12);
 }
 
 /**
@@ -247,6 +264,7 @@ function recruitathonFormAnswers(
     qualification: string;
     graduationYear: string;
     openToRelocation: "yes" | "no";
+    totalExperienceYears?: string;
   },
   evDomains: string[],
 ) {
@@ -263,6 +281,7 @@ function recruitathonFormAnswers(
     qualification: d.qualification,
     graduationYear: d.graduationYear,
     openToRelocation: d.openToRelocation,
+    totalExperienceYears: d.totalExperienceYears ?? "",
     evDomains: evDomains.map((s) => RECRUITATHON_EV_DOMAIN_LABEL[s] ?? s),
     evDomainSlugs: evDomains,
   };
@@ -395,6 +414,7 @@ export async function registerCandidateInline(
           city: d.currentCityState,
           graduationYear: Number(d.graduationYear),
           relocationPref: relocationPrefFor(d.openToRelocation),
+          totalExperienceMonths: expYearsToMonths(d.totalExperienceYears),
           // NOTE: isDIYguruVerified is INTENTIONALLY NOT set from
           // d.isDIYguruStudent. That flag drives the platform-wide
           // ⭐ DIYguru trust badge and is only legitimate when the

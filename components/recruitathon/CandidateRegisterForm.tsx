@@ -9,15 +9,15 @@
  * auto-signs the user in. Anti-spam (honeypot + Turnstile + timing)
  * mirrors the regular signup form so this is no easier to abuse.
  *
- * OAuth buttons route through googleSignInWithNext / linkedinSignInWithNext
- * with a `next` of /fairs/[slug]/register so a returning user comes
- * back to the same form post-auth — they then only need to fill the
- * Recruitathon-essential fields (the auth ones are already done).
+ * Email/password is the only signup path here — the Google / LinkedIn
+ * OAuth fast-path was removed so every candidate goes through the full
+ * Recruitathon form (the data the placement team + employers need). A
+ * candidate who's already signed in skips the auth fieldset and only
+ * fills the fair-specific fields.
  */
 
 import { useActionState, useState } from "react";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
 import { SubmitButton } from "@/components/ui/submit-button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,10 +25,6 @@ import { FieldError } from "@/components/ui/field-error";
 import { NativeSelect } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { TurnstileWidget } from "@/components/auth/TurnstileWidget";
-import {
-  googleSignInWithNext,
-  linkedinSignInWithNext,
-} from "@/server/auth/actions";
 import { registerCandidateInline } from "@/server/recruitathon/register-actions";
 import { searchInstitutions, type InstitutionMatch } from "@/server/entities/actions";
 import { EntityAutocomplete } from "@/components/recruitathon/EntityAutocomplete";
@@ -69,10 +65,6 @@ export function CandidateRegisterForm({
   // Graduation-year dropdown — computed once on the client from the
   // current year (current+6 … current-8, newest first).
   const [gradYears] = useState(() => graduationYearOptions(new Date().getFullYear()));
-  // OAuth `next` must preserve the TPO referral across the auth hop
-  // so a candidate who clicks "Continue with LinkedIn" still gets
-  // credited to the TPO who shared the link.
-  const oauthNext = `/fairs/${driveSlug}/register?as=candidate${tpoToken ? `&tpo=${encodeURIComponent(tpoToken)}` : ""}`;
 
   return (
     <>
@@ -95,31 +87,7 @@ export function CandidateRegisterForm({
             Not you?
           </Link>
         </div>
-      ) : (
-        <>
-          {/* ─── OAuth fast path ─────────────────────────────────
-              Pre-empts the long form for users with a LinkedIn /
-              Google account. Post-auth they land back here and just
-              fill the Recruitathon-essential fields (auth section is
-              skippable). */}
-          <div className="grid grid-cols-2 gap-2">
-            <form action={googleSignInWithNext}>
-              <input type="hidden" name="next" value={oauthNext} />
-              <Button type="submit" variant="outline" className="w-full">Continue with Google</Button>
-            </form>
-            <form action={linkedinSignInWithNext}>
-              <input type="hidden" name="next" value={oauthNext} />
-              <Button type="submit" variant="outline" className="w-full">Continue with LinkedIn</Button>
-            </form>
-          </div>
-
-          <div className="my-5 flex items-center gap-3">
-            <span className="h-px flex-1 bg-emce-border" />
-            <span className="text-xs text-emce-text-muted">or fill the form below</span>
-            <span className="h-px flex-1 bg-emce-border" />
-          </div>
-        </>
-      )}
+      ) : null}
 
       <form action={formAction} className="space-y-5" noValidate>
         {/* Honeypot + timing — same shape as SignUpForm. */}
@@ -257,19 +225,35 @@ export function CandidateRegisterForm({
               <FieldError error={state.fieldErrors?.openToRelocation} />
             </div>
           </div>
-          <div>
-            <p className="mb-1 text-sm font-bold text-emce-text">Are you a fresher or experienced? *</p>
-            <div className="flex gap-3">
-              <label className="flex items-center gap-2 text-sm">
-                <input type="radio" name="experienceLevel" value="FRESHER" defaultChecked className="h-4 w-4 accent-emce-dark" />
-                Fresher
-              </label>
-              <label className="flex items-center gap-2 text-sm">
-                <input type="radio" name="experienceLevel" value="EXPERIENCED" className="h-4 w-4 accent-emce-dark" />
-                Experienced
-              </label>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <p className="mb-1 text-sm font-bold text-emce-text">Are you a fresher or experienced? *</p>
+              <div className="flex gap-3 pt-1.5">
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" name="experienceLevel" value="FRESHER" defaultChecked className="h-4 w-4 accent-emce-dark" />
+                  Fresher
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input type="radio" name="experienceLevel" value="EXPERIENCED" className="h-4 w-4 accent-emce-dark" />
+                  Experienced
+                </label>
+              </div>
+              <FieldError error={state.fieldErrors?.experienceLevel} />
             </div>
-            <FieldError error={state.fieldErrors?.experienceLevel} />
+            <div>
+              <Label htmlFor="cand-totalexp">
+                Total experience{" "}
+                <span className="font-normal text-emce-text-muted">(years — if working)</span>
+              </Label>
+              <Input
+                id="cand-totalexp"
+                name="totalExperienceYears"
+                inputMode="decimal"
+                placeholder="e.g. 2 or 3.5"
+                aria-invalid={!!state.fieldErrors?.totalExperienceYears}
+              />
+              <FieldError error={state.fieldErrors?.totalExperienceYears} />
+            </div>
           </div>
           <div>
             <Label htmlFor="cand-roles">Roles you&apos;re interested in *</Label>
