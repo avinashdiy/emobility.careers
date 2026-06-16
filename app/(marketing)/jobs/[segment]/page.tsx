@@ -47,8 +47,19 @@ export async function generateMetadata({
   const { segment } = await params;
   const domain = await resolveDomain(segment);
   if (!domain) {
-    // Legacy-id path → about to redirect; metadata is irrelevant.
-    return { title: "Jobs", robots: { index: false, follow: false } };
+    // Not a domain → it's a legacy job-id. Resolve + redirect HERE, in
+    // generateMetadata, NOT in the page body: /jobs has a loading.tsx,
+    // so the page renders behind a streamed Suspense shell — a
+    // redirect()/notFound() thrown in the page body fires AFTER the
+    // shell has streamed ("failed to pipe response" → soft 200, redirect
+    // lost). generateMetadata runs before any streaming, so the 308/404
+    // status is emitted correctly.
+    const job = await db.jobPosting.findUnique({
+      where: { id: segment },
+      select: { slug: true },
+    });
+    if (!job) notFound();
+    permanentRedirect(`/job/${job.slug}`);
   }
   const url = `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/jobs/${domain.slug}`;
   const title = `${domain.name} Jobs in India — EV Careers`;
@@ -79,16 +90,9 @@ export default async function JobsSegmentPage({
 }) {
   const { segment } = await params;
   const domain = await resolveDomain(segment);
-
-  // ─── Legacy single-job id → canonical slug redirect ──────────────
-  if (!domain) {
-    const job = await db.jobPosting.findUnique({
-      where: { id: segment },
-      select: { slug: true },
-    });
-    if (!job) notFound();
-    permanentRedirect(`/job/${job.slug}`);
-  }
+  // generateMetadata already redirected legacy job-ids + 404'd unknown
+  // segments before streaming; this is just a type-narrowing guard.
+  if (!domain) notFound();
 
   // ─── Domain facet page ───────────────────────────────────────────
   const sp = await searchParams;
