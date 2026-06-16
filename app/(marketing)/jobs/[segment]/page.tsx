@@ -47,19 +47,12 @@ export async function generateMetadata({
   const { segment } = await params;
   const domain = await resolveDomain(segment);
   if (!domain) {
-    // Not a domain → it's a legacy job-id. Resolve + redirect HERE, in
-    // generateMetadata, NOT in the page body: /jobs has a loading.tsx,
-    // so the page renders behind a streamed Suspense shell — a
-    // redirect()/notFound() thrown in the page body fires AFTER the
-    // shell has streamed ("failed to pipe response" → soft 200, redirect
-    // lost). generateMetadata runs before any streaming, so the 308/404
-    // status is emitted correctly.
-    const job = await db.jobPosting.findUnique({
-      where: { id: segment },
-      select: { slug: true },
-    });
-    if (!job) notFound();
-    permanentRedirect(`/job/${job.slug}`);
+    // Non-domain segment (a legacy job-id or junk). Don't redirect/404
+    // HERE — generateMetadata races with the page render, and a throw
+    // here can conflict with the page's own dispatch. The page body
+    // owns the redirect/notFound (now that /jobs has no loading.tsx,
+    // those emit hard 308/404). Return minimal, noindexed metadata.
+    return { title: "Jobs", robots: { index: false, follow: false } };
   }
   const url = `${env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "")}/jobs/${domain.slug}`;
   const title = `${domain.name} Jobs in India — EV Careers`;
@@ -90,9 +83,17 @@ export default async function JobsSegmentPage({
 }) {
   const { segment } = await params;
   const domain = await resolveDomain(segment);
-  // generateMetadata already redirected legacy job-ids + 404'd unknown
-  // segments before streaming; this is just a type-narrowing guard.
-  if (!domain) notFound();
+
+  // ─── Non-domain segment → legacy single-job redirect / 404 ───────
+  // With /jobs/loading.tsx removed, these throws emit hard 308/404.
+  if (!domain) {
+    const job = await db.jobPosting.findUnique({
+      where: { id: segment },
+      select: { slug: true },
+    });
+    if (!job) notFound();
+    permanentRedirect(`/job/${job.slug}`);
+  }
 
   // ─── Domain facet page ───────────────────────────────────────────
   const sp = await searchParams;
