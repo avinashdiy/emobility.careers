@@ -106,11 +106,12 @@ export async function SiteFooter() {
             title="Candidates"
             links={[
               { href: "/jobs", label: "Browse jobs" },
+              { href: "/domains", label: "Jobs by domain" },
+              { href: "/internships", label: "EV internships" },
               { href: "/signup", label: "Create profile" },
               { href: "/me/applications", label: "My applications" },
               { href: "/skills", label: "Verified skill badges" },
               { href: "/ai-tools", label: "AI tools" },
-              { href: "/roast", label: "Roast my resume" },
               { href: "/career-explorer", label: "EV Career Explorer" },
             ]}
           />

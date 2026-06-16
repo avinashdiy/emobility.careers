@@ -8,6 +8,8 @@ export interface JobsFilter {
   domain?: string;     // EV domain slug
   workMode?: string;
   profileMode?: string;
+  /** Employment-type facet (e.g. "INTERNSHIP") — powers /internships. */
+  employmentType?: string;
   diyguruOnly?: boolean;
   /** Whether the viewing candidate is DIYguru-verified — drives the
       audience filter so DIYGURU_ONLY jobs only surface for verified
@@ -173,6 +175,9 @@ export async function searchJobs(filter: JobsFilter) {
   }
   if (filter.domain) {
     where.evDomains = { some: { evDomain: { slug: filter.domain } } };
+  }
+  if (filter.employmentType) {
+    where.employmentType = filter.employmentType as Prisma.JobPostingWhereInput["employmentType"];
   }
 
   // Country filter. Strict match by default — `?country=GB` shows

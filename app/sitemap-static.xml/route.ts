@@ -1,4 +1,5 @@
 import { env } from "@/lib/env";
+import { db } from "@/lib/db";
 import { renderUrlSet, xmlHeaders } from "@/lib/seo/sitemap-xml";
 
 /**
@@ -40,6 +41,11 @@ export async function GET() {
     { path: "/competitions", priority: 0.7, changefreq: "weekly" },
     { path: "/pulse", priority: 0.7, changefreq: "hourly" },
     { path: "/salaries", priority: 0.7, changefreq: "weekly" },
+    // SEO facet hubs — browse jobs by domain + the internships
+    // landing. /jobs/[domain] facet URLs themselves are appended
+    // below from the live EVDomain list.
+    { path: "/domains", priority: 0.8, changefreq: "daily" },
+    { path: "/internships", priority: 0.8, changefreq: "daily" },
     // Articles index — individual articles live in
     // sitemap-articles.xml, but the index page itself was missing
     // from the static shard. Bing flagged it as "Important pages
@@ -82,6 +88,18 @@ export async function GET() {
     { path: "/bd/companies", priority: 0.8, changefreq: "weekly" },
     { path: "/np/companies", priority: 0.8, changefreq: "weekly" },
   ];
+
+  // Per-domain job-facet pages (/jobs/battery-tech etc.) — one
+  // indexable URL per active EV domain. Appended from the live table
+  // so new domains auto-enter the sitemap.
+  const domains = await db.eVDomain.findMany({
+    where: { isActive: true },
+    orderBy: { order: "asc" },
+    select: { slug: true },
+  });
+  for (const d of domains) {
+    paths.push({ path: `/jobs/${d.slug}`, priority: 0.8, changefreq: "daily" });
+  }
 
   const xml = renderUrlSet(
     paths.map((p) => ({
