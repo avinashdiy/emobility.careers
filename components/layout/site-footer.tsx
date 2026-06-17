@@ -109,6 +109,7 @@ export async function SiteFooter() {
               { href: "/domains", label: "Jobs by domain" },
               { href: "/cities", label: "Jobs by city" },
               { href: "/internships", label: "EV internships" },
+              { href: "/career-guides", label: "Career guides" },
               { href: "/signup", label: "Create profile" },
               { href: "/me/applications", label: "My applications" },
               { href: "/skills", label: "Verified skill badges" },

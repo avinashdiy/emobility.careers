@@ -3,6 +3,7 @@ import { db } from "@/lib/db";
 import { renderUrlSet, xmlHeaders } from "@/lib/seo/sitemap-xml";
 import { listCities } from "@/lib/jobs/cities";
 import { getSalaryRoles, getSalaryCompanies } from "@/lib/salary-compass";
+import { CAREER_GUIDES } from "@/lib/career-guides/guides";
 
 /**
  * Static marketing + landing pages — the hand-curated entry points
@@ -48,6 +49,14 @@ export async function GET() {
     // live SalaryCompass aggregates.
     { path: "/salaries/roles", priority: 0.8, changefreq: "daily" },
     { path: "/salaries/companies", priority: 0.8, changefreq: "daily" },
+    // Career guides — "how to become an X" depth content. The index +
+    // every per-role guide (evergreen, weekly changefreq).
+    { path: "/career-guides", priority: 0.8, changefreq: "weekly" },
+    ...CAREER_GUIDES.map((g) => ({
+      path: `/career-guides/${g.slug}`,
+      priority: 0.7 as number,
+      changefreq: "weekly" as const,
+    })),
     // SEO facet hubs — browse jobs by domain + the internships
     // landing. /jobs/[domain] facet URLs themselves are appended
     // below from the live EVDomain list.
