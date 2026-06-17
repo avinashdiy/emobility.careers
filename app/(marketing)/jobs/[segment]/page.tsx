@@ -170,7 +170,7 @@ export default async function JobsSegmentPage({
   // already redirected/404'd otherwise).
   const c = city!;
   const { jobs, total, pages } = await searchJobs({
-    location: c.name,
+    locationsAny: c.names,
     viewerIsDIYguru,
     page,
     pageSize: PAGE_SIZE,

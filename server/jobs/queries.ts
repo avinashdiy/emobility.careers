@@ -5,6 +5,14 @@ import { buildTsQuery } from "@/lib/search-fts";
 export interface JobsFilter {
   q?: string;
   location?: string;
+  /**
+   * City-facet filter — matches a job if ANY of its free-text
+   * `locations[]` entries is in this list (`hasSome`). The /jobs/[city]
+   * facet passes every raw casing/spacing variant that slugifies to the
+   * city slug, so a job written "bengaluru" still surfaces on the
+   * "Bengaluru" page. Distinct from `location` (single exact `has`).
+   */
+  locationsAny?: string[];
   domain?: string;     // EV domain slug
   workMode?: string;
   profileMode?: string;
@@ -166,6 +174,10 @@ export async function searchJobs(filter: JobsFilter) {
   }
   if (filter.location?.toLowerCase() === "remote") {
     where.workMode = "REMOTE";
+  }
+  // City-facet variant match — any of the slug's raw location variants.
+  if (filter.locationsAny && filter.locationsAny.length > 0) {
+    where.locations = { hasSome: filter.locationsAny };
   }
   if (filter.workMode) {
     where.workMode = filter.workMode as Prisma.JobPostingWhereInput["workMode"];

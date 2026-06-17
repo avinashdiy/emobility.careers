@@ -403,9 +403,10 @@ export const getSalaryRoles = unstable_cache(
       for (const [t, n] of slot.titles) {
         if (n > top) { top = n; title = t; }
       }
-      out.push({ slug, title, titles: [...slot.titles.keys()], count: slot.vals.length, stat });
+      out.push({ slug, title, titles: [...slot.titles.keys()].sort(), count: slot.vals.length, stat });
     }
-    return out.sort((a, b) => b.count - a.count);
+    // Busiest first; slug tie-break for stable ordering across renders.
+    return out.sort((a, b) => b.count - a.count || a.slug.localeCompare(b.slug));
   },
   ["compass:salary-roles:v1"],
   { revalidate: 300, tags: [COMPASS_TAG] },
@@ -451,6 +452,10 @@ export interface CompanyFacet {
   slug: string;
   companyId: string | null;
   name: string;
+  /** Every raw companyName variant for a text-only employer (matched by
+   *  `in`). For DB-linked companies this is just [name] — those are
+   *  matched by companyId, not name. */
+  names: string[];
   /** The Company.slug for verified DB companies (links to profile). */
   companySlug: string | null;
   logoUrl: string | null;
@@ -473,43 +478,91 @@ export const getSalaryCompanies = unstable_cache(
     });
     const grouped = new Map<
       string,
-      { id: string | null; name: string; companySlug: string | null; logo: string | null; vals: number[] }
+      { id: string | null; names: Map<string, number>; companySlug: string | null; logo: string | null; vals: number[] }
     >();
     for (const r of rows) {
       const key = r.companyId ?? `text:${r.companyName.trim().toLowerCase()}`;
       const slot = grouped.get(key) ?? {
         id: r.companyId ?? null,
-        name: r.companyName.trim(),
+        names: new Map<string, number>(),
         companySlug: r.company?.slug ?? null,
         logo: r.company?.logoUrl ?? null,
         vals: [],
       };
+      const nm = r.companyName.trim();
+      slot.names.set(nm, (slot.names.get(nm) ?? 0) + 1);
       slot.vals.push(r.ctcLakhs);
       grouped.set(key, slot);
     }
+
+    // Build entries first, in a DETERMINISTIC order (count desc, then
+    // the unique group key) so the same data always yields the same
+    // slugs — resolution + the sitemap depend on slug stability.
+    const entries = [...grouped.entries()]
+      .map(([key, slot]) => {
+        const stat = summarise(slot.vals);
+        if (!stat) return null;
+        // Canonical display name = most frequent variant.
+        let name = "";
+        let top = -1;
+        for (const [variant, n] of slot.names) {
+          if (n > top) { top = n; name = variant; }
+        }
+        return {
+          key,
+          id: slot.id,
+          name,
+          names: [...slot.names.keys()].sort(),
+          companySlug: slot.companySlug,
+          logo: slot.logo,
+          count: slot.vals.length,
+          stat,
+        };
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null)
+      .sort((a, b) => b.count - a.count || a.key.localeCompare(b.key));
+
+    type Entry = (typeof entries)[number];
+    const toFacet = (e: Entry, slug: string): CompanyFacet => ({
+      slug,
+      companyId: e.id,
+      name: e.name,
+      names: e.names,
+      companySlug: e.companySlug,
+      logoUrl: e.logo,
+      count: e.count,
+      stat: e.stat,
+    });
+
+    // Two-pass slug assignment. Pass 1: verified DB-linked companies
+    // claim their canonical Company.slug, so a link built from
+    // companySlug elsewhere (the /salaries landing) always resolves to
+    // THAT company — never a same-named text employer. Pass 2: text-only
+    // employers slugify their name and yield to any reserved slug with a
+    // numeric suffix (…-2, …-3). The bare slug goes to the higher-count
+    // entry (entries are pre-sorted), keeping URLs stable.
     const out: CompanyFacet[] = [];
     const usedSlugs = new Set<string>();
-    for (const slot of grouped.values()) {
-      const stat = summarise(slot.vals);
-      if (!stat) continue;
-      // Prefer the verified Company.slug for a clean, consistent URL;
-      // fall back to a slugified name for text-only employers. Dedupe
-      // so two employers can't claim the same /salaries/company slug.
-      let slug = slot.companySlug ?? salarySlug(slot.name);
-      if (!slug) continue;
-      if (usedSlugs.has(slug)) slug = `${slug}-${salarySlug(slot.id ?? slot.name).slice(0, 6)}`;
+    for (const e of entries) {
+      if (!e.companySlug) continue;
+      let slug = e.companySlug;
+      let n = 2;
+      while (usedSlugs.has(slug)) slug = `${e.companySlug}-${n++}`;
       usedSlugs.add(slug);
-      out.push({
-        slug,
-        companyId: slot.id,
-        name: slot.name,
-        companySlug: slot.companySlug,
-        logoUrl: slot.logo,
-        count: slot.vals.length,
-        stat,
-      });
+      out.push(toFacet(e, slug));
     }
-    return out.sort((a, b) => b.count - a.count);
+    for (const e of entries) {
+      if (e.companySlug) continue;
+      const base = salarySlug(e.name);
+      if (!base) continue;
+      let slug = base;
+      let n = 2;
+      while (usedSlugs.has(slug)) slug = `${base}-${n++}`;
+      usedSlugs.add(slug);
+      out.push(toFacet(e, slug));
+    }
+    // Busiest first for hubs + sitemap; slug tie-break for stability.
+    return out.sort((a, b) => b.count - a.count || a.slug.localeCompare(b.slug));
   },
   ["compass:salary-companies:v1"],
   { revalidate: 300, tags: [COMPASS_TAG] },
@@ -522,22 +575,32 @@ export interface CompanySalaryDetail extends CompanyFacet {
 
 /** Resolve a company slug to its full salary detail (or null). */
 export async function getSalaryCompany(slug: string): Promise<CompanySalaryDetail | null> {
-  const facet = (await getSalaryCompanies()).find((c) => c.slug === slug);
+  const companies = await getSalaryCompanies();
+  // Exact registered slug first (DB companies always keep their
+  // companySlug via pass-1 assignment, so this is the resolving path for
+  // every landing-page link). The base-slug fallback is a graceful net
+  // for the rare case where a text employer's name-slug was suffixed
+  // away — it still lands on the company that owns that base slug rather
+  // than 404-ing.
+  const facet =
+    companies.find((c) => c.slug === slug) ??
+    companies.find((c) => (c.companySlug ?? salarySlug(c.name)) === slug) ??
+    null;
   if (!facet) return null;
   const [tiers, topRoles] = await Promise.all([
     facet.companyId
       ? getTierBreakdown({ companyId: facet.companyId })
-      : getTierBreakdownForCompanyName(facet.name),
-    getCompanyTopRoles(facet.companyId, facet.name),
+      : getTierBreakdownForCompanyNames(facet.names),
+    getCompanyTopRoles(facet.companyId, facet.names),
   ]);
   return { ...facet, tiers, topRoles };
 }
 
-/** Tier breakdown for a text-only company (matched by name). */
-const getTierBreakdownForCompanyName = unstable_cache(
-  async (companyName: string): Promise<TierBreakdown[]> => {
+/** Tier breakdown for a text-only company (matched by name variants). */
+const getTierBreakdownForCompanyNames = unstable_cache(
+  async (companyNames: string[]): Promise<TierBreakdown[]> => {
     const rows = await db.salarySubmission.findMany({
-      where: { status: "APPROVED", companyName },
+      where: { status: "APPROVED", companyName: { in: companyNames } },
       select: { yearsExp: true, ctcLakhs: true },
     });
     const byBucket = new Map<TierBreakdown["bucket"], number[]>();
@@ -553,15 +616,15 @@ const getTierBreakdownForCompanyName = unstable_cache(
       stat: summarise(byBucket.get(bucket) ?? []),
     }));
   },
-  ["compass:tier-breakdown-company-name:v1"],
+  ["compass:tier-breakdown-company-names:v1"],
   { revalidate: 300, tags: [COMPASS_TAG] },
 );
 
 /** Top-paying roles within one company (≥PUBLIC_MIN_SAMPLES each). */
 const getCompanyTopRoles = unstable_cache(
-  async (companyId: string | null, companyName: string): Promise<{ title: string; stat: SalaryStat }[]> => {
+  async (companyId: string | null, companyNames: string[]): Promise<{ title: string; stat: SalaryStat }[]> => {
     const rows = await db.salarySubmission.findMany({
-      where: { status: "APPROVED", ...(companyId ? { companyId } : { companyName }) },
+      where: { status: "APPROVED", ...(companyId ? { companyId } : { companyName: { in: companyNames } }) },
       select: { jobTitle: true, ctcLakhs: true },
     });
     const byTitle = new Map<string, number[]>();
