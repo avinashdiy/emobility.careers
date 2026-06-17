@@ -75,7 +75,9 @@ export async function generateMetadata({
   const city = await resolveCity(segment);
   if (city) {
     const url = `${base}/jobs/${city.slug}`;
-    const title = `EV Jobs in ${city.name} — eMobility Careers`;
+    // No "eMobility Careers" suffix — the root layout title template
+    // already appends "| eMobility Careers" (avoids double-branding).
+    const title = `EV Jobs in ${city.name} — Battery, Charging & Software Roles`;
     const description =
       `${city.count > 0 ? `${city.count} open` : "Browse"} electric-vehicle jobs in ${city.name} — ` +
       "battery, charging, motors, vehicle engineering and software roles at OEMs, startups and suppliers. Apply free on eMobility Careers.";
