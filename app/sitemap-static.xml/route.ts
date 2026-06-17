@@ -2,6 +2,7 @@ import { env } from "@/lib/env";
 import { db } from "@/lib/db";
 import { renderUrlSet, xmlHeaders } from "@/lib/seo/sitemap-xml";
 import { listCities } from "@/lib/jobs/cities";
+import { getSalaryRoles, getSalaryCompanies } from "@/lib/salary-compass";
 
 /**
  * Static marketing + landing pages — the hand-curated entry points
@@ -42,6 +43,11 @@ export async function GET() {
     { path: "/competitions", priority: 0.7, changefreq: "weekly" },
     { path: "/pulse", priority: 0.7, changefreq: "hourly" },
     { path: "/salaries", priority: 0.7, changefreq: "weekly" },
+    // Salary facet hubs — browse pay by role / by company. The
+    // per-role + per-company detail URLs are appended below from the
+    // live SalaryCompass aggregates.
+    { path: "/salaries/roles", priority: 0.8, changefreq: "daily" },
+    { path: "/salaries/companies", priority: 0.8, changefreq: "daily" },
     // SEO facet hubs — browse jobs by domain + the internships
     // landing. /jobs/[domain] facet URLs themselves are appended
     // below from the live EVDomain list.
@@ -113,6 +119,20 @@ export async function GET() {
   const cities = (await listCities()).slice(0, 60);
   for (const c of cities) {
     paths.push({ path: `/jobs/${c.slug}`, priority: 0.7, changefreq: "daily" });
+  }
+
+  // Salary facet detail pages — one indexable URL per role + per
+  // company that clears the public sample threshold. Pulled live so
+  // new roles/companies auto-enter as their submission count grows.
+  const [salaryRoles, salaryCompanies] = await Promise.all([
+    getSalaryRoles(),
+    getSalaryCompanies(),
+  ]);
+  for (const r of salaryRoles) {
+    paths.push({ path: `/salaries/${r.slug}`, priority: 0.7, changefreq: "weekly" });
+  }
+  for (const c of salaryCompanies) {
+    paths.push({ path: `/salaries/company/${c.slug}`, priority: 0.7, changefreq: "weekly" });
   }
 
   const xml = renderUrlSet(

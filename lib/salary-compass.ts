@@ -337,3 +337,278 @@ export function formatLakhs(value: number): string {
   if (value >= 100) return `₹${(value / 100).toFixed(1)}Cr`;
   return `₹${value.toFixed(1)}L`;
 }
+
+// ─── SEO facet pages (/salaries/[role], /salaries/company/[slug]) ───
+//
+// One indexable page per role + per company that clears the public
+// sample threshold. These rank for the highest-intent salary queries
+// ("battery engineer salary india", "ather energy salary"). Each page
+// shows the real median + p25-p75 band (the public teaser that earns
+// the ranking) and emits Occupation JSON-LD for Google's estimated-
+// salary rich result. The per-experience-tier breakdown stays behind
+// the existing submit-to-unlock mechanic.
+
+/** URL-safe slug from a free-text role / company name. */
+export function salarySlug(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+export interface RoleFacet {
+  slug: string;
+  /** Canonical display title (most common variant for this slug). */
+  title: string;
+  /** Every raw jobTitle variant that slugifies to this slug. */
+  titles: string[];
+  count: number;
+  stat: SalaryStat;
+}
+
+/**
+ * Every role with enough approved submissions to show a public stat,
+ * busiest first. Case/spacing variants of the same title merge under
+ * one slug (the most common variant supplies the display title).
+ */
+export const getSalaryRoles = unstable_cache(
+  async (): Promise<RoleFacet[]> => {
+    const rows = await db.salarySubmission.findMany({
+      where: { status: "APPROVED" },
+      select: { jobTitle: true, ctcLakhs: true },
+      take: 10000,
+    });
+    // slug → { variant title → frequency, values }
+    const bySlug = new Map<
+      string,
+      { titles: Map<string, number>; vals: number[] }
+    >();
+    for (const r of rows) {
+      const t = r.jobTitle.trim();
+      const slug = salarySlug(t);
+      if (!slug) continue;
+      const slot = bySlug.get(slug) ?? { titles: new Map<string, number>(), vals: [] };
+      slot.titles.set(t, (slot.titles.get(t) ?? 0) + 1);
+      slot.vals.push(r.ctcLakhs);
+      bySlug.set(slug, slot);
+    }
+    const out: RoleFacet[] = [];
+    for (const [slug, slot] of bySlug) {
+      const stat = summarise(slot.vals);
+      if (!stat) continue;
+      // Canonical title = most frequent variant.
+      let title = "";
+      let top = -1;
+      for (const [t, n] of slot.titles) {
+        if (n > top) { top = n; title = t; }
+      }
+      out.push({ slug, title, titles: [...slot.titles.keys()], count: slot.vals.length, stat });
+    }
+    return out.sort((a, b) => b.count - a.count);
+  },
+  ["compass:salary-roles:v1"],
+  { revalidate: 300, tags: [COMPASS_TAG] },
+);
+
+export interface RoleSalaryDetail extends RoleFacet {
+  tiers: TierBreakdown[];
+}
+
+/** Resolve a role slug to its full salary detail (or null). */
+export async function getSalaryRole(slug: string): Promise<RoleSalaryDetail | null> {
+  const facet = (await getSalaryRoles()).find((r) => r.slug === slug);
+  if (!facet) return null;
+  const tiers = await getTierBreakdownForTitles(facet.titles);
+  return { ...facet, tiers };
+}
+
+/** Tier breakdown across a set of title variants (a slug's variants). */
+const getTierBreakdownForTitles = unstable_cache(
+  async (titles: string[]): Promise<TierBreakdown[]> => {
+    const rows = await db.salarySubmission.findMany({
+      where: { status: "APPROVED", jobTitle: { in: titles } },
+      select: { yearsExp: true, ctcLakhs: true },
+    });
+    const byBucket = new Map<TierBreakdown["bucket"], number[]>();
+    for (const r of rows) {
+      const b = bucketFor(r.yearsExp);
+      const arr = byBucket.get(b) ?? [];
+      arr.push(r.ctcLakhs);
+      byBucket.set(b, arr);
+    }
+    return (["JUNIOR", "MID", "SENIOR", "LEAD"] as const).map((bucket) => ({
+      label: BUCKET_LABELS[bucket],
+      bucket,
+      stat: summarise(byBucket.get(bucket) ?? []),
+    }));
+  },
+  ["compass:tier-breakdown-titles:v1"],
+  { revalidate: 300, tags: [COMPASS_TAG] },
+);
+
+export interface CompanyFacet {
+  slug: string;
+  companyId: string | null;
+  name: string;
+  /** The Company.slug for verified DB companies (links to profile). */
+  companySlug: string | null;
+  logoUrl: string | null;
+  count: number;
+  stat: SalaryStat;
+}
+
+/** Every company with enough approved submissions to show a stat. */
+export const getSalaryCompanies = unstable_cache(
+  async (): Promise<CompanyFacet[]> => {
+    const rows = await db.salarySubmission.findMany({
+      where: { status: "APPROVED" },
+      select: {
+        companyId: true,
+        companyName: true,
+        ctcLakhs: true,
+        company: { select: { slug: true, logoUrl: true } },
+      },
+      take: 10000,
+    });
+    const grouped = new Map<
+      string,
+      { id: string | null; name: string; companySlug: string | null; logo: string | null; vals: number[] }
+    >();
+    for (const r of rows) {
+      const key = r.companyId ?? `text:${r.companyName.trim().toLowerCase()}`;
+      const slot = grouped.get(key) ?? {
+        id: r.companyId ?? null,
+        name: r.companyName.trim(),
+        companySlug: r.company?.slug ?? null,
+        logo: r.company?.logoUrl ?? null,
+        vals: [],
+      };
+      slot.vals.push(r.ctcLakhs);
+      grouped.set(key, slot);
+    }
+    const out: CompanyFacet[] = [];
+    const usedSlugs = new Set<string>();
+    for (const slot of grouped.values()) {
+      const stat = summarise(slot.vals);
+      if (!stat) continue;
+      // Prefer the verified Company.slug for a clean, consistent URL;
+      // fall back to a slugified name for text-only employers. Dedupe
+      // so two employers can't claim the same /salaries/company slug.
+      let slug = slot.companySlug ?? salarySlug(slot.name);
+      if (!slug) continue;
+      if (usedSlugs.has(slug)) slug = `${slug}-${salarySlug(slot.id ?? slot.name).slice(0, 6)}`;
+      usedSlugs.add(slug);
+      out.push({
+        slug,
+        companyId: slot.id,
+        name: slot.name,
+        companySlug: slot.companySlug,
+        logoUrl: slot.logo,
+        count: slot.vals.length,
+        stat,
+      });
+    }
+    return out.sort((a, b) => b.count - a.count);
+  },
+  ["compass:salary-companies:v1"],
+  { revalidate: 300, tags: [COMPASS_TAG] },
+);
+
+export interface CompanySalaryDetail extends CompanyFacet {
+  tiers: TierBreakdown[];
+  topRoles: { title: string; stat: SalaryStat }[];
+}
+
+/** Resolve a company slug to its full salary detail (or null). */
+export async function getSalaryCompany(slug: string): Promise<CompanySalaryDetail | null> {
+  const facet = (await getSalaryCompanies()).find((c) => c.slug === slug);
+  if (!facet) return null;
+  const [tiers, topRoles] = await Promise.all([
+    facet.companyId
+      ? getTierBreakdown({ companyId: facet.companyId })
+      : getTierBreakdownForCompanyName(facet.name),
+    getCompanyTopRoles(facet.companyId, facet.name),
+  ]);
+  return { ...facet, tiers, topRoles };
+}
+
+/** Tier breakdown for a text-only company (matched by name). */
+const getTierBreakdownForCompanyName = unstable_cache(
+  async (companyName: string): Promise<TierBreakdown[]> => {
+    const rows = await db.salarySubmission.findMany({
+      where: { status: "APPROVED", companyName },
+      select: { yearsExp: true, ctcLakhs: true },
+    });
+    const byBucket = new Map<TierBreakdown["bucket"], number[]>();
+    for (const r of rows) {
+      const b = bucketFor(r.yearsExp);
+      const arr = byBucket.get(b) ?? [];
+      arr.push(r.ctcLakhs);
+      byBucket.set(b, arr);
+    }
+    return (["JUNIOR", "MID", "SENIOR", "LEAD"] as const).map((bucket) => ({
+      label: BUCKET_LABELS[bucket],
+      bucket,
+      stat: summarise(byBucket.get(bucket) ?? []),
+    }));
+  },
+  ["compass:tier-breakdown-company-name:v1"],
+  { revalidate: 300, tags: [COMPASS_TAG] },
+);
+
+/** Top-paying roles within one company (≥PUBLIC_MIN_SAMPLES each). */
+const getCompanyTopRoles = unstable_cache(
+  async (companyId: string | null, companyName: string): Promise<{ title: string; stat: SalaryStat }[]> => {
+    const rows = await db.salarySubmission.findMany({
+      where: { status: "APPROVED", ...(companyId ? { companyId } : { companyName }) },
+      select: { jobTitle: true, ctcLakhs: true },
+    });
+    const byTitle = new Map<string, number[]>();
+    for (const r of rows) {
+      const t = r.jobTitle.trim();
+      const arr = byTitle.get(t) ?? [];
+      arr.push(r.ctcLakhs);
+      byTitle.set(t, arr);
+    }
+    const out: { title: string; stat: SalaryStat }[] = [];
+    for (const [title, vals] of byTitle) {
+      const stat = summarise(vals);
+      if (stat) out.push({ title, stat });
+    }
+    return out.sort((a, b) => b.stat.medianLakhs - a.stat.medianLakhs);
+  },
+  ["compass:company-top-roles:v1"],
+  { revalidate: 300, tags: [COMPASS_TAG] },
+);
+
+/**
+ * Occupation JSON-LD with an estimated-salary distribution — Google's
+ * structured-data type for salary rich results. ctcLakhs values are in
+ * lakhs of INR, so multiply by 100,000 for the absolute amount.
+ */
+export function salaryOccupationJsonLd(opts: {
+  name: string;
+  url: string;
+  description: string;
+  stat: SalaryStat;
+}) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "Occupation",
+    name: opts.name,
+    description: opts.description,
+    occupationLocation: { "@type": "Country", name: "India" },
+    estimatedSalary: [
+      {
+        "@type": "MonetaryAmountDistribution",
+        name: "base",
+        currency: "INR",
+        duration: "P1Y",
+        percentile25: Math.round(opts.stat.p25Lakhs * 100_000),
+        median: Math.round(opts.stat.medianLakhs * 100_000),
+        percentile75: Math.round(opts.stat.p75Lakhs * 100_000),
+      },
+    ],
+  };
+}

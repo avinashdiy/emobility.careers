@@ -11,6 +11,7 @@ import {
   getTopPayingCompanies,
   isUnlocked,
   formatLakhs,
+  salarySlug,
   PUBLIC_MIN_SAMPLES,
 } from "@/lib/salary-compass";
 import { env } from "@/lib/env";
@@ -148,7 +149,7 @@ export default async function SalariesPage({
               eyebrow="Top-paying"
               title="EV roles by median CTC"
               hint={`Across the last 24 months · ≥${PUBLIC_MIN_SAMPLES} submissions per role`}
-              link={{ href: "/salaries/submit", label: "Add yours →" }}
+              link={{ href: "/salaries/roles", label: "Browse all roles →" }}
             />
             {limitedRoles.length === 0 ? (
               <Card className="text-center text-emce-text-sec">
@@ -158,25 +159,27 @@ export default async function SalariesPage({
               <ul className="emce-stagger grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {limitedRoles.map((r) => (
                   <li key={r.jobTitle}>
-                    <Card>
-                      <p className="line-clamp-2 text-sm font-bold text-emce-text">{r.jobTitle}</p>
-                      <p className="mt-2 text-2xl font-extrabold text-emce-mid-muted">
-                        {formatLakhs(r.stat.medianLakhs)}
-                      </p>
-                      <p className="mt-1 text-hint text-emce-text-sec">
-                        median · {formatLakhs(r.stat.p25Lakhs)} – {formatLakhs(r.stat.p75Lakhs)} (p25-p75)
-                      </p>
-                      <p className="mt-1 text-hint text-emce-text-muted">
-                        {r.stat.count} submissions
-                      </p>
-                    </Card>
+                    <Link href={`/salaries/${salarySlug(r.jobTitle)}`} className="block">
+                      <Card className="h-full transition hover:border-emce-mid hover:shadow-emce-hover">
+                        <p className="line-clamp-2 text-sm font-bold text-emce-text">{r.jobTitle}</p>
+                        <p className="mt-2 text-2xl font-extrabold text-emce-mid-muted">
+                          {formatLakhs(r.stat.medianLakhs)}
+                        </p>
+                        <p className="mt-1 text-hint text-emce-text-sec">
+                          median · {formatLakhs(r.stat.p25Lakhs)} – {formatLakhs(r.stat.p75Lakhs)} (p25-p75)
+                        </p>
+                        <p className="mt-1 text-hint text-emce-text-muted">
+                          {r.stat.count} submissions
+                        </p>
+                      </Card>
+                    </Link>
                   </li>
                 ))}
               </ul>
             )}
             {!unlocked && topRoles.length > 3 && (
               <p className="mt-3 text-center text-sm text-emce-text-sec">
-                +{topRoles.length - 3} more roles · <Link href="/salaries/submit" className="font-bold text-emce-dark hover:underline">unlock</Link>
+                +{topRoles.length - 3} more roles · <Link href="/salaries/roles" className="font-bold text-emce-dark hover:underline">browse all</Link>
               </p>
             )}
           </section>
@@ -186,7 +189,8 @@ export default async function SalariesPage({
             <SectionHeader
               eyebrow="By company"
               title="Top-paying EV employers"
-              hint="Median total CTC across approved submissions. Verified companies linked through to their pages."
+              hint="Median total CTC across approved submissions. Tap a company for its full pay breakdown."
+              link={{ href: "/salaries/companies", label: "Browse all companies →" }}
             />
             {limitedCompanies.length === 0 ? (
               <Card className="text-center text-emce-text-sec">
@@ -200,13 +204,12 @@ export default async function SalariesPage({
                       <div className="flex items-center gap-3">
                         <Avatar src={c.logoUrl} name={c.companyName} size="md" />
                         <div className="min-w-0">
-                          {c.companySlug ? (
-                            <Link href={`/company/${c.companySlug}`} className="block truncate font-bold text-emce-text hover:underline">
-                              {c.companyName}
-                            </Link>
-                          ) : (
-                            <p className="truncate font-bold text-emce-text">{c.companyName}</p>
-                          )}
+                          <Link
+                            href={`/salaries/company/${c.companySlug ?? salarySlug(c.companyName)}`}
+                            className="block truncate font-bold text-emce-text hover:underline"
+                          >
+                            {c.companyName}
+                          </Link>
                         </div>
                       </div>
                       <p className="mt-3 text-2xl font-extrabold text-emce-mid-muted">
@@ -222,7 +225,7 @@ export default async function SalariesPage({
             )}
             {!unlocked && topCompanies.length > 3 && (
               <p className="mt-3 text-center text-sm text-emce-text-sec">
-                +{topCompanies.length - 3} more companies · <Link href="/salaries/submit" className="font-bold text-emce-dark hover:underline">unlock</Link>
+                +{topCompanies.length - 3} more companies · <Link href="/salaries/companies" className="font-bold text-emce-dark hover:underline">browse all</Link>
               </p>
             )}
           </section>
