@@ -1,6 +1,7 @@
 import { env } from "@/lib/env";
 import { db } from "@/lib/db";
 import { renderUrlSet, xmlHeaders } from "@/lib/seo/sitemap-xml";
+import { listCities } from "@/lib/jobs/cities";
 
 /**
  * Static marketing + landing pages — the hand-curated entry points
@@ -46,6 +47,9 @@ export async function GET() {
     // below from the live EVDomain list.
     { path: "/domains", priority: 0.8, changefreq: "daily" },
     { path: "/internships", priority: 0.8, changefreq: "daily" },
+    // Browse-by-city hub. /jobs/[city] facet URLs themselves are
+    // appended below from the live (unnested) JobPosting.locations set.
+    { path: "/cities", priority: 0.8, changefreq: "daily" },
     // Articles index — individual articles live in
     // sitemap-articles.xml, but the index page itself was missing
     // from the static shard. Bing flagged it as "Important pages
@@ -99,6 +103,16 @@ export async function GET() {
   });
   for (const d of domains) {
     paths.push({ path: `/jobs/${d.slug}`, priority: 0.8, changefreq: "daily" });
+  }
+
+  // Per-city job-facet pages (/jobs/pune etc.) — one indexable URL per
+  // city that currently has open jobs, derived from the live
+  // (unnested) JobPosting.locations set. Cap at the busiest 60 so a
+  // long tail of one-off location strings doesn't bloat the sitemap;
+  // the /cities hub still links the full set for crawl discovery.
+  const cities = (await listCities()).slice(0, 60);
+  for (const c of cities) {
+    paths.push({ path: `/jobs/${c.slug}`, priority: 0.7, changefreq: "daily" });
   }
 
   const xml = renderUrlSet(

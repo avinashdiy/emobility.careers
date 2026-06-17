@@ -107,6 +107,7 @@ export async function SiteFooter() {
             links={[
               { href: "/jobs", label: "Browse jobs" },
               { href: "/domains", label: "Jobs by domain" },
+              { href: "/cities", label: "Jobs by city" },
               { href: "/internships", label: "EV internships" },
               { href: "/signup", label: "Create profile" },
               { href: "/me/applications", label: "My applications" },
