@@ -20,7 +20,10 @@ export async function GET() {
   const base = env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
 
   const jobs = await db.jobPosting.findMany({
-    where: { status: "OPEN", company: { verificationStatus: "VERIFIED" } },
+    // audience PUBLIC only — DIYGURU_ONLY / INVITE_ONLY jobs redirect
+    // anonymous crawlers to /signin (see app/(marketing)/job/[slug]),
+    // so listing them here just feeds Google "Page with redirect".
+    where: { status: "OPEN", audience: "PUBLIC", company: { verificationStatus: "VERIFIED" } },
     orderBy: { publishedAt: "desc" },
     take: 50_000,
     select: { slug: true, updatedAt: true, publishedAt: true },

@@ -60,6 +60,59 @@ ${body}
 </urlset>`;
 }
 
+/**
+ * The full set of child-shard URLs for the sitemap index. Single
+ * source of truth shared by BOTH `/sitemap_index.xml` (the canonical
+ * index submitted to GSC) and `/sitemap.xml` (the legacy/conventional
+ * alias) so the two can never drift out of sync — a past drift left
+ * the global JD + articles shards out of `/sitemap.xml`. Add new
+ * shards here once and both indexes pick them up.
+ */
+export function sitemapIndexShards(base: string, lastmod: Date): { loc: string; lastmod: Date }[] {
+  const b = base.replace(/\/$/, "");
+  const shard = (name: string) => ({ loc: `${b}/${name}`, lastmod });
+  return [
+    shard("sitemap-static.xml"),
+    shard("sitemap-jobs.xml"),
+    shard("sitemap-companies.xml"),
+    shard("sitemap-institutions.xml"),
+    shard("sitemap-jd.xml"),
+    shard("sitemap-articles.xml"),
+    shard("sitemap-candidates.xml"),
+    shard("sitemap-posts.xml"),
+    shard("sitemap-tags.xml"),
+    // Per-country jobs shards — submitted individually to each `/[cc]/`
+    // GSC property for country-attributed crawl stats; listed here too
+    // so the unfiltered crawlers discover them.
+    shard("sitemap-jobs-in.xml"),
+    shard("sitemap-jobs-ae.xml"),
+    shard("sitemap-jobs-uk.xml"),
+    shard("sitemap-jobs-au.xml"),
+    shard("sitemap-jobs-us.xml"),
+    shard("sitemap-jobs-my.xml"),
+    shard("sitemap-jobs-bd.xml"),
+    shard("sitemap-jobs-np.xml"),
+    // Per-country companies shards.
+    shard("sitemap-companies-in.xml"),
+    shard("sitemap-companies-ae.xml"),
+    shard("sitemap-companies-uk.xml"),
+    shard("sitemap-companies-au.xml"),
+    shard("sitemap-companies-us.xml"),
+    shard("sitemap-companies-my.xml"),
+    shard("sitemap-companies-bd.xml"),
+    shard("sitemap-companies-np.xml"),
+    // Per-country articles shards.
+    shard("sitemap-articles-in.xml"),
+    shard("sitemap-articles-ae.xml"),
+    shard("sitemap-articles-uk.xml"),
+    shard("sitemap-articles-au.xml"),
+    shard("sitemap-articles-us.xml"),
+    shard("sitemap-articles-my.xml"),
+    shard("sitemap-articles-bd.xml"),
+    shard("sitemap-articles-np.xml"),
+  ];
+}
+
 /** Render a `<sitemapindex>` document. */
 export function renderSitemapIndex(
   sitemaps: { loc: string; lastmod?: Date }[],

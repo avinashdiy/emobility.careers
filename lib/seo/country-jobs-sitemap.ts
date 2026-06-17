@@ -31,6 +31,9 @@ export async function renderCountryJobsSitemap(country: Country): Promise<Respon
   const jobs = await db.jobPosting.findMany({
     where: {
       status: "OPEN",
+      // audience PUBLIC only — gated jobs redirect anonymous crawlers to
+      // /signin, so they don't belong in a sitemap (see sitemap-jobs.xml).
+      audience: "PUBLIC",
       country,
       company: { verificationStatus: "VERIFIED" },
     },
