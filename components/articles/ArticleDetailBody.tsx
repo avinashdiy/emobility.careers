@@ -93,48 +93,57 @@ export function ArticleDetailBody({
       )}
 
       <main className="min-h-screen bg-emce-light-bg">
-        {/* Hero — full-bleed cover image when present, otherwise the
-            brand gradient so the page still feels anchored. */}
-        {article.coverImageUrl ? (
-          <div className="relative">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={article.coverImageUrl}
-              alt=""
-              className="aspect-[3/1] w-full object-cover"
-            />
-          </div>
-        ) : (
-          <div className="emce-hero-gradient aspect-[3/1] w-full" />
-        )}
-
-        <article className="container max-w-3xl py-8 md:py-12">
-          <div className="mb-2 flex flex-wrap items-baseline gap-2">
-            {article.category && (
-              <Link
-                href={`/articles?category=${article.category.slug}`}
-                className="hover:underline"
-              >
-                <Badge variant="default" size="sm">
-                  {article.category.name}
-                </Badge>
-              </Link>
-            )}
-            <span className="text-hint text-emce-text-muted">
-              ⏱ {article.readingTimeMins} min read
-              {article.publishedAt && <> · {relativeTime(article.publishedAt)}</>}
-              {article.viewCount > 0 && (
-                <> · {article.viewCount.toLocaleString()} views</>
-              )}
-            </span>
-          </div>
-          <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-emce-text md:text-4xl">
-            {article.title}
-          </h1>
-          {article.excerpt && (
-            <p className="mt-3 text-lg text-emce-text-sec">{article.excerpt}</p>
+        {/* Compact header — the title + meta live HERE in white, set
+            over the cover image (with a dark scrim for legibility) or
+            the brand gradient. Replaces the old full-bleed 3:1 hero
+            that left a big empty band above a black title. Height is
+            driven by the content padding, so the header hugs the title
+            instead of reserving a fixed tall block. */}
+        <header className="relative overflow-hidden">
+          {article.coverImageUrl ? (
+            <>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={article.coverImageUrl}
+                alt=""
+                className="absolute inset-0 h-full w-full object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/55 to-black/40" />
+            </>
+          ) : (
+            <div className="emce-hero-gradient absolute inset-0" />
           )}
 
+          <div className="relative container max-w-3xl py-9 md:py-12">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              {article.category && (
+                <Link
+                  href={`/articles?category=${article.category.slug}`}
+                  className="transition hover:opacity-90"
+                >
+                  <Badge variant="default" size="sm">
+                    {article.category.name}
+                  </Badge>
+                </Link>
+              )}
+              <span className="text-hint text-white/75">
+                ⏱ {article.readingTimeMins} min read
+                {article.publishedAt && <> · {relativeTime(article.publishedAt)}</>}
+                {article.viewCount > 0 && (
+                  <> · {article.viewCount.toLocaleString()} views</>
+                )}
+              </span>
+            </div>
+            <h1 className="text-3xl font-extrabold leading-tight tracking-tight text-white md:text-4xl">
+              {article.title}
+            </h1>
+            {article.excerpt && (
+              <p className="mt-3 max-w-2xl text-lg text-white/85">{article.excerpt}</p>
+            )}
+          </div>
+        </header>
+
+        <article className="container max-w-3xl py-8 md:py-10">
           {/* Author + share row */}
           <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-y border-emce-border py-3">
             <div className="flex items-center gap-2">
