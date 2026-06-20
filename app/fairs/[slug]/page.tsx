@@ -14,6 +14,7 @@ import { recruitmentFairJsonLd, jsonLdScriptTag } from "@/lib/seo/schemas";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { ShareDropdown } from "@/components/social/ShareDropdown";
 import { VenueMap } from "@/components/recruitment-drives/VenueMap";
+import { FairRichContent, type FairRichContentData } from "@/components/recruitment-drives/FairRichContent";
 import { env } from "@/lib/env";
 import { formatSalaryRange } from "@/lib/utils";
 import { htmlOrFallback } from "@/lib/cms/job-sanitize";
@@ -761,6 +762,12 @@ export default async function FairLandingPage({
               </div>
             </section>
           )}
+
+          {/* Rich brochure content — talent pool, roles table, 2-day
+              agenda, hiring-partner roster + "why DIYguru" callout.
+              Designed sections (driven by drive.richContent) that
+              replace the old wall of prose in the description. */}
+          <FairRichContent data={drive.richContent as FairRichContentData | null} />
 
           {/* Participating companies — logo rail. Visual proof
               "look who's hiring". The full booth grid still

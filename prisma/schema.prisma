@@ -4602,6 +4602,14 @@ model RecruitmentDrive {
   pitchForHiringPartners   Json?
   pitchForCandidates       Json?
 
+  /// Structured "rich" brochure content rendered as designed sections
+  /// (talent-pool stat cards, roles table, 2-day agenda, hiring-partner
+  /// chips, a "why us" callout) instead of a wall of prose in the
+  /// description. Shape: { talentPool[], roles[], agenda{day1,day2},
+  /// partners{confirmed[],expected[]}, whyHost{blurb,stats[]} }. Null
+  /// hides the whole block.
+  richContent              Json?
+
   /// Speakers / leadership panel — see RecruitmentDriveSpeaker.
   speakers      RecruitmentDriveSpeaker[]
   /// Event-level endorsement partners (IIT Jammu, AICTE, ASDC,
