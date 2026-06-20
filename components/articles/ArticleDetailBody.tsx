@@ -312,3 +312,87 @@ export function buildArticleJsonLd({
     },
   };
 }
+
+// ─── FAQ rich result ───────────────────────────────────────────────
+
+function stripTags(s: string): string {
+  return s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function decodeEntities(s: string): string {
+  return s
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, " ");
+}
+
+function cleanText(s: string): string {
+  return decodeEntities(stripTags(s)).trim();
+}
+
+/**
+ * Extract Question/Answer pairs from an article body for FAQPage
+ * structured data. Matches the Q&A pattern our interview articles use:
+ * an `<h3>` question heading followed by one or more `<p>` answer
+ * paragraphs, up to the next heading. Articles that don't follow this
+ * shape (e.g. question lists with no answers) yield 0 pairs and get no
+ * FAQ schema — keeping the markup honest (every Question must have a
+ * visible answer per Google's FAQ guidelines).
+ */
+export function extractQaPairs(html: string): { question: string; answer: string }[] {
+  const pairs: { question: string; answer: string }[] = [];
+  const re = /<h3[^>]*>([\s\S]*?)<\/h3>([\s\S]*?)(?=<h2|<h3|$)/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) {
+    let q = cleanText(m[1])
+      // drop a leading "Q12." / "12)" numbering prefix
+      .replace(/^Q?\s*\d+\s*[.)]\s*/i, "")
+      // drop a trailing difficulty tag like "(Basic)"
+      .replace(/\s*\((?:Basic|Intermediate|Advanced)\)\s*$/i, "")
+      .trim();
+    const answer = Array.from(m[2].matchAll(/<p[^>]*>([\s\S]*?)<\/p>/gi))
+      .map((x) => cleanText(x[1]))
+      .filter(Boolean)
+      .join(" ")
+      .trim();
+    if (q.length >= 8 && answer.length >= 20) pairs.push({ question: q, answer });
+  }
+  return pairs;
+}
+
+/**
+ * Build FAQPage JSON-LD for Q&A / interview articles so they're
+ * eligible for Google's FAQ rich result (and parsed cleanly by AI
+ * crawlers). Gated to interview-prep content where we can extract real
+ * Q+A pairs, so we never emit a hollow FAQPage. Returns null when not
+ * applicable — the caller skips the <script> entirely.
+ */
+export function buildFaqJsonLd({
+  article,
+}: {
+  article: Pick<ArticleDetailBodyArticle, "body" | "title"> & {
+    category: { slug: string } | null;
+  };
+}): object | null {
+  const isQa =
+    article.category?.slug === "ev-interview-prep" ||
+    /interview question/i.test(article.title);
+  if (!isQa) return null;
+
+  const pairs = extractQaPairs(article.body);
+  if (pairs.length < 5) return null;
+
+  return {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: pairs.slice(0, 100).map((p) => ({
+      "@type": "Question",
+      name: p.question,
+      acceptedAnswer: { "@type": "Answer", text: p.answer },
+    })),
+  };
+}

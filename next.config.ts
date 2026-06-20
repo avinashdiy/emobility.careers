@@ -68,6 +68,15 @@ const nextConfig: NextConfig = {
         destination: "/:username",
         permanent: true,
       },
+      // Retired thin EV-service-tech interview article → the
+      // comprehensive 100-question replacement. 301 consolidates the
+      // ranking signal + avoids cannibalisation (the old article is
+      // also ARCHIVED in the DB).
+      {
+        source: "/ev-service-technician-interview-questions",
+        destination: "/100-ev-service-technician-interview-questions-answers",
+        permanent: true,
+      },
     ];
   },
 };

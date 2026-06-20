@@ -36,6 +36,7 @@ import { breadcrumbJsonLd, personJsonLd as buildPersonJsonLd } from "@/lib/seo/s
 import {
   ArticleDetailBody,
   buildArticleJsonLd,
+  buildFaqJsonLd,
 } from "@/components/articles/ArticleDetailBody";
 import { getViewerContext, canSeeContact, canSeeResume } from "@/lib/profile-visibility";
 import { shouldSuppressExperienceYears } from "@/lib/k-anonymity";
@@ -374,6 +375,8 @@ export default async function PublicCandidateProfile({
       : [];
 
     const articleLd = buildArticleJsonLd({ article, canonicalUrl });
+    // FAQPage schema for Q&A / interview articles (null otherwise).
+    const faqLd = buildFaqJsonLd({ article });
 
     return (
       <>
@@ -382,6 +385,13 @@ export default async function PublicCandidateProfile({
           // eslint-disable-next-line react/no-danger
           dangerouslySetInnerHTML={{ __html: JSON.stringify(articleLd) }}
         />
+        {faqLd && (
+          <script
+            type="application/ld+json"
+            // eslint-disable-next-line react/no-danger
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(faqLd) }}
+          />
+        )}
         <ArticleDetailBody
           article={article}
           related={related}
