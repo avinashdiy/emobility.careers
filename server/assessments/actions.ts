@@ -19,8 +19,12 @@ const mcqQuestionSchema = z.object({
   explanation: z.string().optional(),
   // Optional question category — Recruitathon banks mix technical with
   // aptitude / reasoning / situational-judgment (psychometric) items so
-  // the report can profile fit, not just knowledge. Additive.
-  type: z.enum(["technical", "aptitude", "reasoning", "sjt"]).optional(),
+  // the report can profile fit, not just knowledge. "safety" is a
+  // technical-category sub-tag (workplace / plant / EV safety) kept
+  // distinct so admins can verify safety coverage. Additive.
+  type: z
+    .enum(["technical", "safety", "aptitude", "reasoning", "sjt"])
+    .optional(),
 });
 export type MCQQuestion = z.infer<typeof mcqQuestionSchema>;
 

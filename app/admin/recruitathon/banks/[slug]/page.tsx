@@ -14,6 +14,7 @@ export const dynamic = "force-dynamic";
 
 const TYPE_LABEL: Record<string, string> = {
   technical: "Technical",
+  safety: "Safety",
   aptitude: "Aptitude",
   reasoning: "Reasoning",
   sjt: "Situational (fit)",
@@ -22,6 +23,7 @@ const TYPE_LABEL: Record<string, string> = {
 const TYPE_BADGE: Record<string, string> = {
   technical: "bg-emce-light-soft text-emce-dark",
   untyped: "bg-emce-light-soft text-emce-dark",
+  safety: "bg-emce-red-light text-emce-red-deep",
   aptitude: "bg-emce-mid/30 text-emce-darkest",
   reasoning: "bg-emce-orange-light text-emce-orange-deep",
   sjt: "bg-emce-verified-bg text-emce-verified-text",
@@ -52,6 +54,7 @@ export default async function AdminBankDetailPage({
   const tabs: { key?: string; label: string; n: number }[] = [
     { key: undefined, label: "All", n: all.length },
     { key: "technical", label: "Technical", n: (counts.technical ?? 0) + (counts.untyped ?? 0) },
+    { key: "safety", label: "Safety", n: counts.safety ?? 0 },
     { key: "aptitude", label: "Aptitude", n: counts.aptitude ?? 0 },
     { key: "reasoning", label: "Reasoning", n: counts.reasoning ?? 0 },
     { key: "sjt", label: "Situational", n: counts.sjt ?? 0 },

@@ -19,7 +19,7 @@ const LEVEL_BADGE: Record<string, string> = {
 };
 
 function composition(questions: MCQQuestion[]) {
-  const c = { technical: 0, aptitude: 0, reasoning: 0, sjt: 0, untyped: 0 };
+  const c = { technical: 0, safety: 0, aptitude: 0, reasoning: 0, sjt: 0, untyped: 0 };
   for (const q of questions) {
     const t = q.type ?? "untyped";
     if (t in c) (c as Record<string, number>)[t] += 1;
@@ -65,6 +65,7 @@ export default async function AdminBanksPage() {
               {list.map((jd) => {
                 const qs = (jd.assessment?.questions as MCQQuestion[] | undefined) ?? [];
                 const c = composition(qs);
+                const technical = c.technical + c.untyped + c.safety;
                 const psych = c.aptitude + c.reasoning + c.sjt;
                 return (
                   <Link key={jd.slug} href={`/admin/recruitathon/banks/${jd.slug}`} className="block">
@@ -73,7 +74,7 @@ export default async function AdminBanksPage() {
                         <p className="font-bold text-emce-text">{jd.role}</p>
                         <p className="text-hint text-emce-text-sec">
                           {jd.assessment
-                            ? `${qs.length} questions · ${c.technical + c.untyped} technical · ${psych} aptitude/reasoning/SJT`
+                            ? `${qs.length} questions · ${technical} technical${c.safety ? ` (${c.safety} safety)` : ""} · ${psych} aptitude/reasoning/SJT`
                             : "No bank yet"}
                         </p>
                       </div>
