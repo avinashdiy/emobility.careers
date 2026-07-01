@@ -14,6 +14,9 @@ const mcqQuestionSchema = z.object({
   options: z.array(z.string()).min(2).max(6),
   correctIndex: z.number().int(),
   weight: z.number().default(1),
+  // Optional post-submit rationale — shown only in the result review,
+  // never during a live attempt. Additive + backward-compatible.
+  explanation: z.string().optional(),
 });
 export type MCQQuestion = z.infer<typeof mcqQuestionSchema>;
 
