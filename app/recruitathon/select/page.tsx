@@ -3,14 +3,14 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
-import { recalcCompleteness } from "@/lib/profile-completeness";
 import { getRankedJdsForCandidate } from "@/lib/recruitathon/jd-matching";
 import { JdSelector, type SelectorCompany } from "@/components/recruitathon/JdSelector";
 
 /**
  * JD selection — the candidate browses the hiring companies, sees their
  * roles ranked by an AI profile→JD match, and picks up to 3 to be
- * tested on. Gated behind the ≥50%-profile + CV onboarding.
+ * tested on. Gated only behind having a CV on file (the AI parse of
+ * which supplies the matching signal) — no completeness threshold.
  */
 export const dynamic = "force-dynamic";
 
@@ -29,9 +29,8 @@ export default async function RecruitathonSelectPage({
   });
   if (!profile) redirect("/recruitathon/onboarding");
 
-  const completeness = await recalcCompleteness(session.user.id);
-  const ready = !!profile.resumeUrl && completeness.pct >= 50;
-  if (!ready) redirect(`/recruitathon/onboarding?next=${encodeURIComponent("/recruitathon/select")}`);
+  // Only requirement: a CV on file. Its AI parse is what feeds matching.
+  if (!profile.resumeUrl) redirect(`/recruitathon/onboarding?next=${encodeURIComponent("/recruitathon/select")}`);
 
   // The drive whose JD catalog we're selecting from.
   const anyJd = await db.recruitathonJd.findFirst({ where: { isActive: true }, select: { driveId: true } });

@@ -253,27 +253,38 @@ export async function uploadAndParseResume(formData: FormData) {
     },
   });
 
+  // Recruitathon flow: apply the parsed draft to the live profile right
+  // away (skills, education, experience, EV domains) so JD matching has
+  // real signal without the manual /onboarding/confirm review step. The
+  // generic onboarding flow (redirectTo === null) still reviews first.
+  if (redirectTo && parsed) {
+    await commitResumeDraft(profile.id);
+  }
+
   redirect(okTo);
 }
 
 // ─── Onboarding step 3: commit parsed draft ────────────────
 
-export async function applyResumeDraft() {
-  const { profile } = await requireCandidate();
-  const fresh = await db.candidateProfile.findUnique({
-    where: { id: profile.id },
-  });
-  if (!fresh?.resumeParseDraft) {
-    redirect("/onboarding/resume");
-  }
-  const draft = fresh!.resumeParseDraft as Record<string, unknown>;
+/**
+ * Commit a candidate's stored resume parse draft into their live profile
+ * (identity fields + experiences / education / certs / projects / skills /
+ * EV domains). Returns false if there's no draft to apply. Does NOT
+ * redirect — callers decide where to go next. Shared by the generic
+ * onboarding review step and the Recruitathon flow (which applies the
+ * draft automatically so JD matching can use it immediately).
+ */
+async function commitResumeDraft(profileId: string): Promise<boolean> {
+  const fresh = await db.candidateProfile.findUnique({ where: { id: profileId } });
+  if (!fresh?.resumeParseDraft) return false;
+  const draft = fresh.resumeParseDraft as Record<string, unknown>;
 
   await db.$transaction(async (tx) => {
     await tx.candidateProfile.update({
-      where: { id: profile.id },
+      where: { id: profileId },
       data: {
-        firstName: (draft.firstName as string) || profile.firstName,
-        lastName: (draft.lastName as string) ?? profile.lastName,
+        firstName: (draft.firstName as string) || fresh.firstName,
+        lastName: (draft.lastName as string) ?? fresh.lastName,
         headline: (draft.headline as string) ?? null,
         summary: (draft.summary as string) ?? null,
         location: (draft.location as string) ?? null,
@@ -287,15 +298,15 @@ export async function applyResumeDraft() {
     });
 
     // Wipe and re-create experiences/education/projects/certifications from the draft.
-    await tx.experience.deleteMany({ where: { candidateId: profile.id } });
-    await tx.education.deleteMany({ where: { candidateId: profile.id } });
-    await tx.certification.deleteMany({ where: { candidateId: profile.id } });
-    await tx.project.deleteMany({ where: { candidateId: profile.id } });
+    await tx.experience.deleteMany({ where: { candidateId: profileId } });
+    await tx.education.deleteMany({ where: { candidateId: profileId } });
+    await tx.certification.deleteMany({ where: { candidateId: profileId } });
+    await tx.project.deleteMany({ where: { candidateId: profileId } });
 
     for (const e of (draft.experiences as Array<Record<string, unknown>>) ?? []) {
       await tx.experience.create({
         data: {
-          candidateId: profile.id,
+          candidateId: profileId,
           title: String(e.title ?? "Role"),
           company: String(e.company ?? "Company"),
           location: (e.location as string) ?? null,
@@ -309,7 +320,7 @@ export async function applyResumeDraft() {
     for (const ed of (draft.education as Array<Record<string, unknown>>) ?? []) {
       await tx.education.create({
         data: {
-          candidateId: profile.id,
+          candidateId: profileId,
           institution: String(ed.institution ?? "Institution"),
           degree: (ed.degree as string) ?? null,
           field: (ed.field as string) ?? null,
@@ -322,7 +333,7 @@ export async function applyResumeDraft() {
     for (const c of (draft.certifications as Array<Record<string, unknown>>) ?? []) {
       await tx.certification.create({
         data: {
-          candidateId: profile.id,
+          candidateId: profileId,
           name: String(c.name ?? "Certification"),
           issuer: (c.issuer as string) ?? null,
           issueDate: c.issueDate ? new Date(`${c.issueDate}-01`) : null,
@@ -334,7 +345,7 @@ export async function applyResumeDraft() {
     for (const p of (draft.projects as Array<Record<string, unknown>>) ?? []) {
       await tx.project.create({
         data: {
-          candidateId: profile.id,
+          candidateId: profileId,
           title: String(p.title ?? "Project"),
           description: (p.description as string) ?? null,
           url: (p.url as string) ?? null,
@@ -351,7 +362,7 @@ export async function applyResumeDraft() {
       });
       const existingMap = new Map(existing.map((s) => [s.name.toLowerCase(), s]));
 
-      await tx.candidateSkill.deleteMany({ where: { candidateId: profile.id } });
+      await tx.candidateSkill.deleteMany({ where: { candidateId: profileId } });
 
       for (const name of skillNames) {
         let skill = existingMap.get(name.toLowerCase());
@@ -368,7 +379,7 @@ export async function applyResumeDraft() {
         }
         await tx.candidateSkill.create({
           data: {
-            candidateId: profile.id,
+            candidateId: profileId,
             skillId: skill.id,
             proficiency: SkillProficiency.INTERMEDIATE,
           },
@@ -382,10 +393,10 @@ export async function applyResumeDraft() {
       const domains = await tx.eVDomain.findMany({
         where: { slug: { in: evDomainSlugs } },
       });
-      await tx.candidateEVDomain.deleteMany({ where: { candidateId: profile.id } });
+      await tx.candidateEVDomain.deleteMany({ where: { candidateId: profileId } });
       for (const d of domains) {
         await tx.candidateEVDomain.create({
-          data: { candidateId: profile.id, evDomainId: d.id },
+          data: { candidateId: profileId, evDomainId: d.id },
         });
       }
     }
@@ -393,16 +404,23 @@ export async function applyResumeDraft() {
     // Mark DIYguru "mentioned" — actual verification still requires admin/CSV match.
     if (draft.detectedDIYguru) {
       await tx.candidateProfile.update({
-        where: { id: profile.id },
+        where: { id: profileId },
         data: { labExposureTags: { push: "diyguru-mentioned" } },
       });
     }
   });
 
-  await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profile.id });
-  await recalcCompleteness(profile.id);
+  await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profileId });
+  await recalcCompleteness(profileId);
   revalidatePath("/me");
   revalidatePath("/me/profile");
+  return true;
+}
+
+export async function applyResumeDraft() {
+  const { profile } = await requireCandidate();
+  const applied = await commitResumeDraft(profile.id);
+  if (!applied) redirect("/onboarding/resume");
   redirect("/onboarding/preferences");
 }
 

@@ -7,13 +7,11 @@ import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { startRecruitathonExam } from "@/server/recruitathon/exam-actions";
-import { recalcCompleteness } from "@/lib/profile-completeness";
 
 /**
  * Pre-test instructions + start gate for one Recruitathon assessment
- * (keyed by its SkillAssessmentMeta slug). Batch 2 will front this with
- * the ≥50%-profile + CV onboarding stepper; for now it's the direct
- * entry that proves the proctored-exam flow end to end.
+ * (keyed by its SkillAssessmentMeta slug). Fronted by the CV-upload
+ * onboarding; the only requirement to start is a CV on file.
  */
 export const dynamic = "force-dynamic";
 
@@ -34,9 +32,8 @@ export default async function RecruitathonTestIntroPage({
     ? await db.candidateProfile.findUnique({ where: { userId: session.user.id }, select: { id: true, resumeUrl: true } })
     : null;
 
-  // Gate: ≥50% profile completeness + a CV on file unlocks the test.
-  const completeness = profile ? await recalcCompleteness(session!.user.id) : null;
-  const ready = Boolean(profile && profile.resumeUrl && (completeness?.pct ?? 0) >= 50);
+  // Gate: a CV on file unlocks the test (the AI parse feeds JD matching).
+  const ready = Boolean(profile && profile.resumeUrl);
   const onboardingHref = `/recruitathon/onboarding?next=${encodeURIComponent(`/recruitathon/test/${slug}`)}`;
 
   const priorAttempt = profile
@@ -95,9 +92,9 @@ export default async function RecruitathonTestIntroPage({
             ) : !ready ? (
               <div>
                 <p className="mb-2 text-sm font-semibold text-emce-text-sec">
-                  Complete your emobility.careers profile (≥50% + CV) to unlock the test — takes a couple of minutes.
+                  Upload your CV to unlock the test — we&apos;ll match you to roles in one step.
                 </p>
-                <Button asChild size="lg"><Link href={onboardingHref}>Complete profile to unlock →</Link></Button>
+                <Button asChild size="lg"><Link href={onboardingHref}>Upload CV to unlock →</Link></Button>
               </div>
             ) : (
               <form action={startRecruitathonExam}>
