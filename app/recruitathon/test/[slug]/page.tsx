@@ -29,11 +29,12 @@ export default async function RecruitathonTestIntroPage({
 
   const session = await auth();
   const profile = session?.user
-    ? await db.candidateProfile.findUnique({ where: { userId: session.user.id }, select: { id: true, resumeUrl: true } })
+    ? await db.candidateProfile.findUnique({ where: { userId: session.user.id }, select: { id: true, resumeUrl: true, resumeParseDraft: true } })
     : null;
 
-  // Gate: a CV on file unlocks the test (the AI parse feeds JD matching).
-  const ready = Boolean(profile && profile.resumeUrl);
+  // Gate: a CV on file whose parse has been reviewed & applied. A pending
+  // draft means the candidate still needs to confirm their details.
+  const ready = Boolean(profile && profile.resumeUrl && !profile.resumeParseDraft);
   const onboardingHref = `/recruitathon/onboarding?next=${encodeURIComponent(`/recruitathon/test/${slug}`)}`;
 
   const priorAttempt = profile
@@ -92,7 +93,7 @@ export default async function RecruitathonTestIntroPage({
             ) : !ready ? (
               <div>
                 <p className="mb-2 text-sm font-semibold text-emce-text-sec">
-                  Upload your CV to unlock the test — we&apos;ll match you to roles in one step.
+                  Upload and confirm your CV to unlock the test — we&apos;ll match you to roles in one step.
                 </p>
                 <Button asChild size="lg"><Link href={onboardingHref}>Upload CV to unlock →</Link></Button>
               </div>

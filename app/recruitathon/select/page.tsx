@@ -25,12 +25,16 @@ export default async function RecruitathonSelectPage({
 
   const profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
-    select: { id: true, resumeUrl: true },
+    select: { id: true, resumeUrl: true, resumeParseDraft: true },
   });
   if (!profile) redirect("/recruitathon/onboarding");
 
-  // Only requirement: a CV on file. Its AI parse is what feeds matching.
-  if (!profile.resumeUrl) redirect(`/recruitathon/onboarding?next=${encodeURIComponent("/recruitathon/select")}`);
+  // Requirement: a CV on file whose parse has been reviewed & applied.
+  // A pending draft means the candidate hasn't confirmed yet — send them
+  // back to finish the review so matching runs on their real profile.
+  if (!profile.resumeUrl || profile.resumeParseDraft) {
+    redirect(`/recruitathon/onboarding?next=${encodeURIComponent("/recruitathon/select")}`);
+  }
 
   // The drive whose JD catalog we're selecting from.
   const anyJd = await db.recruitathonJd.findFirst({ where: { isActive: true }, select: { driveId: true } });

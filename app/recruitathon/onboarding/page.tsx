@@ -3,16 +3,18 @@ import Link from "next/link";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
-import { uploadAndParseResume } from "@/server/candidates/actions";
+import { CvUploadForm } from "@/components/recruitathon/CvUploadForm";
+import { CvReviewForm, type ReviewDraft } from "@/components/recruitathon/CvReviewForm";
 
 /**
- * Recruitathon test onboarding — a single step: upload your CV. We parse
- * it with AI (which also autofills your profile) and send you straight
- * to JD matching. The ONLY requirement to reach the test is a CV on
- * file — there is no profile-completeness gate.
+ * Recruitathon test onboarding — two states, one page:
+ *  1. Upload your CV (with a live parse-progress bar).
+ *  2. Review the AI-parsed details (editable) and confirm.
+ * On confirm the parse is applied to the profile and we continue to JD
+ * matching. The ONLY requirement to reach the test is a CV on file —
+ * there is no profile-completeness gate.
  */
 export const dynamic = "force-dynamic";
 
@@ -36,14 +38,17 @@ export default async function RecruitathonOnboardingPage({
 
   const profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
-    select: { resumeUrl: true },
+    select: { resumeUrl: true, resumeParseDraft: true },
   });
   // Not a candidate (e.g. employer account) — send to the generic
   // role-aware onboarding rather than dead-ending here.
   if (!profile) redirect("/onboarding");
 
-  // CV on file is the only requirement — go straight to JD matching.
-  if (profile.resumeUrl) redirect(startHref);
+  const draft = profile.resumeParseDraft as ReviewDraft | null;
+  const step: "upload" | "review" = draft ? "review" : "upload";
+
+  // No pending draft and a CV already applied → straight to JD matching.
+  if (!draft && profile.resumeUrl) redirect(startHref);
 
   return (
     <>
@@ -51,15 +56,36 @@ export default async function RecruitathonOnboardingPage({
       <main className="min-h-screen bg-emce-light-bg">
         <div className="container max-w-2xl py-8 md:py-12">
           <p className="text-hint font-bold uppercase tracking-wide text-emce-mid-muted">
-            Recruitathon test · one quick step
+            Recruitathon test · {step === "upload" ? "one quick step" : "quick check"}
           </p>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-emce-text md:text-3xl">
-            Upload your CV to begin
+            {step === "upload" ? "Upload your CV to begin" : "Confirm your details"}
           </h1>
           <p className="mt-2 text-sm text-emce-text-sec md:text-base">
-            We&apos;ll read it with AI to match you to the best-fit roles — then you pick up to 3 and
-            start your test. That&apos;s the whole setup.
+            {step === "upload"
+              ? "We'll read it with AI to match you to the best-fit roles — then you pick up to 3 and start your test."
+              : "We read your CV. Take a moment to check what we pulled out, tweak anything, then continue to your role matches."}
           </p>
+
+          {/* Two-step indicator */}
+          <div className="mt-4 flex items-center gap-2 text-xs font-bold">
+            {[
+              { n: 1, label: "Upload CV" },
+              { n: 2, label: "Confirm details" },
+              { n: 3, label: "Pick roles" },
+            ].map((s, i) => {
+              const cur = step === "upload" ? 1 : 2;
+              return (
+                <span key={s.n} className="flex items-center gap-2">
+                  <span className={`flex h-6 w-6 items-center justify-center rounded-full ${cur >= s.n ? "bg-emce-dark text-emce-light" : "bg-emce-light-soft text-emce-text-sec"}`}>
+                    {cur > s.n ? "✓" : s.n}
+                  </span>
+                  <span className={cur >= s.n ? "text-emce-text" : "text-emce-text-muted"}>{s.label}</span>
+                  {i < 2 && <span className="mx-1 text-emce-text-muted">→</span>}
+                </span>
+              );
+            })}
+          </div>
 
           {sp.error && (
             <p className="mt-4 rounded-md bg-emce-red-light p-3 text-sm font-semibold text-emce-red-deep">
@@ -67,28 +93,20 @@ export default async function RecruitathonOnboardingPage({
             </p>
           )}
 
-          <Card className="mt-5 p-6">
-            <p className="text-section text-emce-text">Your CV</p>
-            <p className="mt-1 text-sm text-emce-text-sec">
-              PDF or DOCX. We use it to match you to roles and pre-fill your profile — you can edit
-              anything later from your profile.
-            </p>
-            <form action={uploadAndParseResume} className="mt-4 space-y-3">
-              <input type="hidden" name="redirectTo" value={backTo} />
-              <input
-                type="file"
-                name="resume"
-                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                required
-                className="block w-full text-sm text-emce-text-sec file:mr-3 file:rounded-md file:border-0 file:bg-emce-dark file:px-4 file:py-2 file:text-sm file:font-bold file:text-emce-light hover:file:bg-emce-darkest"
-              />
-              <Button type="submit" size="lg">
-                Upload &amp; find my roles →
-              </Button>
-            </form>
-          </Card>
+          {step === "upload" ? (
+            <Card className="mt-5 p-6">
+              <p className="text-section text-emce-text">Your CV</p>
+              <p className="mt-1 text-sm text-emce-text-sec">
+                PDF or DOCX. We use it to match you to roles and pre-fill your profile — you can edit
+                anything on the next screen.
+              </p>
+              <CvUploadForm redirectTo={backTo} />
+            </Card>
+          ) : (
+            <CvReviewForm draft={draft!} next={next} />
+          )}
 
-          <p className="mt-4 text-center text-hint text-emce-text-muted">
+          <p className="mt-6 text-center text-hint text-emce-text-muted">
             Prefer to fill your profile by hand? You can always do that at{" "}
             <Link href="/me/profile" className="font-bold text-emce-dark hover:underline">
               your profile

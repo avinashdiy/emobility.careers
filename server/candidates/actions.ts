@@ -253,14 +253,9 @@ export async function uploadAndParseResume(formData: FormData) {
     },
   });
 
-  // Recruitathon flow: apply the parsed draft to the live profile right
-  // away (skills, education, experience, EV domains) so JD matching has
-  // real signal without the manual /onboarding/confirm review step. The
-  // generic onboarding flow (redirectTo === null) still reviews first.
-  if (redirectTo && parsed) {
-    await commitResumeDraft(profile.id);
-  }
-
+  // The Recruitathon flow lands back on its onboarding page, which then
+  // shows the parsed draft in a review form (candidate confirms/edits
+  // before it's applied). The generic flow reviews on /onboarding/confirm.
   redirect(okTo);
 }
 
@@ -274,10 +269,14 @@ export async function uploadAndParseResume(formData: FormData) {
  * onboarding review step and the Recruitathon flow (which applies the
  * draft automatically so JD matching can use it immediately).
  */
-async function commitResumeDraft(profileId: string): Promise<boolean> {
+async function commitResumeDraft(
+  profileId: string,
+  opts: { overrides?: Record<string, unknown>; clearDraft?: boolean } = {},
+): Promise<boolean> {
   const fresh = await db.candidateProfile.findUnique({ where: { id: profileId } });
   if (!fresh?.resumeParseDraft) return false;
-  const draft = fresh.resumeParseDraft as Record<string, unknown>;
+  // Candidate edits from the review form (if any) win over the raw parse.
+  const draft = { ...(fresh.resumeParseDraft as Record<string, unknown>), ...(opts.overrides ?? {}) };
 
   await db.$transaction(async (tx) => {
     await tx.candidateProfile.update({
@@ -410,6 +409,15 @@ async function commitResumeDraft(profileId: string): Promise<boolean> {
     }
   });
 
+  // Consume the draft once applied so downstream routing (e.g. the
+  // Recruitathon onboarding) knows the parse has been reviewed & committed.
+  if (opts.clearDraft) {
+    await db.candidateProfile.update({
+      where: { id: profileId },
+      data: { resumeParseDraft: Prisma.JsonNull },
+    });
+  }
+
   await embeddingsQueue.add("candidate", { kind: "candidate", candidateId: profileId });
   await recalcCompleteness(profileId);
   revalidatePath("/me");
@@ -422,6 +430,54 @@ export async function applyResumeDraft() {
   const applied = await commitResumeDraft(profile.id);
   if (!applied) redirect("/onboarding/resume");
   redirect("/onboarding/preferences");
+}
+
+const reviewSchema = z.object({
+  firstName: z.string().trim().max(80).optional(),
+  lastName: z.string().trim().max(80).optional(),
+  headline: z.string().trim().max(140).optional(),
+  location: z.string().trim().max(120).optional(),
+  phone: z.string().trim().max(40).optional(),
+  summary: z.string().trim().max(2000).optional(),
+  skills: z.string().max(2000).optional(),
+  next: z.string().optional(),
+});
+
+/**
+ * Recruitathon review-form submit: take the candidate's confirmed/edited
+ * parse fields, apply the draft (with those overrides) to the live
+ * profile, clear the draft, and continue to JD matching. Nested
+ * experiences / education / certifications come straight from the parse.
+ */
+export async function applyRecruitathonResumeReview(formData: FormData) {
+  const { profile } = await requireCandidate();
+  const parsed = reviewSchema.safeParse(Object.fromEntries(formData));
+  const data = parsed.success ? parsed.data : {};
+
+  const skills = (data.skills ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 60);
+
+  const overrides: Record<string, unknown> = {
+    headline: data.headline || null,
+    location: data.location || null,
+    phone: data.phone || null,
+    summary: data.summary || null,
+  };
+  if (data.firstName) overrides.firstName = data.firstName;
+  if (data.lastName != null) overrides.lastName = data.lastName || null;
+  if (skills.length) overrides.skills = skills;
+
+  const applied = await commitResumeDraft(profile.id, { overrides, clearDraft: true });
+  if (!applied) redirect("/recruitathon/onboarding");
+
+  const next =
+    typeof data.next === "string" && data.next.startsWith("/recruitathon/") && !data.next.startsWith("//")
+      ? data.next
+      : "/recruitathon/select";
+  redirect(next);
 }
 
 // ─── Onboarding step 4: preferences ────────────────────────
