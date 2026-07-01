@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { saveExamProgress, recordProctorEvent, submitExam } from "@/server/recruitathon/exam-actions";
+import { CameraProctor } from "@/components/recruitathon/CameraProctor";
 
 /**
  * Hardened, proctored MCQ runner for the Recruitathon test.
@@ -12,10 +13,14 @@ import { saveExamProgress, recordProctorEvent, submitExam } from "@/server/recru
  * The server owns the clock + grading; this component is the "feels
  * security-tight" surface: forced fullscreen, focus-loss / paste /
  * copy / context-menu blocking, a visible warning counter, a
- * server-authoritative countdown, and per-answer autosave. Every
- * integrity event is reported to the server, which auto-submits the
- * attempt once the flag limit is crossed (detect → warn → flag →
- * cancel — no webcam, no false-positive-prone gaze tracking).
+ * server-authoritative countdown, and per-answer autosave. Tab-switch /
+ * full-screen-exit events auto-submit once the flag limit is crossed
+ * (detect → warn → flag → cancel).
+ *
+ * Camera proctoring (CameraProctor) adds a live self-view + best-effort
+ * face-presence detection: a sustained look-away or multiple faces
+ * blinks a warning and is logged for review, but NEVER auto-submits
+ * (in-browser face detection is too noisy to fairly end an attempt).
  *
  * Questions arrive WITHOUT correct answers (the take page strips
  * correctIndex), so nothing on the client can reveal or self-grade.
@@ -269,6 +274,9 @@ export function RecruitathonExamRunner({
           </Button>
         </div>
       </div>
+
+      {/* Live camera self-view + face-presence proctoring (warn + log only) */}
+      <CameraProctor attemptId={attemptId} />
 
       {/* Hidden form → server submit (grading happens server-side) */}
       <form ref={formRef} action={submitExam} className="hidden">

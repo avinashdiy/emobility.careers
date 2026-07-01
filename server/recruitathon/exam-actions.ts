@@ -38,11 +38,18 @@ type ProctorEventType =
   | "devtools_suspected"
   | "reload";
 
+// Camera-proctoring events are logged + counted SEPARATELY from the
+// terminating flag budget: they blink a warning and are recorded for
+// review, but never auto-submit the test (in-browser face detection is
+// too noisy to fairly end a candidate's attempt).
+type CameraEventType = "camera_away" | "camera_multiface" | "camera_off";
+
 interface ProctorMeta {
   flags: number;
   events: { type: string; at: string }[];
   terminated?: boolean;
   reason?: string;
+  cameraFlags?: number;
 }
 
 function readProctorMeta(raw: unknown): ProctorMeta {
@@ -52,6 +59,7 @@ function readProctorMeta(raw: unknown): ProctorMeta {
     events: Array.isArray(m.events) ? m.events : [],
     terminated: m.terminated,
     reason: m.reason,
+    cameraFlags: typeof m.cameraFlags === "number" ? m.cameraFlags : 0,
   };
 }
 
@@ -203,6 +211,32 @@ export async function recordProctorEvent(input: {
     data: { proctorMeta: meta as object },
   });
   return { ok: true, flags: meta.flags, terminated: false };
+}
+
+/**
+ * Record a camera-proctoring event (sustained look-away / multiple faces
+ * / camera off). Appends to the event log + bumps a SEPARATE cameraFlags
+ * counter. Never terminates the attempt — camera signals only warn + log
+ * for later review; the terminating budget stays tab/focus-only.
+ */
+export async function recordCameraEvent(input: {
+  attemptId: string;
+  type: CameraEventType;
+}): Promise<{ ok: boolean; cameraFlags: number }> {
+  const attempt = await loadOwnedAttempt(input.attemptId);
+  if (!attempt) return { ok: false, cameraFlags: 0 };
+  if (attempt.submittedAt) return { ok: true, cameraFlags: 0 };
+
+  const meta = readProctorMeta(attempt.proctorMeta);
+  meta.cameraFlags = (meta.cameraFlags ?? 0) + 1;
+  meta.events.push({ type: input.type, at: new Date().toISOString() });
+  if (meta.events.length > 300) meta.events = meta.events.slice(-300);
+
+  await db.assessmentAttempt.update({
+    where: { id: attempt.id },
+    data: { proctorMeta: meta as object },
+  });
+  return { ok: true, cameraFlags: meta.cameraFlags };
 }
 
 /**

@@ -11,7 +11,10 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "SAMEORIGIN" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+  // camera=(self) so the Recruitathon proctored test can request the
+  // webcam on same-origin pages (the browser still prompts the user for
+  // permission). Mic + geolocation stay fully disabled.
+  { key: "Permissions-Policy", value: "camera=(self), microphone=(), geolocation=()" },
   { key: "X-DNS-Prefetch-Control", value: "on" },
   // HSTS — only meaningful behind TLS in prod
   { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },

@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
-import { startRecruitathonExam } from "@/server/recruitathon/exam-actions";
+import { StartExamButton } from "@/components/recruitathon/StartExamButton";
 
 /**
  * Pre-test instructions + start gate for one Recruitathon assessment
@@ -73,6 +73,7 @@ export default async function RecruitathonTestIntroPage({
           <Card className="mt-4 border-emce-orange/40 bg-emce-orange-light/50 p-5">
             <p className="text-section text-emce-text">Before you start — read carefully</p>
             <ul className="mt-2 space-y-1.5 text-sm text-emce-text-sec">
+              <li>• This test requires a <strong>working webcam</strong>. Keep your face in view — nothing is recorded, but looking away or others appearing is flagged for review.</li>
               <li>• The test opens in <strong>full-screen</strong> and the timer is server-controlled — closing the tab won&apos;t pause it.</li>
               <li>• <strong>Do not switch tabs, leave the window, or exit full-screen.</strong> Each time you do, it&apos;s recorded as a warning.</li>
               <li>• Copy, paste, right-click and developer tools are disabled.</li>
@@ -99,12 +100,7 @@ export default async function RecruitathonTestIntroPage({
                 <Button asChild size="lg"><Link href={onboardingHref}>Upload CV to unlock →</Link></Button>
               </div>
             ) : (
-              <form action={startRecruitathonExam}>
-                <input type="hidden" name="assessmentSlug" value={slug} />
-                <Button type="submit" size="lg">
-                  {priorAttempt ? "Resume test →" : "Start test →"}
-                </Button>
-              </form>
+              <StartExamButton slug={slug} resume={!!priorAttempt} />
             )}
           </div>
         </div>
