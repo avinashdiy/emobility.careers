@@ -669,6 +669,7 @@ model CandidateProfile {
   savedByEmployers       SavedCandidate[]
   /// Fair attendee registrations (separate from job applications).
   fairRegistrations      RecruitmentDriveRegistration[]
+  recruitathonJdSelections RecruitathonJdSelection[]    @relation("CandidateRecruitathonJdSelections")
   /// Booth interview slots booked by this candidate.
   interviewSlotBookings  RecruitmentDriveInterviewSlot[] @relation("InterviewSlotCandidate")
   jobAlerts              JobAlert[]
@@ -1564,6 +1565,9 @@ model Assessment {
   updatedAt    DateTime       @updatedAt
 
   attempts             AssessmentAttempt[]
+  // Inverse of RecruitathonJd.assessment — when this bank powers a
+  // Recruitathon JD test.
+  recruitathonJd       RecruitathonJd?       @relation("RecruitathonJdBank")
   // Inverse of RecruitmentDriveJob.challengeAssessment — same
   // assessment can be reused as the challenge across multiple
   // fairs / drive-jobs without duplicating questions JSON.
@@ -4564,6 +4568,7 @@ model RecruitmentDrive {
   /// Defined by the admin at config time; surfaced as filter chips
   /// on the public fair page.
   tracks                 RecruitmentDriveTrack[]
+  recruitathonJds        RecruitathonJd[]
   /// Denorm counter — kept in sync inside the registration server
   /// actions to save the public landing from COUNT(*) on every render.
   registeredCount        Int                            @default(0)
@@ -5169,6 +5174,65 @@ model RecruitmentDriveRosterImport {
   completedAt     DateTime?
 
   @@index([driveId, uploadedAt])
+}
+
+// ─── Recruitathon JD catalog + test-JD selection ─────────────
+// The Recruitathon test is per-JD. Each JD (company + role) carries a
+// difficulty LEVEL that drives its question bank's calibration
+// (ADVANCED = deep for graduates/experienced; BASIC = fair + practical
+// for ITI/Diploma). A candidate picks up to 3 JDs (AI-suggested from
+// their profile, override allowed) and sits one proctored test per JD.
+
+enum RecruitathonJdLevel {
+  BASIC        /// ITI / Diploma / fresher-trainee
+  INTERMEDIATE /// Diploma+ / service / 1-3 yrs
+  ADVANCED     /// B.E/B.Tech / M.Tech / experienced
+}
+
+model RecruitathonJd {
+  id           String              @id @default(cuid())
+  slug         String              @unique
+  driveId      String?
+  drive        RecruitmentDrive?   @relation(fields: [driveId], references: [id], onDelete: SetNull)
+  company      String
+  role         String
+  level        RecruitathonJdLevel @default(INTERMEDIATE)
+  /// "B.E Electrical · 0–5 yrs" — eligibility line for the card.
+  eligibility  String?
+  location     String?
+  /// Responsibilities / summary (from the source JD).
+  description  String              @db.Text
+  /// Key skills — feeds the AI match + the question-bank generation.
+  skills       String[]            @default([])
+  /// The 60-question bank for this JD (an Assessment). Null until the
+  /// bank-generation step (Batch 3c) runs.
+  assessmentId String?             @unique
+  assessment   Assessment?         @relation("RecruitathonJdBank", fields: [assessmentId], references: [id], onDelete: SetNull)
+  isActive     Boolean             @default(true)
+  sortOrder    Int                 @default(0)
+  createdAt    DateTime            @default(now())
+  updatedAt    DateTime            @updatedAt
+
+  selections RecruitathonJdSelection[]
+
+  @@index([driveId, company])
+  @@index([isActive])
+}
+
+/// A candidate's chosen JDs (max 3, enforced in the action) for the
+/// test sitting, with the AI match score captured at selection time.
+model RecruitathonJdSelection {
+  id          String           @id @default(cuid())
+  candidateId String
+  candidate   CandidateProfile @relation("CandidateRecruitathonJdSelections", fields: [candidateId], references: [id], onDelete: Cascade)
+  jdId        String
+  jd          RecruitathonJd   @relation(fields: [jdId], references: [id], onDelete: Cascade)
+  /// AI match % (0–100) at the time of selection, for reporting.
+  matchScore  Int?
+  createdAt   DateTime         @default(now())
+
+  @@unique([candidateId, jdId])
+  @@index([candidateId])
 }
 
 // ─── CompanyClaim — "I work here, prove me admin" workflow ────
