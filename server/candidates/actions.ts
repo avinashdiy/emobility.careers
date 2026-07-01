@@ -151,6 +151,14 @@ export async function uploadAndParseResume(formData: FormData) {
   const { profile } = await requireCandidate();
   await rateLimitOrThrow(`resume:${profile.userId}`, "resumeUpload");
   const file = formData.get("resume") as File | null;
+  // Optional caller-supplied return path (Recruitathon test onboarding
+  // reuses this action but needs to land back on its own stepper, not
+  // the generic /onboarding/confirm). Whitelisted to the recruitathon
+  // flow so it can't be turned into an open-redirect.
+  const rt = formData.get("redirectTo");
+  const redirectTo = typeof rt === "string" && rt.startsWith("/recruitathon/") && !rt.startsWith("//") ? rt : null;
+  const errBase = (redirectTo ?? "/onboarding/resume") + "?error=";
+  const okTo = redirectTo ?? "/onboarding/confirm";
   // Validation errors `redirect` with ?error=… instead of throwing.
   // This action is bound to a NATIVE form submission on
   // /onboarding/resume (no client-component wrapper to catch a
@@ -161,19 +169,19 @@ export async function uploadAndParseResume(formData: FormData) {
   // message, mirroring the pattern used by uploadCompanyImage.
   if (!file) {
     redirect(
-      "/onboarding/resume?error=" +
+      errBase +
         encodeURIComponent("Pick a file before submitting."),
     );
   }
   if (file.size > 10 * 1024 * 1024) {
     redirect(
-      "/onboarding/resume?error=" +
+      errBase +
         encodeURIComponent("Resume too large — max 10MB."),
     );
   }
   if (file.size === 0) {
     redirect(
-      "/onboarding/resume?error=" +
+      errBase +
         encodeURIComponent("That file looks empty — try a different file."),
     );
   }
@@ -184,14 +192,14 @@ export async function uploadAndParseResume(formData: FormData) {
   const kind = sniffResumeKind(buffer);
   if (!kind) {
     redirect(
-      "/onboarding/resume?error=" +
+      errBase +
         encodeURIComponent("Only PDF or DOCX resumes are accepted."),
     );
   }
   // Cross-check declared MIME if present — block declared-image-but-actually-pdf etc.
   if (file.type && !RESUME_MIME_TYPES.has(file.type) && !["application/octet-stream", ""].includes(file.type)) {
     redirect(
-      "/onboarding/resume?error=" +
+      errBase +
         encodeURIComponent("File contents don't match the file extension. Try saving / re-exporting and uploading again."),
     );
   }
@@ -245,7 +253,7 @@ export async function uploadAndParseResume(formData: FormData) {
     },
   });
 
-  redirect("/onboarding/confirm");
+  redirect(okTo);
 }
 
 // ─── Onboarding step 3: commit parsed draft ────────────────

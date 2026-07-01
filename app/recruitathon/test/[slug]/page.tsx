@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { startRecruitathonExam } from "@/server/recruitathon/exam-actions";
+import { recalcCompleteness } from "@/lib/profile-completeness";
 
 /**
  * Pre-test instructions + start gate for one Recruitathon assessment
@@ -30,8 +31,13 @@ export default async function RecruitathonTestIntroPage({
 
   const session = await auth();
   const profile = session?.user
-    ? await db.candidateProfile.findUnique({ where: { userId: session.user.id }, select: { id: true } })
+    ? await db.candidateProfile.findUnique({ where: { userId: session.user.id }, select: { id: true, resumeUrl: true } })
     : null;
+
+  // Gate: ≥50% profile completeness + a CV on file unlocks the test.
+  const completeness = profile ? await recalcCompleteness(session!.user.id) : null;
+  const ready = Boolean(profile && profile.resumeUrl && (completeness?.pct ?? 0) >= 50);
+  const onboardingHref = `/recruitathon/onboarding?next=${encodeURIComponent(`/recruitathon/test/${slug}`)}`;
 
   const priorAttempt = profile
     ? await db.assessmentAttempt.findFirst({
@@ -79,12 +85,19 @@ export default async function RecruitathonTestIntroPage({
           <div className="mt-6">
             {!session?.user ? (
               <Button asChild size="lg">
-                <Link href={`/signin?next=${encodeURIComponent(`/recruitathon/test/${slug}`)}`}>Sign in to start</Link>
+                <Link href={onboardingHref}>Get started →</Link>
               </Button>
             ) : priorAttempt?.submittedAt ? (
               <div className="flex items-center gap-3">
                 <span className="text-sm font-semibold text-emce-text-sec">You&apos;ve already completed this test.</span>
                 <Button asChild variant="outline"><Link href={`/recruitathon/exam/${priorAttempt.id}/result`}>View result →</Link></Button>
+              </div>
+            ) : !ready ? (
+              <div>
+                <p className="mb-2 text-sm font-semibold text-emce-text-sec">
+                  Complete your emobility.careers profile (≥50% + CV) to unlock the test — takes a couple of minutes.
+                </p>
+                <Button asChild size="lg"><Link href={onboardingHref}>Complete profile to unlock →</Link></Button>
               </div>
             ) : (
               <form action={startRecruitathonExam}>
