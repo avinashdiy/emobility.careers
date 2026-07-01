@@ -4610,6 +4610,12 @@ model RecruitmentDrive {
   /// hides the whole block.
   richContent              Json?
 
+  /// When set, on-site registration is CLOSED and each role's CTA
+  /// redirects to an external form/link instead of the built-in flow.
+  /// Shape: { candidate?: url, employer?: url, tpo?: url }. Any role
+  /// left out keeps no button. Null = normal on-platform registration.
+  externalRegistration     Json?
+
   /// Speakers / leadership panel — see RecruitmentDriveSpeaker.
   speakers      RecruitmentDriveSpeaker[]
   /// Event-level endorsement partners (IIT Jammu, AICTE, ASDC,

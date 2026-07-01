@@ -340,6 +340,14 @@ export default async function FairLandingPage({
     (drive.status === "OPEN" || drive.status === "IN_PROGRESS") &&
     (!drive.registrationClosesAt || drive.registrationClosesAt > new Date());
 
+  // External-registration override. When set, on-site registration is
+  // closed and each role's hero CTA jumps straight to the external
+  // form/link (the /register page redirects too — see that route).
+  const extReg = drive.externalRegistration as
+    | { candidate?: string; employer?: string; tpo?: string }
+    | null;
+  const hasExtReg = Boolean(extReg && (extReg.candidate || extReg.employer || extReg.tpo));
+
   // Viewer status drives the header bar's CTA labels (Register vs.
   // View pass / dashboard). Cheap — three parallel queries on
   // indexed columns; only fires for signed-in viewers.
@@ -512,47 +520,89 @@ export default async function FairLandingPage({
                 read as supportive options without competing for the
                 primary visual weight. */}
             <div className="mt-8 flex flex-wrap items-center gap-2">
-              {registrationOpen && !session?.user && (
-                <>
-                  <Link
-                    href={`/fairs/${drive.slug}/register?as=candidate`}
-                    className="inline-flex h-11 items-center rounded-full bg-emce-light px-6 text-sm font-semibold text-emce-darkest shadow-emce-lg transition hover:bg-emce-mid hover:shadow-emce-hover"
-                  >
-                    🎓 Register as candidate
-                  </Link>
-                  <Link
-                    href={`/fairs/${drive.slug}/register?as=employer`}
-                    className="inline-flex h-11 items-center rounded-full border border-white/25 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
-                  >
-                    🏢 Register company
-                  </Link>
-                  <Link
-                    href={`/fairs/${drive.slug}/register?as=tpo`}
-                    className="inline-flex h-11 items-center rounded-full border border-white/25 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
-                  >
-                    📋 Register as TPO
-                  </Link>
-                </>
-              )}
-              {registrationOpen && hasCandidateProfile && !myRegistration && (
-                myEligibility?.ok ? (
-                  <form action={registerForDrive}>
-                    <input type="hidden" name="driveId" value={drive.id} />
-                    <button
-                      type="submit"
-                      className="inline-flex h-11 items-center rounded-full bg-emce-light px-6 text-sm font-semibold text-emce-darkest shadow-emce-lg transition hover:bg-emce-mid hover:shadow-emce-hover"
-                    >
-                      Register to attend
-                    </button>
-                  </form>
-                ) : (
-                  <Link
-                    href={`/me/profile?incomplete=fair&fairSlug=${drive.slug}`}
-                    className="inline-flex h-11 items-center rounded-full bg-emce-light px-6 text-sm font-semibold text-emce-darkest shadow-emce-lg transition hover:bg-emce-mid hover:shadow-emce-hover"
-                  >
-                    Finish profile to register
-                  </Link>
+              {hasExtReg ? (
+                /* On-site registration closed — each role jumps to its
+                   external form/link (new tab). Hidden once the viewer
+                   already holds a registration (pass CTA shows below). */
+                !myRegistration && (
+                  <>
+                    {extReg?.candidate && (
+                      <a
+                        href={extReg.candidate}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex h-11 items-center rounded-full bg-emce-light px-6 text-sm font-semibold text-emce-darkest shadow-emce-lg transition hover:bg-emce-mid hover:shadow-emce-hover"
+                      >
+                        🎓 Register as student
+                      </a>
+                    )}
+                    {extReg?.employer && (
+                      <a
+                        href={extReg.employer}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex h-11 items-center rounded-full border border-white/25 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
+                      >
+                        🏢 Register as employer
+                      </a>
+                    )}
+                    {extReg?.tpo && (
+                      <a
+                        href={extReg.tpo}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex h-11 items-center rounded-full border border-white/25 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
+                      >
+                        📋 Register as TPO
+                      </a>
+                    )}
+                  </>
                 )
+              ) : (
+                <>
+                  {registrationOpen && !session?.user && (
+                    <>
+                      <Link
+                        href={`/fairs/${drive.slug}/register?as=candidate`}
+                        className="inline-flex h-11 items-center rounded-full bg-emce-light px-6 text-sm font-semibold text-emce-darkest shadow-emce-lg transition hover:bg-emce-mid hover:shadow-emce-hover"
+                      >
+                        🎓 Register as candidate
+                      </Link>
+                      <Link
+                        href={`/fairs/${drive.slug}/register?as=employer`}
+                        className="inline-flex h-11 items-center rounded-full border border-white/25 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
+                      >
+                        🏢 Register company
+                      </Link>
+                      <Link
+                        href={`/fairs/${drive.slug}/register?as=tpo`}
+                        className="inline-flex h-11 items-center rounded-full border border-white/25 bg-white/10 px-6 text-sm font-semibold text-white backdrop-blur-sm transition hover:bg-white/20"
+                      >
+                        📋 Register as TPO
+                      </Link>
+                    </>
+                  )}
+                  {registrationOpen && hasCandidateProfile && !myRegistration && (
+                    myEligibility?.ok ? (
+                      <form action={registerForDrive}>
+                        <input type="hidden" name="driveId" value={drive.id} />
+                        <button
+                          type="submit"
+                          className="inline-flex h-11 items-center rounded-full bg-emce-light px-6 text-sm font-semibold text-emce-darkest shadow-emce-lg transition hover:bg-emce-mid hover:shadow-emce-hover"
+                        >
+                          Register to attend
+                        </button>
+                      </form>
+                    ) : (
+                      <Link
+                        href={`/me/profile?incomplete=fair&fairSlug=${drive.slug}`}
+                        className="inline-flex h-11 items-center rounded-full bg-emce-light px-6 text-sm font-semibold text-emce-darkest shadow-emce-lg transition hover:bg-emce-mid hover:shadow-emce-hover"
+                      >
+                        Finish profile to register
+                      </Link>
+                    )
+                  )}
+                </>
               )}
               {myRegistration && myRegistration.status !== "CANCELLED" && (
                 <Link
@@ -588,7 +638,8 @@ export default async function FairLandingPage({
               labelled fix link (see FAIR_GAP_COPY). When all gaps
               clear, the panel disappears and the hero CTA flips
               to a real Register button. */}
-          {registrationOpen &&
+          {!hasExtReg &&
+            registrationOpen &&
             hasCandidateProfile &&
             !myRegistration &&
             myEligibility &&

@@ -85,6 +85,7 @@ export default async function FairRegisterPage({
         endsAt: true,
         status: true,
         registrationClosesAt: true,
+        externalRegistration: true,
       },
     }),
     auth(),
@@ -100,6 +101,18 @@ export default async function FairRegisterPage({
       : Promise.resolve(null),
   ]);
   if (!drive) notFound();
+
+  // External-registration override — when the fair routes this role to
+  // an external form/link, on-site registration is closed: redirect
+  // before any form renders. (The fair-page hero buttons link straight
+  // to these too; this catches direct hits, the header bar, and any
+  // bookmarked/indexed /register URLs.)
+  const extReg = drive.externalRegistration as
+    | { candidate?: string; employer?: string; tpo?: string }
+    | null;
+  const extUrl = extReg?.[tab];
+  if (extUrl) redirect(extUrl);
+
   const tpoActive = tpoReferral?.status === "APPROVED" ? tpoReferral : null;
 
   // ─── Signed-in session + pre-redirect for already-registered ───
