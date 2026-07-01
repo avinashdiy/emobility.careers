@@ -27,12 +27,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import type { MCQQuestion } from "@/server/assessments/actions";
-
-/** Flags that trip an automatic termination (detect → warn → cancel). */
-export const PROCTOR_FLAG_LIMIT = 6;
-/** Grace window (ms) added to the hard deadline before the server
- *  refuses late writes — absorbs clock skew + in-flight requests. */
-const DEADLINE_GRACE_MS = 15_000;
+import { PROCTOR_FLAG_LIMIT, DEADLINE_GRACE_MS } from "@/lib/recruitathon/exam-config";
 
 type ProctorEventType =
   | "focus_loss"

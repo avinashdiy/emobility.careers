@@ -2,7 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { RecruitathonExamRunner } from "@/components/recruitathon/RecruitathonExamRunner";
-import { PROCTOR_FLAG_LIMIT } from "@/server/recruitathon/exam-actions";
+import { PROCTOR_FLAG_LIMIT } from "@/lib/recruitathon/exam-config";
 import type { MCQQuestion } from "@/server/assessments/actions";
 
 /**
