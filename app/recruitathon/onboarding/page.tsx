@@ -70,7 +70,7 @@ export default async function RecruitathonOnboardingPage({
       <main className="min-h-screen bg-emce-light-bg">
         <div className="container max-w-2xl py-8 md:py-12">
           <p className="text-hint font-bold uppercase tracking-wide text-emce-mid-muted">
-            Recruitathon test · {step === "upload" ? "one quick step" : "quick check"}
+            Recruitathon test · Step {stepNo} of 3
           </p>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-emce-text md:text-3xl">
             {step === "review" ? "Confirm your details" : step === "manual" ? "Enter your details" : "Upload your CV to begin"}
@@ -87,7 +87,7 @@ export default async function RecruitathonOnboardingPage({
           <div className="mt-4 flex items-center gap-2 text-xs font-bold">
             {[
               { n: 1, label: "Upload CV" },
-              { n: 2, label: "Confirm details" },
+              { n: 2, label: step === "manual" ? "Enter details" : "Confirm details" },
               { n: 3, label: "Pick roles" },
             ].map((s, i) => (
               <span key={s.n} className="flex items-center gap-2">

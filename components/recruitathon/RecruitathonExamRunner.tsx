@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -55,7 +56,14 @@ export function RecruitathonExamRunner({
   const answersRef = useRef(answers);
   answersRef.current = answers;
   const submittedRef = useRef(false);
+  // Suppresses focus/blur/fullscreen flags while our own confirm() dialog
+  // is up, so clicking "Submit" can't record a spurious integrity flag.
+  const proctorPausedRef = useRef(false);
+  const warnBtnRef = useRef<HTMLButtonElement>(null);
+  const endedRef = useRef<HTMLHeadingElement>(null);
 
+  const hasQuestions = Array.isArray(questions) && questions.length > 0;
+  const expired = remaining <= 0;
   const answered = Object.keys(answers).length;
 
   // ── Final submit (manual, deadline, or termination) ───────────────
@@ -72,6 +80,13 @@ export function RecruitathonExamRunner({
 
   // ── Server-authoritative countdown ────────────────────────────────
   useEffect(() => {
+    if (!hasQuestions) return;
+    // Already past the deadline on mount (e.g. resuming an expired
+    // attempt) → submit immediately, don't show a live exam at 0:00.
+    if (Math.max(0, deadlineMs - Date.now()) <= 0) {
+      doSubmit("expired");
+      return;
+    }
     const t = setInterval(() => {
       const left = Math.max(0, deadlineMs - Date.now());
       setRemaining(left);
@@ -81,12 +96,12 @@ export function RecruitathonExamRunner({
       }
     }, 1000);
     return () => clearInterval(t);
-  }, [deadlineMs, doSubmit]);
+  }, [deadlineMs, doSubmit, hasQuestions]);
 
   // ── Report an integrity event → warn → maybe terminate ────────────
   const flag = useCallback(
     async (type: "focus_loss" | "fullscreen_exit" | "paste_blocked" | "copy_blocked" | "devtools_suspected" | "reload", label: string) => {
-      if (submittedRef.current) return;
+      if (submittedRef.current || proctorPausedRef.current) return;
       try {
         const res = await recordProctorEvent({ attemptId, type });
         if (res.flags) setFlags(res.flags);
@@ -115,6 +130,7 @@ export function RecruitathonExamRunner({
   }, []);
 
   useEffect(() => {
+    if (!hasQuestions) return;
     enterFullscreen();
 
     const onVisibility = () => {
@@ -161,17 +177,32 @@ export function RecruitathonExamRunner({
       document.removeEventListener("keydown", onKey);
       window.removeEventListener("beforeunload", onBeforeUnload);
     };
-  }, [enterFullscreen, flag]);
+  }, [enterFullscreen, flag, hasQuestions]);
+
+  // Move focus to the warning's "Return to test" action / the ended
+  // heading when they appear, so keyboard + screen-reader users aren't
+  // stranded and the alert is announced.
+  useEffect(() => { if (warning) warnBtnRef.current?.focus(); }, [warning]);
+  useEffect(() => { if (terminated) endedRef.current?.focus(); }, [terminated]);
 
   // ── Autosave (debounced) ──────────────────────────────────────────
   function pick(qi: number, oi: number) {
-    if (submittedRef.current) return;
+    if (submittedRef.current || expired) return;
     setAnswers((prev) => {
       const next = { ...prev, [qi]: oi };
       // fire-and-forget autosave with the latest map
       void saveExamProgress({ attemptId, answers: next }).catch(() => {});
       return next;
     });
+  }
+
+  function confirmSubmit() {
+    // Guard proctoring while the browser confirm() is up (some browsers
+    // fire a window blur), and re-enable shortly after it resolves.
+    proctorPausedRef.current = true;
+    const ok = window.confirm("Submit your test? You can't change answers after this.");
+    setTimeout(() => { proctorPausedRef.current = false; }, 600);
+    if (ok) doSubmit("manual");
   }
 
   const mins = Math.floor(remaining / 60_000);
@@ -184,10 +215,30 @@ export function RecruitathonExamRunner({
       <div className="container max-w-lg py-20 text-center">
         <Card className="p-8">
           <p className="text-4xl">🛑</p>
-          <h1 className="mt-3 text-section text-emce-text">Test ended</h1>
+          <h1 ref={endedRef} tabIndex={-1} className="mt-3 text-section text-emce-text outline-none">Test ended</h1>
           <p className="mt-2 text-sm text-emce-text-sec">
             The test was automatically submitted after repeated integrity warnings. Taking you to your result…
           </p>
+          <div className="mt-5 flex flex-wrap justify-center gap-3">
+            <Button asChild><Link href={`/recruitathon/exam/${attemptId}/result`}>Go to your result →</Link></Button>
+            <Button asChild variant="outline"><Link href="/recruitathon/tests">Back to your tests</Link></Button>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  // Defense-in-depth: an assessment with an empty question bank should
+  // never reach here (guarded upstream), but if it does, don't crash on
+  // questions[current] — show a friendly not-ready state.
+  if (!hasQuestions) {
+    return (
+      <div className="container max-w-lg py-20 text-center">
+        <Card className="p-8">
+          <p className="text-4xl">🧩</p>
+          <h1 className="mt-3 text-section text-emce-text">This test isn&apos;t ready yet</h1>
+          <p className="mt-2 text-sm text-emce-text-sec">Its question bank is still being prepared. Please head back and try again shortly.</p>
+          <Button asChild className="mt-4"><Link href="/recruitathon/tests">← Back to your tests</Link></Button>
         </Card>
       </div>
     );
@@ -214,26 +265,28 @@ export function RecruitathonExamRunner({
           </div>
         </div>
         {warning && (
-          <div className="bg-emce-orange-light px-4 py-2 text-center text-sm font-semibold text-emce-orange-deep">
+          <div role="alert" className="bg-emce-orange-light px-4 py-2 text-center text-sm font-semibold text-emce-orange-deep">
             {warning}
-            <button className="ml-3 underline" onClick={() => { setWarning(null); enterFullscreen(); }}>Return to test</button>
+            <button ref={warnBtnRef} className="ml-3 rounded underline outline-none focus-visible:ring-2 focus-visible:ring-emce-dark" onClick={() => { setWarning(null); enterFullscreen(); }}>Return to test</button>
           </div>
         )}
       </div>
 
-      <div className="container max-w-3xl py-6">
+      <div className="container max-w-3xl py-6 pb-40">
         <Card className="p-6">
           <p className="text-hint font-bold uppercase tracking-wide text-emce-mid-muted">
             Question {current + 1} of {questions.length}
           </p>
-          <p className="mt-2 text-lg font-bold text-emce-text">{q.q}</p>
-          <div className="mt-4 grid gap-2">
+          <p id={`rq-${current}`} className="mt-2 text-lg font-bold text-emce-text">{q.q}</p>
+          <div className="mt-4 grid gap-2" role="radiogroup" aria-labelledby={`rq-${current}`}>
             {q.options.map((opt, oi) => {
               const selected = answers[current] === oi;
               return (
                 <button
                   key={oi}
                   type="button"
+                  role="radio"
+                  aria-checked={selected}
                   onClick={() => pick(current, oi)}
                   className={`flex items-start gap-3 rounded-md border-2 p-3 text-left text-sm transition ${
                     selected ? "border-emce-dark bg-emce-light-soft" : "border-emce-border bg-white hover:border-emce-mid"
@@ -255,10 +308,11 @@ export function RecruitathonExamRunner({
               <button
                 key={i}
                 onClick={() => setCurrent(i)}
-                className={`h-7 w-7 rounded text-xs font-bold ${
+                className={`h-9 w-9 rounded text-xs font-bold sm:h-7 sm:w-7 ${
                   i === current ? "bg-emce-dark text-emce-light" : answers[i] !== undefined ? "bg-emce-mid text-emce-darkest" : "bg-emce-light-soft text-emce-text-sec"
                 }`}
-                aria-label={`Question ${i + 1}`}
+                aria-label={`Question ${i + 1}, ${answers[i] !== undefined ? "answered" : "not answered"}${i === current ? ", current" : ""}`}
+                aria-current={i === current ? "true" : undefined}
               >
                 {i + 1}
               </button>
@@ -269,7 +323,7 @@ export function RecruitathonExamRunner({
 
         <div className="mt-6 flex items-center justify-between">
           <p className="text-hint text-emce-text-sec">{questions.length - answered} unanswered</p>
-          <Button size="lg" disabled={submitting} onClick={() => { if (confirm("Submit your test? You can't change answers after this.")) doSubmit("manual"); }}>
+          <Button size="lg" disabled={submitting} onClick={confirmSubmit}>
             {submitting ? "Submitting…" : "Submit test"}
           </Button>
         </div>

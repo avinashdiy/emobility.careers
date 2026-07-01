@@ -471,7 +471,12 @@ export async function applyRecruitathonResumeReview(formData: FormData) {
   if (skills.length) overrides.skills = skills;
 
   const applied = await commitResumeDraft(profile.id, { overrides, clearDraft: true });
-  if (!applied) redirect("/recruitathon/onboarding");
+  if (!applied) {
+    redirect(
+      "/recruitathon/onboarding?error=" +
+        encodeURIComponent("We couldn't confirm your details — please re-upload your CV and try again."),
+    );
+  }
 
   const next =
     typeof data.next === "string" && data.next.startsWith("/recruitathon/") && !data.next.startsWith("//")

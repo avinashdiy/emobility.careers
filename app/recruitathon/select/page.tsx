@@ -37,8 +37,10 @@ export default async function RecruitathonSelectPage({
     redirect(`/recruitathon/onboarding?next=${encodeURIComponent("/recruitathon/select")}`);
   }
 
-  // The drive whose JD catalog we're selecting from.
-  const anyJd = await db.recruitathonJd.findFirst({ where: { isActive: true }, select: { driveId: true } });
+  // The drive whose JD catalog we're selecting from. Pick an active JD
+  // that actually HAS a drive (an arbitrary first active JD might have a
+  // null driveId and wrongly trip the "no roles" empty state).
+  const anyJd = await db.recruitathonJd.findFirst({ where: { isActive: true, driveId: { not: null } }, select: { driveId: true } });
   if (!anyJd?.driveId) {
     return (
       <>

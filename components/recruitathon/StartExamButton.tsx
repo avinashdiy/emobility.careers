@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { startRecruitathonExam } from "@/server/recruitathon/exam-actions";
 
@@ -43,7 +44,17 @@ export function StartExamButton({ slug, resume }: { slug: string; resume: boolea
         {checking ? "Checking camera…" : resume ? "Resume test →" : "Start test →"}
       </Button>
       {error && (
-        <p className="mt-2 max-w-md text-sm font-semibold text-emce-red-deep">{error}</p>
+        <div role="alert" className="mt-3 max-w-md rounded-md bg-emce-red-light p-3">
+          <p className="text-sm font-semibold text-emce-red-deep">{error}</p>
+          <ul className="mt-1.5 list-disc pl-5 text-hint text-emce-text-sec">
+            <li>Click the 🔒 / camera icon in your browser&apos;s address bar and set Camera to <strong>Allow</strong>, then tap the button again.</li>
+            <li>Close any other app using the camera (Zoom, Meet, etc.).</li>
+            <li>Still stuck? Switch to a laptop/desktop with a working webcam.</li>
+          </ul>
+          <p className="mt-2 text-hint">
+            <Link href="/recruitathon/tests" className="font-bold text-emce-dark hover:underline">← Back to your tests</Link>
+          </p>
+        </div>
       )}
     </div>
   );

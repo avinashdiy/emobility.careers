@@ -17,7 +17,12 @@ export const dynamic = "force-dynamic";
 
 const LEVEL_LABEL: Record<string, string> = { BASIC: "ITI / Diploma", INTERMEDIATE: "Diploma / Grad", ADVANCED: "Graduate / Exp" };
 
-export default async function RecruitathonTestsPage() {
+export default async function RecruitathonTestsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ notice?: string }>;
+}) {
+  const sp = await searchParams;
   const session = await auth();
   if (!session?.user) redirect("/recruitathon/select");
   const profile = await db.candidateProfile.findUnique({
@@ -66,6 +71,12 @@ export default async function RecruitathonTestsPage() {
             <Link href="/recruitathon/select" className="ml-1 font-bold text-emce-dark hover:underline">Change selection</Link>.
           </p>
 
+          {sp.notice && (
+            <p className="mt-4 rounded-md bg-emce-orange-light p-3 text-sm font-semibold text-emce-orange-deep">
+              {sp.notice}
+            </p>
+          )}
+
           <ul className="mt-5 space-y-3">
             {selections.map((s) => {
               const jd = s.jd;
@@ -103,6 +114,18 @@ export default async function RecruitathonTestsPage() {
             <p className="mt-4 rounded-md bg-emce-light-soft p-3 text-hint text-emce-text-sec">
               Some question banks are still being finalised — you&apos;ll be able to start those shortly. Come back to this page any time.
             </p>
+          )}
+
+          {done === selections.length && (
+            <Card className="mt-5 border-2 border-emce-mid bg-emce-light-soft p-5 text-center">
+              <p className="text-2xl">🎉</p>
+              <p className="mt-1 text-section text-emce-text">You&apos;re all done</p>
+              <p className="mt-1 text-sm text-emce-text-sec">
+                Thanks for completing your Recruitathon test{selections.length === 1 ? "" : "s"}. Shortlisted candidates
+                are contacted by the companies directly — keep your profile up to date so they can reach you.
+              </p>
+              <Button asChild className="mt-3" variant="outline"><Link href="/me/profile">Review my profile →</Link></Button>
+            </Card>
           )}
         </div>
       </main>

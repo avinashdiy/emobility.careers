@@ -73,11 +73,11 @@ export default async function RecruitathonTestIntroPage({
           <Card className="mt-4 border-emce-orange/40 bg-emce-orange-light/50 p-5">
             <p className="text-section text-emce-text">Before you start — read carefully</p>
             <ul className="mt-2 space-y-1.5 text-sm text-emce-text-sec">
-              <li>• This test requires a <strong>working webcam</strong>. Keep your face in view — nothing is recorded, but looking away or others appearing is flagged for review.</li>
+              <li>• This test requires a <strong>working webcam</strong>. Keep your face in view — nothing is recorded, and look-away flags are <strong>logged for the reviewer but do not end your test</strong>.</li>
               <li>• The test opens in <strong>full-screen</strong> and the timer is server-controlled — closing the tab won&apos;t pause it.</li>
               <li>• <strong>Do not switch tabs, leave the window, or exit full-screen.</strong> Each time you do, it&apos;s recorded as a warning.</li>
               <li>• Copy, paste, right-click and developer tools are disabled.</li>
-              <li>• After <strong>6 warnings</strong> the test auto-submits with whatever you&apos;ve answered.</li>
+              <li>• After <strong>6 of those tab / window / full-screen warnings</strong>, the test auto-submits with whatever you&apos;ve answered.</li>
               <li>• You get <strong>one attempt</strong>. Answers autosave as you go.</li>
             </ul>
           </Card>
@@ -92,6 +92,17 @@ export default async function RecruitathonTestIntroPage({
                 <span className="text-sm font-semibold text-emce-text-sec">You&apos;ve already completed this test.</span>
                 <Button asChild variant="outline"><Link href={`/recruitathon/exam/${priorAttempt.id}/result`}>View result →</Link></Button>
               </div>
+            ) : count === 0 ? (
+              <div>
+                <p className="mb-2 text-sm font-semibold text-emce-text-sec">
+                  This test is still being prepared — its questions aren&apos;t ready yet. Please check back shortly.
+                </p>
+                <Button asChild variant="outline"><Link href="/recruitathon/tests">← Back to your tests</Link></Button>
+              </div>
+            ) : priorAttempt ? (
+              // An in-progress attempt exists → let them resume it regardless of
+              // the CV gate (that gate only guards STARTING a new attempt).
+              <StartExamButton slug={slug} resume />
             ) : !ready ? (
               <div>
                 <p className="mb-2 text-sm font-semibold text-emce-text-sec">
@@ -100,7 +111,7 @@ export default async function RecruitathonTestIntroPage({
                 <Button asChild size="lg"><Link href={onboardingHref}>Upload CV to unlock →</Link></Button>
               </div>
             ) : (
-              <StartExamButton slug={slug} resume={!!priorAttempt} />
+              <StartExamButton slug={slug} resume={false} />
             )}
           </div>
         </div>

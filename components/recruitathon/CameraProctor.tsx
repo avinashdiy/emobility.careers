@@ -147,12 +147,14 @@ export function CameraProctor({ attemptId }: { attemptId: string }) {
     : "Starting camera…";
 
   return (
-    <div className="fixed bottom-4 right-4 z-40 select-none">
+    // Bottom-LEFT on phones so it never covers the bottom-right Submit /
+    // Next buttons; bottom-right on larger screens.
+    <div className="fixed bottom-4 left-4 z-40 select-none sm:left-auto sm:right-4">
       <div className={`overflow-hidden rounded-lg border-2 shadow-lg ${bad ? "animate-pulse border-emce-red" : status === "ok" ? "border-emce-success-deep" : "border-emce-border"}`}>
         <video ref={videoRef} muted playsInline autoPlay className="block h-24 w-32 -scale-x-100 bg-black object-cover" />
         <p className={`px-2 py-1 text-center text-[11px] font-bold ${bad ? "bg-emce-red text-white" : status === "ok" ? "bg-emce-success-deep text-white" : "bg-black/70 text-white"}`}>
           {bad ? "⚠ " : status === "ok" ? "● " : ""}{label}
-          {flags > 0 && <span className="ml-1 opacity-90">· {flags}</span>}
+          {flags > 0 && <span className="ml-1 opacity-90">· {flags} look-away{flags === 1 ? "" : "s"}</span>}
         </p>
       </div>
     </div>

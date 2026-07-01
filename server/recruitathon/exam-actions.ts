@@ -120,9 +120,13 @@ export async function startRecruitathonExam(formData: FormData) {
 
   const assessment = await db.assessment.findFirst({
     where: { skillMeta: { slug } },
-    select: { id: true, isLibrary: true },
+    select: { id: true, isLibrary: true, questions: true },
   });
-  if (!assessment) redirect("/recruitathon/tests");
+  // No assessment, or an empty question bank → nothing to take. Refuse to
+  // create the attempt (it would burn the candidate's single try and the
+  // runner would have no questions to render).
+  const qCount = assessment && Array.isArray(assessment.questions) ? (assessment.questions as unknown[]).length : 0;
+  if (!assessment || qCount === 0) redirect("/recruitathon/tests");
 
   const existing = await db.assessmentAttempt.findFirst({
     where: { assessmentId: assessment.id, candidateId: profile.id },

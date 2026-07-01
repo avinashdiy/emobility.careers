@@ -55,5 +55,17 @@ export async function selectJds(formData: FormData) {
   ]);
 
   revalidatePath("/recruitathon/tests");
+
+  // If some picked roles were deactivated between browsing and submitting,
+  // we saved the valid ones but must not silently drop the rest.
+  const dropped = chosen.length - jds.length;
+  if (dropped > 0) {
+    redirect(
+      "/recruitathon/tests?notice=" +
+        encodeURIComponent(
+          `${dropped} role${dropped === 1 ? "" : "s"} you picked ${dropped === 1 ? "is" : "are"} no longer available and ${dropped === 1 ? "wasn't" : "weren't"} saved.`,
+        ),
+    );
+  }
   redirect("/recruitathon/tests");
 }

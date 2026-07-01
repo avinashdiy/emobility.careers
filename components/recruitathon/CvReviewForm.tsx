@@ -28,11 +28,13 @@ function SubmitButton({ label }: { label: string }) {
 }
 
 function Labeled({ label, children }: { label: string; children: React.ReactNode }) {
+  // Wrapping the control inside <label> gives an implicit programmatic
+  // association (no id/htmlFor plumbing needed).
   return (
-    <div>
-      <label className="text-hint font-bold text-emce-text-sec">{label}</label>
+    <label className="block">
+      <span className="text-hint font-bold text-emce-text-sec">{label}</span>
       {children}
-    </div>
+    </label>
   );
 }
 
