@@ -29,9 +29,12 @@ export interface ScoreRow {
   jdSlug: string;
   score: number;
   result: "PASS" | "FAIL";
+  // Proctoring integrity signals for review.
+  focusFlags: number; // tab-switch / full-screen-exit / paste / copy / devtools (the terminating budget)
+  cameraFlags: number; // sustained look-away / multiple-face / camera-off (non-terminating)
+  terminated: boolean;
   submittedAt: string; // ISO
   attemptId: string;
-  terminated: boolean;
 }
 
 async function postToSheet(rows: ScoreRow[]): Promise<{ ok: boolean; error?: string }> {
@@ -79,7 +82,7 @@ async function buildRow(attemptId: string): Promise<ScoreRow | null> {
   if (!email || !jd) return null;
 
   const name = [a.candidate?.firstName, a.candidate?.lastName].filter(Boolean).join(" ") || null;
-  const terminated = Boolean((a.proctorMeta as { terminated?: boolean } | null)?.terminated);
+  const pm = a.proctorMeta as { terminated?: boolean; flags?: number; cameraFlags?: number } | null;
 
   return {
     email: email.trim().toLowerCase(),
@@ -89,9 +92,11 @@ async function buildRow(attemptId: string): Promise<ScoreRow | null> {
     jdSlug: jd.slug,
     score: a.score,
     result: a.passed ? "PASS" : "FAIL",
+    focusFlags: typeof pm?.flags === "number" ? pm.flags : 0,
+    cameraFlags: typeof pm?.cameraFlags === "number" ? pm.cameraFlags : 0,
+    terminated: Boolean(pm?.terminated),
     submittedAt: a.submittedAt.toISOString(),
     attemptId: a.id,
-    terminated,
   };
 }
 
