@@ -122,7 +122,7 @@ export async function startRecruitathonExam(formData: FormData) {
     where: { skillMeta: { slug } },
     select: { id: true, isLibrary: true },
   });
-  if (!assessment) redirect("/recruitathon/test");
+  if (!assessment) redirect("/recruitathon/tests");
 
   const existing = await db.assessmentAttempt.findFirst({
     where: { assessmentId: assessment.id, candidateId: profile.id },
@@ -248,7 +248,7 @@ export async function submitExam(formData: FormData) {
   const attemptId = z.string().parse(formData.get("attemptId"));
   const reason = (formData.get("reason") as string | null) ?? "manual";
   const attempt = await loadOwnedAttempt(attemptId);
-  if (!attempt) redirect("/recruitathon/test");
+  if (!attempt) redirect("/recruitathon/tests");
   if (attempt.submittedAt) redirect(`/recruitathon/exam/${attempt.id}/result`);
 
   let answers: Record<number, number> = (attempt.answers ?? {}) as Record<number, number>;
