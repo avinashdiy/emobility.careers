@@ -17,6 +17,10 @@ const mcqQuestionSchema = z.object({
   // Optional post-submit rationale — shown only in the result review,
   // never during a live attempt. Additive + backward-compatible.
   explanation: z.string().optional(),
+  // Optional question category — Recruitathon banks mix technical with
+  // aptitude / reasoning / situational-judgment (psychometric) items so
+  // the report can profile fit, not just knowledge. Additive.
+  type: z.enum(["technical", "aptitude", "reasoning", "sjt"]).optional(),
 });
 export type MCQQuestion = z.infer<typeof mcqQuestionSchema>;
 
