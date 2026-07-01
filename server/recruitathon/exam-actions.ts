@@ -28,6 +28,7 @@ import { auth } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import type { MCQQuestion } from "@/server/assessments/actions";
 import { PROCTOR_FLAG_LIMIT, DEADLINE_GRACE_MS } from "@/lib/recruitathon/exam-config";
+import { syncAttemptScore } from "@/lib/recruitathon/sheets-sync";
 
 type ProctorEventType =
   | "focus_loss"
@@ -192,6 +193,8 @@ export async function recordProctorEvent(input: {
       },
     });
     logger.warn({ attemptId: attempt.id, flags: meta.flags }, "[recruitathon-exam] auto-terminated on proctor flags");
+    // Best-effort push of the final score to the team's Google Sheet.
+    await syncAttemptScore(attempt.id);
     return { ok: true, flags: meta.flags, terminated: true };
   }
 
@@ -239,6 +242,9 @@ export async function submitExam(formData: FormData) {
       proctorMeta: meta as object,
     },
   });
+
+  // Best-effort push of the final score to the team's Google Sheet.
+  await syncAttemptScore(attempt.id);
 
   revalidatePath(`/recruitathon/exam/${attempt.id}/result`);
   redirect(`/recruitathon/exam/${attempt.id}/result`);

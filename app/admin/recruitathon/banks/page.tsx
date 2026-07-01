@@ -3,7 +3,9 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import type { MCQQuestion } from "@/server/assessments/actions";
+import { resyncRecruitathonScores } from "@/server/recruitathon/admin-actions";
 
 /**
  * Admin — Recruitathon question-bank review index. Lists every JD with
@@ -28,9 +30,14 @@ function composition(questions: MCQQuestion[]) {
   return c;
 }
 
-export default async function AdminBanksPage() {
+export default async function AdminBanksPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ synced?: string; total?: string; syncerror?: string }>;
+}) {
   const session = await auth();
   if (session?.user?.role !== "ADMIN") redirect("/403");
+  const sp = await searchParams;
 
   const jds = await db.recruitathonJd.findMany({
     orderBy: [{ company: "asc" }, { sortOrder: "asc" }],
@@ -56,6 +63,23 @@ export default async function AdminBanksPage() {
       <p className="mt-1 text-sm text-emce-text-sec">
         {jds.length} JDs · {withBank} with a bank · {totalQ.toLocaleString()} questions. Click a role to review its questions + answers.
       </p>
+
+      {/* Google Sheet score sync — backfill safety net for the live push */}
+      <div className="mt-4 flex flex-wrap items-center gap-3">
+        <form action={resyncRecruitathonScores}>
+          <Button type="submit" variant="outline" size="sm">Sync scores to Google Sheet</Button>
+        </form>
+        {sp.synced !== undefined && (
+          <span className="text-hint font-semibold text-emce-success-deep">
+            Pushed {sp.synced}{sp.total ? ` of ${sp.total}` : ""} scores to the sheet ✓
+          </span>
+        )}
+        {sp.syncerror && (
+          <span className="text-hint font-semibold text-emce-red-deep">
+            Sync failed: {sp.syncerror}. Check RECRUITATHON_SHEETS_WEBHOOK_URL / _SECRET.
+          </span>
+        )}
+      </div>
 
       <div className="mt-6 space-y-5">
         {Array.from(byCompany.entries()).map(([company, list]) => (
