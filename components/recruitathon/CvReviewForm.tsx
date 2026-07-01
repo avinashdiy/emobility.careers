@@ -3,7 +3,6 @@
 import { useFormStatus } from "react-dom";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { applyRecruitathonResumeReview } from "@/server/candidates/actions";
 
 /** Loosely-typed view of the stored resume parse draft. */
 export interface ReviewDraft {
@@ -19,11 +18,11 @@ export interface ReviewDraft {
   certifications?: Array<{ name?: string | null; issuer?: string | null }>;
 }
 
-function SubmitButton() {
+function SubmitButton({ label }: { label: string }) {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" size="lg" disabled={pending}>
-      {pending ? "Saving…" : "Looks good — continue to roles →"}
+      {pending ? "Saving…" : label}
     </Button>
   );
 }
@@ -39,21 +38,32 @@ function Labeled({ label, children }: { label: string; children: React.ReactNode
 
 const inputCls = "mt-1 w-full rounded-md border border-emce-border p-2.5 text-sm";
 
-export function CvReviewForm({ draft, next }: { draft: ReviewDraft; next: string | null }) {
+export function CvReviewForm({
+  draft,
+  next,
+  action,
+  heading = "Check your details",
+  subheading = "We pulled these from your CV. Fix anything that looks off, then continue — you can refine your full profile later.",
+  submitLabel = "Looks good — continue to roles →",
+}: {
+  draft: ReviewDraft;
+  next: string | null;
+  action: (formData: FormData) => void | Promise<void>;
+  heading?: string;
+  subheading?: string;
+  submitLabel?: string;
+}) {
   const exp = draft.experiences ?? [];
   const edu = draft.education ?? [];
   const certs = draft.certifications ?? [];
 
   return (
-    <form action={applyRecruitathonResumeReview} className="mt-4 space-y-4 pb-8">
+    <form action={action} className="mt-4 space-y-4 pb-8">
       {next && <input type="hidden" name="next" value={next} />}
 
       <Card className="p-5">
-        <p className="text-section text-emce-text">Check your details</p>
-        <p className="mt-1 text-sm text-emce-text-sec">
-          We pulled these from your CV. Fix anything that looks off, then continue — you can refine your
-          full profile later.
-        </p>
+        <p className="text-section text-emce-text">{heading}</p>
+        <p className="mt-1 text-sm text-emce-text-sec">{subheading}</p>
 
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
           <Labeled label="First name">
@@ -148,7 +158,7 @@ export function CvReviewForm({ draft, next }: { draft: ReviewDraft; next: string
       )}
 
       <div className="flex items-center gap-3">
-        <SubmitButton />
+        <SubmitButton label={submitLabel} />
         <span className="text-hint text-emce-text-muted">Nothing is shared until you continue.</span>
       </div>
     </form>

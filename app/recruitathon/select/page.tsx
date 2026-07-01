@@ -25,14 +25,15 @@ export default async function RecruitathonSelectPage({
 
   const profile = await db.candidateProfile.findUnique({
     where: { userId: session.user.id },
-    select: { id: true, resumeUrl: true, resumeParseDraft: true },
+    select: { id: true, resumeUrl: true, resumeParseDraft: true, resumeParsedAt: true },
   });
   if (!profile) redirect("/recruitathon/onboarding");
 
-  // Requirement: a CV on file whose parse has been reviewed & applied.
-  // A pending draft means the candidate hasn't confirmed yet — send them
-  // back to finish the review so matching runs on their real profile.
-  if (!profile.resumeUrl || profile.resumeParseDraft) {
+  // Requirement: a CV on file whose details step is done — parse reviewed
+  // & applied, or filled in manually (resumeParsedAt stamped). A pending
+  // draft (unconfirmed) or a failed parse (no resumeParsedAt) sends them
+  // back so matching runs on their real profile, not an empty one.
+  if (!profile.resumeUrl || profile.resumeParseDraft || !profile.resumeParsedAt) {
     redirect(`/recruitathon/onboarding?next=${encodeURIComponent("/recruitathon/select")}`);
   }
 

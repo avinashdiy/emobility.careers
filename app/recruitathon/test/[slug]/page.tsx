@@ -29,12 +29,13 @@ export default async function RecruitathonTestIntroPage({
 
   const session = await auth();
   const profile = session?.user
-    ? await db.candidateProfile.findUnique({ where: { userId: session.user.id }, select: { id: true, resumeUrl: true, resumeParseDraft: true } })
+    ? await db.candidateProfile.findUnique({ where: { userId: session.user.id }, select: { id: true, resumeUrl: true, resumeParseDraft: true, resumeParsedAt: true } })
     : null;
 
-  // Gate: a CV on file whose parse has been reviewed & applied. A pending
-  // draft means the candidate still needs to confirm their details.
-  const ready = Boolean(profile && profile.resumeUrl && !profile.resumeParseDraft);
+  // Gate: a CV on file whose details step is done (parse reviewed & applied
+  // or filled manually). A pending draft or a failed parse (no
+  // resumeParsedAt) still needs the candidate to confirm their details.
+  const ready = Boolean(profile && profile.resumeUrl && !profile.resumeParseDraft && profile.resumeParsedAt);
   const onboardingHref = `/recruitathon/onboarding?next=${encodeURIComponent(`/recruitathon/test/${slug}`)}`;
 
   const priorAttempt = profile

@@ -480,6 +480,55 @@ export async function applyRecruitathonResumeReview(formData: FormData) {
   redirect(next);
 }
 
+/**
+ * Recruitathon manual-entry submit — used when the AI parse couldn't read
+ * the uploaded file. Writes the candidate's hand-entered details straight
+ * to the profile (via a synthetic draft so the skill-matching path is
+ * shared), stamps resumeParsedAt so the flow counts as complete, and
+ * continues to JD matching.
+ */
+export async function saveRecruitathonManualProfile(formData: FormData) {
+  const { profile } = await requireCandidate();
+  const parsed = reviewSchema.safeParse(Object.fromEntries(formData));
+  const data = parsed.success ? parsed.data : {};
+
+  const skills = (data.skills ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .slice(0, 60);
+
+  // Synthetic draft — reuses commitResumeDraft's apply + skill-matching.
+  const synthetic: Record<string, unknown> = {
+    firstName: data.firstName || null,
+    lastName: data.lastName || null,
+    headline: data.headline || null,
+    location: data.location || null,
+    phone: data.phone || null,
+    summary: data.summary || null,
+    skills,
+    experiences: [],
+    education: [],
+    certifications: [],
+    projects: [],
+  };
+
+  await db.candidateProfile.update({
+    where: { id: profile.id },
+    data: {
+      resumeParseDraft: synthetic as Prisma.InputJsonValue,
+      resumeParsedAt: new Date(),
+    },
+  });
+  await commitResumeDraft(profile.id, { clearDraft: true });
+
+  const next =
+    typeof data.next === "string" && data.next.startsWith("/recruitathon/") && !data.next.startsWith("//")
+      ? data.next
+      : "/recruitathon/select";
+  redirect(next);
+}
+
 // ─── Onboarding step 4: preferences ────────────────────────
 
 const preferencesSchema = z.object({
