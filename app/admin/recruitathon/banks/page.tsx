@@ -64,8 +64,11 @@ export default async function AdminBanksPage({
         {jds.length} JDs · {withBank} with a bank · {totalQ.toLocaleString()} questions. Click a role to review its questions + answers.
       </p>
 
-      {/* Google Sheet score sync — backfill safety net for the live push */}
+      {/* Exports + Google Sheet score sync */}
       <div className="mt-4 flex flex-wrap items-center gap-3">
+        <Button asChild size="sm">
+          <a href="/api/admin/recruitathon/export">⬇ Export all data (Excel)</a>
+        </Button>
         <form action={resyncRecruitathonScores}>
           <Button type="submit" variant="outline" size="sm">Sync scores to Google Sheet</Button>
         </form>
