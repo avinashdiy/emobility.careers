@@ -57,7 +57,7 @@ export default async function RecruitathonOnboardingPage({
     : (!profile.headline || !profile.location) ? "basics"
     : "gaps";
 
-  const startHref = next ?? "/recruitathon/test";
+  const startHref = next ?? "/recruitathon/select";
   const stepNo = step === "cv" ? 1 : step === "ready" ? 3 : 2;
 
   return (
