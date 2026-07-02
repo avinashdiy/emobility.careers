@@ -1,5 +1,6 @@
 import { NextRequest } from "next/server";
 import { recordDeliveryEvent } from "@/lib/delivery/record";
+import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import type { DeliveryChannel, DeliveryEventKind } from "@prisma/client";
 
@@ -119,6 +120,44 @@ function parse(body: unknown): ParsedEvent | null {
   return null;
 }
 
+/**
+ * Attribute an EMAIL delivery event to a Recruitathon bulk-email
+ * recipient (matched by the SES/Resend message id we stored at send),
+ * advancing its status and keeping the campaign's report counts exact.
+ * Best-effort — wrapped by the caller so it never fails the webhook.
+ */
+async function attributeRecruitathonCampaign(ev: ParsedEvent): Promise<void> {
+  if (ev.channel !== "EMAIL" || !ev.providerMessageId) return;
+  if (ev.kind !== "DELIVERED" && ev.kind !== "BOUNCED" && ev.kind !== "COMPLAINED") return;
+
+  const rec = await db.recruitathonEmailRecipient.findFirst({
+    where: { providerMessageId: ev.providerMessageId },
+    select: { id: true, campaignId: true },
+  });
+  if (!rec) return;
+
+  const now = ev.occurredAt ?? new Date();
+  // Guard transitions so duplicate SES events can't double-apply.
+  const fromStatuses =
+    ev.kind === "COMPLAINED" ? (["SENT", "DELIVERED"] as const) : (["SENT"] as const);
+  const stamp =
+    ev.kind === "DELIVERED" ? { deliveredAt: now } : ev.kind === "BOUNCED" ? { bouncedAt: now } : { complainedAt: now };
+
+  const upd = await db.recruitathonEmailRecipient.updateMany({
+    where: { id: rec.id, status: { in: [...fromStatuses] } },
+    data: { status: ev.kind, ...stamp },
+  });
+  if (upd.count === 0) return;
+
+  // Recompute the campaign's report counts from the source of truth.
+  const g = await db.recruitathonEmailRecipient.groupBy({ by: ["status"], where: { campaignId: rec.campaignId }, _count: true });
+  const c = (s: string) => g.find((x) => x.status === s)?._count ?? 0;
+  await db.recruitathonEmailCampaign.update({
+    where: { id: rec.campaignId },
+    data: { deliveredCount: c("DELIVERED"), bouncedCount: c("BOUNCED"), complainedCount: c("COMPLAINED") },
+  });
+}
+
 export async function POST(req: NextRequest) {
   let body: unknown;
   try {
@@ -132,5 +171,10 @@ export async function POST(req: NextRequest) {
     return new Response("ok", { status: 200 });
   }
   await recordDeliveryEvent({ ...parsed, rawPayload: body });
+  try {
+    await attributeRecruitathonCampaign(parsed);
+  } catch (err) {
+    logger.warn({ err }, "[delivery-webhook] recruitathon campaign attribution failed");
+  }
   return new Response("ok", { status: 200 });
 }

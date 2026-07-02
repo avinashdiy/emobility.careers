@@ -3011,6 +3011,74 @@ model Broadcast {
   @@index([targetDriveId])
 }
 
+// ─── Recruitathon bulk email (CSV import → SES send → report) ──
+//
+// Admin-driven bulk email to a CSV-imported list of student addresses
+// (who are NOT necessarily platform users, so this can't ride the
+// User-targeted Broadcast fanout). Per-recipient rows capture the SES
+// MessageId at send time; the /api/webhooks/delivery handler matches
+// SES delivery/bounce/complaint events back by that id to drive the
+// per-campaign report. (Open/click reporting is a later addition and
+// depends on SES config-set open/click tracking.)
+
+enum RecruitathonEmailCampaignStatus {
+  DRAFT
+  SENDING
+  SENT
+  FAILED
+}
+
+enum RecruitathonEmailStatus {
+  PENDING
+  SENT
+  FAILED
+  DELIVERED
+  BOUNCED
+  COMPLAINED
+}
+
+model RecruitathonEmailCampaign {
+  id              String                          @id @default(cuid())
+  subject         String
+  bodyHtml        String                          @db.Text
+  status          RecruitathonEmailCampaignStatus @default(DRAFT)
+  /// Admin user id (plain string, mirrors Broadcast.createdById).
+  createdById     String
+  recipientCount  Int                             @default(0)
+  sentCount       Int                             @default(0)
+  failedCount     Int                             @default(0)
+  deliveredCount  Int                             @default(0)
+  bouncedCount    Int                             @default(0)
+  complainedCount Int                             @default(0)
+  createdAt       DateTime                        @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+  recipients      RecruitathonEmailRecipient[]
+
+  @@index([status, createdAt])
+}
+
+model RecruitathonEmailRecipient {
+  id                String                    @id @default(cuid())
+  campaignId        String
+  campaign          RecruitathonEmailCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  email             String
+  name              String?
+  status            RecruitathonEmailStatus   @default(PENDING)
+  /// SES MessageId captured at send — the join key the delivery
+  /// webhook uses to attribute delivery/bounce/complaint events.
+  providerMessageId String?
+  error             String?
+  sentAt            DateTime?
+  deliveredAt       DateTime?
+  bouncedAt         DateTime?
+  complainedAt      DateTime?
+
+  @@unique([campaignId, email])
+  @@index([providerMessageId])
+  @@index([email])
+}
+
 // ─── Job reports / moderation ──────────────────────────────
 
 enum JobReportReason {

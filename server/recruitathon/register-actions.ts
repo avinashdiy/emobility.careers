@@ -69,6 +69,26 @@ function mintCheckInCode(): string {
   return out;
 }
 
+// ─── Compound-unique P2002 detector ───────────────────────────
+// The signed-in registration paths pre-check for an existing row with
+// findUnique, then create(). That leaves a race window: a concurrent
+// or replayed submit can slip past the pre-check and collide on the
+// create's compound-unique constraint, which Prisma surfaces as a
+// P2002. This lets each caller recognise that specific collision and
+// fall back to the same idempotent "already registered" redirect the
+// pre-check takes, instead of bubbling a 500 to the generic error page.
+// Tolerates both shapes `meta.target` takes across Prisma / driver
+// versions: the field-name array (["driveId","candidateId"]) and the
+// constraint-name string.
+function isCompoundUniqueP2002(err: unknown, fields: string[]): boolean {
+  const e = err as { code?: string; meta?: { target?: string[] | string } };
+  if (e?.code !== "P2002") return false;
+  const target = e.meta?.target;
+  if (Array.isArray(target)) return fields.every((f) => target.includes(f));
+  if (typeof target === "string") return fields.every((f) => target.includes(f));
+  return false;
+}
+
 // ─── Shared anti-spam preamble ────────────────────────────────
 // Both actions run the same pre-flight: honeypot, timing, turnstile,
 // disposable email, spammy name. Extracted so the two actions stay
@@ -796,6 +816,13 @@ async function registerCandidateForFair(userId: string, formData: FormData): Pro
       const code = (err as { code?: string; meta?: { target?: string[] } })?.code;
       const target = (err as { meta?: { target?: string[] } })?.meta?.target ?? [];
       if (code === "P2002" && target.includes("checkInCode") && attempt < 6) continue;
+      // Lost the race with a concurrent / replayed submit — the
+      // (driveId, candidateId) row already exists. Idempotent: land on
+      // the same welcome screen the pre-check redirects to instead of
+      // re-throwing the compound-unique P2002 to the error page.
+      if (isCompoundUniqueP2002(err, ["driveId", "candidateId"])) {
+        redirect(`/fairs/${drive.slug}/registered?as=candidate`);
+      }
       throw err;
     }
   }
@@ -1236,6 +1263,15 @@ async function registerEmployerForFair(
       },
     });
     return { alreadyParticipating: false, companySlug };
+  }).catch((err) => {
+    // Lost the race with a concurrent / replayed submit — the
+    // (driveId, companyId) participation row already exists. Idempotent:
+    // redirect to the same welcome screen the in-tx pre-check takes
+    // instead of re-throwing the compound-unique P2002 to the error page.
+    if (isCompoundUniqueP2002(err, ["driveId", "companyId"])) {
+      redirect(`/fairs/${drive.slug}/registered?as=employer`);
+    }
+    throw err;
   });
 
   // Already participating → soft redirect to welcome screen rather
@@ -1613,6 +1649,15 @@ async function registerTpoForFair(
     });
 
     return { cellId: cell.id, institutionId: cell.institutionId };
+  }).catch((err) => {
+    // Lost the race with a concurrent / replayed submit — a
+    // CollegePlacementCell for (institutionId, createdById) already
+    // exists. Idempotent: redirect to the same welcome screen the
+    // pre-check takes instead of re-throwing the compound-unique P2002.
+    if (isCompoundUniqueP2002(err, ["institutionId", "createdById"])) {
+      redirect(`/fairs/${drive.slug}/registered?as=tpo`);
+    }
+    throw err;
   });
 
   try {

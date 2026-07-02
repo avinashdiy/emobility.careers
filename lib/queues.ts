@@ -32,6 +32,9 @@ export const QueueNames = {
   /// hardcoded fallback values from lib/currency.ts. Ticks once
   /// per day at ~03:00 IST.
   ExchangeRates: "exchange-rates",
+  /// Recruitathon bulk-email send — one job per campaign; the worker
+  /// paginates PENDING recipients and sends each via SES (throttled).
+  RecruitathonEmail: "recruitathon-email",
 } as const;
 
 export type ResumeParseJob = {
@@ -96,6 +99,8 @@ export type NotificationMaintenanceJob = {
     | "calling-cleanup";
 };
 
+export type RecruitathonEmailJob = { campaignId: string };
+
 export const resumeParseQueue = new Queue<ResumeParseJob>(QueueNames.ResumeParse, baseOpts);
 export const embeddingsQueue = new Queue<EmbeddingsJob>(QueueNames.Embeddings, baseOpts);
 export const notificationsQueue = new Queue<NotificationsJob>(QueueNames.Notifications, baseOpts);
@@ -115,6 +120,7 @@ export const resumeDraftQueue = new Queue<ResumeDraftJob>(QueueNames.ResumeDraft
 });
 export const whatsappDigestQueue = new Queue<WhatsAppDigestJob>(QueueNames.WhatsAppDigest, baseOpts);
 export const fairRemindersQueue = new Queue<FairReminderJob>(QueueNames.FairReminders, baseOpts);
+export const recruitathonEmailQueue = new Queue<RecruitathonEmailJob>(QueueNames.RecruitathonEmail, baseOpts);
 
 export type ExchangeRatesJob = {
   /// Marker payload — the worker doesn't need parameters; it

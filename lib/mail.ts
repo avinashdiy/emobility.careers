@@ -96,7 +96,15 @@ async function appendSignature(html: string, text?: string): Promise<{ html: str
   };
 }
 
-export async function sendMail(opts: SendMailOptions): Promise<void> {
+/** Provider message id + provider name, so bulk-send callers can persist
+ *  the id and later correlate SES/Resend delivery-webhook events back to
+ *  the exact recipient. Existing callers can ignore the return value. */
+export interface SendMailResult {
+  providerMessageId?: string;
+  provider?: "ses" | "resend";
+}
+
+export async function sendMail(opts: SendMailOptions): Promise<SendMailResult> {
   const recipients = Array.isArray(opts.to) ? opts.to : [opts.to];
   const kind: "transactional" | "bulk" = opts.kind ?? "transactional";
   const from = await resolveFromAddress(kind);
@@ -107,7 +115,7 @@ export async function sendMail(opts: SendMailOptions): Promise<void> {
   // Amazon SES (preferred)
   if (sesClient) {
     try {
-      await sesClient.send(
+      const res = await sesClient.send(
         new SendEmailCommand({
           FromEmailAddress: from,
           Destination: { ToAddresses: recipients },
@@ -124,7 +132,7 @@ export async function sendMail(opts: SendMailOptions): Promise<void> {
           },
         }),
       );
-      return;
+      return { provider: "ses", providerMessageId: res.MessageId };
     } catch (err) {
       logger.error({ err, to: recipients, subject: opts.subject, kind }, "[mail] SES send failed");
       throw err;
@@ -134,7 +142,7 @@ export async function sendMail(opts: SendMailOptions): Promise<void> {
   // Resend (fallback)
   if (resendClient) {
     try {
-      await resendClient.emails.send({
+      const res = await resendClient.emails.send({
         from,
         to: recipients,
         subject: opts.subject,
@@ -142,7 +150,7 @@ export async function sendMail(opts: SendMailOptions): Promise<void> {
         text,
         replyTo,
       });
-      return;
+      return { provider: "resend", providerMessageId: res.data?.id ?? undefined };
     } catch (err) {
       logger.error({ err, to: recipients, subject: opts.subject }, "[mail] Resend send failed");
       throw err;
@@ -154,4 +162,5 @@ export async function sendMail(opts: SendMailOptions): Promise<void> {
     { to: recipients, subject: opts.subject },
     "[mail] no provider configured (set AWS_SES_* or RESEND_API_KEY) — skipping send",
   );
+  return {};
 }

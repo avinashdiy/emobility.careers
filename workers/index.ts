@@ -15,6 +15,7 @@ import { startWhatsAppDigestWorker } from "@/workers/processors/whatsapp-digest"
 import { startNotificationMaintenanceWorker } from "@/workers/processors/notification-maintenance";
 import { startFairRemindersWorker } from "@/workers/processors/fair-reminders";
 import { startExchangeRatesWorker } from "@/workers/processors/exchange-rates";
+import { startRecruitathonEmailWorker } from "@/workers/processors/recruitathon-email";
 
 const workers = [
   startResumeParseWorker(),
@@ -33,6 +34,8 @@ const workers = [
   // fires immediately on worker start (seeds the table with
   // hardcoded fallback values + tries the API), then daily.
   startExchangeRatesWorker(),
+  // Recruitathon bulk-email sender (CSV-imported student lists).
+  startRecruitathonEmailWorker(),
 ];
 
 logger.info(`[worker] eMC worker process online (${workers.length} processors registered).`);
