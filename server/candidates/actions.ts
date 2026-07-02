@@ -353,7 +353,11 @@ async function commitResumeDraft(
       });
     }
 
-    // Match parsed skill names against canonical Skill rows; create missing ones.
+    // Match parsed/entered skill names against canonical Skill rows;
+    // create missing ones. Dedupe by the RESOLVED skillId so duplicate or
+    // case/spelling-variant names (e.g. "CAN" + "can", or two names that
+    // slugify the same) can't violate the (candidateId, skillId) unique
+    // constraint — that P2002 was crashing the whole onboarding submit.
     const skillNames: string[] = (draft.skills as string[]) ?? [];
     if (skillNames.length) {
       const existing = await tx.skill.findMany({
@@ -363,19 +367,26 @@ async function commitResumeDraft(
 
       await tx.candidateSkill.deleteMany({ where: { candidateId: profileId } });
 
-      for (const name of skillNames) {
+      const linked = new Set<string>();
+      for (const rawName of skillNames) {
+        const name = String(rawName ?? "").trim();
+        if (!name) continue;
         let skill = existingMap.get(name.toLowerCase());
         if (!skill) {
           const slug = name
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/^-+|-+$/g, "");
+          if (!slug) continue; // name had no usable characters
           skill = await tx.skill.upsert({
             where: { slug },
             create: { slug, name, category: "Imported" },
             update: {},
           });
+          existingMap.set(name.toLowerCase(), skill);
         }
+        if (linked.has(skill.id)) continue; // already linked this skill
+        linked.add(skill.id);
         await tx.candidateSkill.create({
           data: {
             candidateId: profileId,
