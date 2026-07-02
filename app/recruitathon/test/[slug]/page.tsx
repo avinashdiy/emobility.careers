@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { StartExamButton } from "@/components/recruitathon/StartExamButton";
+import { GENERAL_EV_SLUG } from "@/lib/recruitathon/exam-config";
 
 /**
  * Pre-test instructions + start gate for one Recruitathon assessment
@@ -48,6 +49,20 @@ export default async function RecruitathonTestIntroPage({
 
   const count = Array.isArray(assessment.questions) ? assessment.questions.length : 0;
   const mins = assessment.durationMins ?? 30;
+
+  // JD tests are gated behind the mandatory general EV test.
+  const isGeneral = slug === GENERAL_EV_SLUG;
+  let generalGateBlocked = false;
+  if (!isGeneral && profile) {
+    const general = await db.assessment.findFirst({ where: { skillMeta: { slug: GENERAL_EV_SLUG } }, select: { id: true } });
+    if (general) {
+      const gDone = await db.assessmentAttempt.findFirst({
+        where: { assessmentId: general.id, candidateId: profile.id, submittedAt: { not: null } },
+        select: { id: true },
+      });
+      generalGateBlocked = !gDone;
+    }
+  }
 
   return (
     <>
@@ -109,6 +124,16 @@ export default async function RecruitathonTestIntroPage({
                   Add your details to unlock the test — upload your CV or fill the quick form.
                 </p>
                 <Button asChild size="lg"><Link href={onboardingHref}>Add my details to unlock →</Link></Button>
+              </div>
+            ) : generalGateBlocked ? (
+              <div>
+                <p className="mb-2 text-sm font-semibold text-emce-text-sec">
+                  Complete the <strong>General EV Knowledge Test</strong> first — it unlocks your role tests.
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  <Button asChild size="lg"><Link href={`/recruitathon/test/${GENERAL_EV_SLUG}`}>Take the General EV Test →</Link></Button>
+                  <Button asChild variant="outline"><Link href="/recruitathon/tests">Back to your tests</Link></Button>
+                </div>
               </div>
             ) : (
               <StartExamButton slug={slug} resume={false} />

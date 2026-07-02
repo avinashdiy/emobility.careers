@@ -61,9 +61,20 @@ export function JdSelector({
     });
   }
 
+  const countLabel = `${selected.size}/${MAX_JD_SELECTIONS} selected${atMax ? " · max reached" : ""}`;
+  const btnLabel = submitting ? "Saving…" : `Continue with ${selected.size} test${selected.size === 1 ? "" : "s"} →`;
+  const submitAction = (fd: FormData) => { setSubmitting(true); selected.forEach((id) => fd.append("jdId", id)); return selectJds(fd); };
+
   return (
-    <div className="pb-28">
-      <div className="space-y-3">
+    <form action={submitAction}>
+      {/* Top action bar — mirrors the sticky bottom bar so Continue is
+          reachable without scrolling to the bottom (some phones hid it). */}
+      <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-emce-border bg-white p-3 shadow-sm">
+        <p className="text-sm font-semibold text-emce-text-sec">{countLabel}</p>
+        <Button type="submit" disabled={selected.size === 0 || submitting}>{btnLabel}</Button>
+      </div>
+
+      <div className="space-y-3 pb-28">
         {companies.map((co) => {
           const expanded = open.has(co.company);
           const selectedHere = co.jds.filter((j) => selected.has(j.id)).length;
@@ -135,20 +146,17 @@ export function JdSelector({
         })}
       </div>
 
-      {/* Sticky continue bar */}
-      <form
-        action={(fd) => { setSubmitting(true); selected.forEach((id) => fd.append("jdId", id)); return selectJds(fd); }}
-        className="fixed inset-x-0 bottom-0 z-20 border-t border-emce-border bg-white/95 backdrop-blur"
-      >
-        <div className="container flex max-w-2xl items-center justify-between gap-4 py-3">
-          <p className="text-sm font-semibold text-emce-text-sec">
-            {selected.size}/{MAX_JD_SELECTIONS} selected{atMax && " · max reached"}
-          </p>
-          <Button type="submit" size="lg" disabled={selected.size === 0 || submitting}>
-            {submitting ? "Saving…" : `Continue with ${selected.size} test${selected.size === 1 ? "" : "s"} →`}
-          </Button>
+      {/* Sticky bottom bar (safe-area aware so mobile browser chrome
+          can't hide it) */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-emce-border bg-white/95 backdrop-blur">
+        <div
+          className="container flex max-w-2xl items-center justify-between gap-4 py-3"
+          style={{ paddingBottom: "calc(0.75rem + env(safe-area-inset-bottom))" }}
+        >
+          <p className="text-sm font-semibold text-emce-text-sec">{countLabel}</p>
+          <Button type="submit" size="lg" disabled={selected.size === 0 || submitting}>{btnLabel}</Button>
         </div>
-      </form>
-    </div>
+      </div>
+    </form>
   );
 }

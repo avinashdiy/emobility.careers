@@ -14,3 +14,8 @@ export const DEADLINE_GRACE_MS = 15_000;
 
 /** Max JDs a candidate can pick to be tested on. */
 export const MAX_JD_SELECTIONS = 3;
+
+/** Slug of the mandatory general-EV-knowledge test every candidate must
+ *  pass through before their JD-specific tests unlock. Keyed via its
+ *  SkillAssessmentMeta.slug, same as the JD banks. */
+export const GENERAL_EV_SLUG = "recruitathon-general-ev";

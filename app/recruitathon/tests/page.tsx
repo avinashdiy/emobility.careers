@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SiteFooter } from "@/components/layout/site-footer";
+import { GENERAL_EV_SLUG } from "@/lib/recruitathon/exam-config";
 
 /**
  * Test overview — the candidate's chosen JDs and the status of each
@@ -57,6 +58,22 @@ export default async function RecruitathonTestsPage({
 
   const done = selections.filter((s) => s.jd.assessment && attemptByAssessment.get(s.jd.assessment.id)?.submittedAt).length;
 
+  // Mandatory general EV test — must be completed before the JD tests
+  // unlock. Fail OPEN: if the assessment record is missing, don't gate.
+  const generalAssessment = await db.assessment.findFirst({
+    where: { skillMeta: { slug: GENERAL_EV_SLUG } },
+    select: { id: true, durationMins: true },
+  });
+  const generalAttempt = generalAssessment
+    ? await db.assessmentAttempt.findFirst({
+        where: { candidateId: profile.id, assessmentId: generalAssessment.id },
+        orderBy: { startedAt: "desc" },
+        select: { id: true, submittedAt: true, score: true },
+      })
+    : null;
+  const generalRequired = !!generalAssessment;
+  const generalDone = generalRequired ? !!generalAttempt?.submittedAt : true;
+
   return (
     <>
       <SiteHeader />
@@ -67,7 +84,8 @@ export default async function RecruitathonTestsPage({
             {done === selections.length ? "All tests complete" : `${done} of ${selections.length} done`}
           </h1>
           <p className="mt-2 text-sm text-emce-text-sec">
-            One proctored test per role you selected. Take them one at a time — each opens in full-screen.
+            {generalRequired ? "First take the General EV Knowledge Test, then " : "One proctored test per role you selected — "}
+            take them one at a time — each opens in full-screen.
             <Link href="/recruitathon/select" className="ml-1 font-bold text-emce-dark hover:underline">Change selection</Link>.
           </p>
 
@@ -77,7 +95,34 @@ export default async function RecruitathonTestsPage({
             </p>
           )}
 
-          <ul className="mt-5 space-y-3">
+          {generalRequired && (
+            <Card className={`mt-5 p-4 ${generalDone ? "" : "border-2 border-emce-dark"}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-hint font-bold uppercase tracking-wide text-emce-mid-muted">
+                    Step 1 · Required first {generalDone && "· done ✓"}
+                  </p>
+                  <p className="font-bold text-emce-text">General EV Knowledge Test</p>
+                  <p className="text-hint text-emce-text-sec">
+                    30 questions · {generalAssessment!.durationMins ?? 20} min · unlocks your role tests
+                  </p>
+                </div>
+                <div className="shrink-0">
+                  {generalAttempt?.submittedAt ? (
+                    <Button asChild variant="outline" size="sm"><Link href={`/recruitathon/exam/${generalAttempt.id}/result`}>Result: {generalAttempt.score}%</Link></Button>
+                  ) : (
+                    <Button asChild size="sm"><Link href={`/recruitathon/test/${GENERAL_EV_SLUG}`}>{generalAttempt ? "Resume →" : "Start test →"}</Link></Button>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {generalRequired && (
+            <p className="mt-5 text-hint font-bold uppercase tracking-wide text-emce-mid-muted">Step 2 · Your role tests</p>
+          )}
+
+          <ul className="mt-3 space-y-3">
             {selections.map((s) => {
               const jd = s.jd;
               const assessment = jd.assessment;
@@ -97,6 +142,8 @@ export default async function RecruitathonTestsPage({
                       <div className="shrink-0">
                         {attempt?.submittedAt ? (
                           <Button asChild variant="outline" size="sm"><Link href={`/recruitathon/exam/${attempt.id}/result`}>Result: {attempt.score}%</Link></Button>
+                        ) : !generalDone ? (
+                          <span className="inline-flex items-center rounded-full bg-emce-light-soft px-3 py-1 text-xs font-bold text-emce-text-muted">🔒 Do the EV test first</span>
                         ) : assessment && slug ? (
                           <Button asChild size="sm"><Link href={`/recruitathon/test/${slug}`}>{attempt ? "Resume →" : "Start test →"}</Link></Button>
                         ) : (

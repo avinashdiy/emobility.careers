@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import type { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
+import { GENERAL_EV_SLUG } from "@/lib/recruitathon/exam-config";
 
 /**
  * Admin export of ALL Recruitathon data as a CSV (opens directly in
@@ -95,6 +96,23 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
+  // Per-candidate general EV test score (the mandatory pre-JD test).
+  const generalAssessment = await db.assessment.findFirst({
+    where: { skillMeta: { slug: GENERAL_EV_SLUG } },
+    select: { id: true },
+  });
+  const generalByCand = new Map<string, { score: number | null; done: boolean }>();
+  if (generalAssessment) {
+    const gAtt = await db.assessmentAttempt.findMany({
+      where: { assessmentId: generalAssessment.id },
+      select: { candidateId: true, score: true, submittedAt: true },
+      orderBy: { submittedAt: "desc" },
+    });
+    for (const a of gAtt) {
+      if (!generalByCand.has(a.candidateId)) generalByCand.set(a.candidateId, { score: a.score, done: !!a.submittedAt });
+    }
+  }
+
   const key = (candidateId: string, jdId: string) => `${candidateId}::${jdId}`;
   const candById = new Map<string, Cand>();
   const jdById = new Map<string, Jd>();
@@ -131,6 +149,7 @@ export async function GET(req: NextRequest) {
     "company", "role", "level", "jd_slug",
     "match_score_fitment", "priority", "selected", "attempted",
     "score", "result", "tab_switch_flags", "camera_flags", "terminated", "submitted_at",
+    "general_ev_score", "general_ev_done",
   ];
 
   const out: string[][] = [];
@@ -158,6 +177,8 @@ export async function GET(req: NextRequest) {
       pm?.cameraFlags != null ? String(pm.cameraFlags) : (att ? "0" : ""),
       att ? (pm?.terminated ? "Yes" : "No") : "",
       att?.submittedAt ? att.submittedAt.toISOString() : "",
+      generalByCand.get(candidateId)?.score != null ? String(generalByCand.get(candidateId)!.score) : "",
+      generalByCand.get(candidateId)?.done ? "Yes" : generalByCand.has(candidateId) ? "In progress" : "No",
     ]);
   }
 

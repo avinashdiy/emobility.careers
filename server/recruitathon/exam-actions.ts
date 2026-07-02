@@ -27,7 +27,7 @@ import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import type { MCQQuestion } from "@/server/assessments/actions";
-import { PROCTOR_FLAG_LIMIT, DEADLINE_GRACE_MS } from "@/lib/recruitathon/exam-config";
+import { PROCTOR_FLAG_LIMIT, DEADLINE_GRACE_MS, GENERAL_EV_SLUG } from "@/lib/recruitathon/exam-config";
 import { syncAttemptScore } from "@/lib/recruitathon/sheets-sync";
 
 type ProctorEventType =
@@ -120,13 +120,30 @@ export async function startRecruitathonExam(formData: FormData) {
 
   const assessment = await db.assessment.findFirst({
     where: { skillMeta: { slug } },
-    select: { id: true, isLibrary: true, questions: true },
+    select: { id: true, isLibrary: true, questions: true, recruitathonJd: { select: { id: true } } },
   });
   // No assessment, or an empty question bank → nothing to take. Refuse to
   // create the attempt (it would burn the candidate's single try and the
   // runner would have no questions to render).
   const qCount = assessment && Array.isArray(assessment.questions) ? (assessment.questions as unknown[]).length : 0;
   if (!assessment || qCount === 0) redirect("/recruitathon/tests");
+
+  // Mandatory general EV test gate: a JD-specific test can't be started
+  // until the candidate has submitted the general test. (Enforced here so
+  // it can't be bypassed by navigating straight to a JD test URL.)
+  if (assessment.recruitathonJd) {
+    const general = await db.assessment.findFirst({
+      where: { skillMeta: { slug: GENERAL_EV_SLUG } },
+      select: { id: true },
+    });
+    if (general) {
+      const generalDone = await db.assessmentAttempt.findFirst({
+        where: { assessmentId: general.id, candidateId: profile.id, submittedAt: { not: null } },
+        select: { id: true },
+      });
+      if (!generalDone) redirect("/recruitathon/tests");
+    }
+  }
 
   const existing = await db.assessmentAttempt.findFirst({
     where: { assessmentId: assessment.id, candidateId: profile.id },
