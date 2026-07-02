@@ -32,10 +32,10 @@ export default async function RecruitathonTestIntroPage({
     ? await db.candidateProfile.findUnique({ where: { userId: session.user.id }, select: { id: true, resumeUrl: true, resumeParseDraft: true, resumeParsedAt: true } })
     : null;
 
-  // Gate: a CV on file whose details step is done (parse reviewed & applied
-  // or filled manually). A pending draft or a failed parse (no
-  // resumeParsedAt) still needs the candidate to confirm their details.
-  const ready = Boolean(profile && profile.resumeUrl && !profile.resumeParseDraft && profile.resumeParsedAt);
+  // Gate: the details step is done — CV parse reviewed & applied OR
+  // details entered manually (resumeParsedAt stamped either way). No CV
+  // file required. A pending draft still needs confirming.
+  const ready = Boolean(profile && !profile.resumeParseDraft && profile.resumeParsedAt);
   const onboardingHref = `/recruitathon/onboarding?next=${encodeURIComponent(`/recruitathon/test/${slug}`)}`;
 
   const priorAttempt = profile
@@ -106,9 +106,9 @@ export default async function RecruitathonTestIntroPage({
             ) : !ready ? (
               <div>
                 <p className="mb-2 text-sm font-semibold text-emce-text-sec">
-                  Upload and confirm your CV to unlock the test — we&apos;ll match you to roles in one step.
+                  Add your details to unlock the test — upload your CV or fill the quick form.
                 </p>
-                <Button asChild size="lg"><Link href={onboardingHref}>Upload CV to unlock →</Link></Button>
+                <Button asChild size="lg"><Link href={onboardingHref}>Add my details to unlock →</Link></Button>
               </div>
             ) : (
               <StartExamButton slug={slug} resume={false} />

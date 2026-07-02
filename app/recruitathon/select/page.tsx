@@ -29,11 +29,11 @@ export default async function RecruitathonSelectPage({
   });
   if (!profile) redirect("/recruitathon/onboarding");
 
-  // Requirement: a CV on file whose details step is done — parse reviewed
-  // & applied, or filled in manually (resumeParsedAt stamped). A pending
-  // draft (unconfirmed) or a failed parse (no resumeParsedAt) sends them
-  // back so matching runs on their real profile, not an empty one.
-  if (!profile.resumeUrl || profile.resumeParseDraft || !profile.resumeParsedAt) {
+  // Requirement: the details step is done — either the CV parse was
+  // reviewed & applied, OR details were entered manually (resumeParsedAt
+  // is stamped in both cases). No CV file is required. A pending draft
+  // (unconfirmed review) sends them back to finish it.
+  if (profile.resumeParseDraft || !profile.resumeParsedAt) {
     redirect(`/recruitathon/onboarding?next=${encodeURIComponent("/recruitathon/select")}`);
   }
 

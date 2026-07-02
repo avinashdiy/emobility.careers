@@ -56,10 +56,13 @@ export default async function RecruitathonOnboardingPage({
   const parsedDone = !!profile.resumeParsedAt;
   // Uploaded a file but the parse produced nothing and nothing's applied.
   const parseFailed = hasCV && !draft && !parsedDone;
-  const manualMode = sp.manual === "1" && parseFailed;
+  // Manual entry is a first-class choice (offered up-front), not only a
+  // post-failure fallback — some CVs won't parse or even upload.
+  const manualMode = sp.manual === "1";
 
-  // Details step already complete → straight to JD matching.
-  if (!draft && hasCV && parsedDone) redirect(startHref);
+  // Details step complete (via parse-review OR manual entry) → JD matching.
+  // No CV file is required; typing details manually is enough.
+  if (!draft && parsedDone) redirect(startHref);
 
   const step: "upload" | "review" | "manual" = draft ? "review" : manualMode ? "manual" : "upload";
   const stepNo = step === "upload" ? 1 : 2;
@@ -73,14 +76,14 @@ export default async function RecruitathonOnboardingPage({
             Recruitathon test · Step {stepNo} of 3
           </p>
           <h1 className="mt-1 text-2xl font-extrabold tracking-tight text-emce-text md:text-3xl">
-            {step === "review" ? "Confirm your details" : step === "manual" ? "Enter your details" : "Upload your CV to begin"}
+            {step === "review" ? "Confirm your details" : step === "manual" ? "Enter your details" : "Add your details to begin"}
           </h1>
           <p className="mt-2 text-sm text-emce-text-sec md:text-base">
             {step === "review"
               ? "We read your CV. Take a moment to check what we pulled out, tweak anything, then continue to your role matches."
               : step === "manual"
               ? "Fill in the essentials below and continue to your role matches. Your skills drive the matching, so add a few."
-              : "We'll read it with AI to match you to the best-fit roles — then you pick up to 3 and start your test."}
+              : "Two ways to do this — upload your CV and we'll auto-fill everything, or enter your details manually. Either works."}
           </p>
 
           {/* Two-step indicator */}
@@ -114,7 +117,7 @@ export default async function RecruitathonOnboardingPage({
               next={next}
               action={saveRecruitathonManualProfile}
               heading="Your details"
-              subheading="We couldn't read your file automatically, so please fill these in. Add a few skills — they drive your role matches."
+              subheading="Type your details below and continue to your role matches — no CV upload needed. Add a few of your strongest skills; they drive the matching."
               submitLabel="Save & continue to roles →"
             />
           )}
@@ -125,24 +128,34 @@ export default async function RecruitathonOnboardingPage({
                 <Card className="mt-4 border-emce-red/40 bg-emce-red-light/60 p-5">
                   <p className="text-section text-emce-red-deep">We couldn&apos;t read that file</p>
                   <p className="mt-1 text-sm text-emce-text-sec">
-                    That can happen with scanned or image-only PDFs. Try uploading a different file (a
-                    text-based PDF or DOCX works best), or enter your details manually.
+                    That can happen with scanned or image-only PDFs. Try a different file (a text-based
+                    PDF or DOCX works best), or just enter your details manually below — either is fine.
                   </p>
-                  <div className="mt-3">
-                    <Button asChild variant="outline">
-                      <Link href={`/recruitathon/onboarding?manual=1${nextQ}`}>Enter details manually →</Link>
-                    </Button>
-                  </div>
                 </Card>
               )}
 
+              {/* Option 1 — upload + AI parse */}
               <Card className="mt-4 p-6">
-                <p className="text-section text-emce-text">{parseFailed ? "Try another file" : "Your CV"}</p>
+                <p className="text-section text-emce-text">{parseFailed ? "Option 1 · Try another file" : "Option 1 · Upload your CV"}</p>
                 <p className="mt-1 text-sm text-emce-text-sec">
-                  PDF or DOCX. We use it to match you to roles and pre-fill your profile — you can edit
-                  anything on the next screen.
+                  PDF or DOCX. We read it with AI to pre-fill your profile — you can edit anything on the next screen.
                 </p>
                 <CvUploadForm redirectTo={backTo} />
+              </Card>
+
+              <div className="my-4 flex items-center gap-3 text-hint font-bold uppercase tracking-wide text-emce-text-muted">
+                <span className="h-px flex-1 bg-emce-border" /> or <span className="h-px flex-1 bg-emce-border" />
+              </div>
+
+              {/* Option 2 — fill the form manually (no CV needed) */}
+              <Card className="p-6">
+                <p className="text-section text-emce-text">Option 2 · Enter your details manually</p>
+                <p className="mt-1 text-sm text-emce-text-sec">
+                  Skip the upload and type your details instead — takes a minute. Best if your CV won&apos;t upload or parse.
+                </p>
+                <Button asChild className="mt-3" variant="outline">
+                  <Link href={`/recruitathon/onboarding?manual=1${nextQ}`}>Enter details manually →</Link>
+                </Button>
               </Card>
             </>
           )}
