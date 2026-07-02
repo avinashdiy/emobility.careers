@@ -5,7 +5,7 @@ import { auth } from "@/lib/auth";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ConfirmSubmit } from "@/components/ui/confirm-submit";
-import { importRecipients, sendTestEmail, sendCampaign, deleteCampaign } from "@/server/admin/recruitathon-email-actions";
+import { updateCampaignMessage, importRecipients, sendTestEmail, sendCampaign, deleteCampaign } from "@/server/admin/recruitathon-email-actions";
 
 /**
  * Admin — one Recruitathon email campaign: import CSV recipients, send a
@@ -90,11 +90,30 @@ export default async function CampaignDetailPage({
         *&ldquo;Sent&rdquo; = handed to SES, awaiting a delivery/bounce event. Delivered &amp; bounced populate as SES reports them (open/click reporting is not enabled yet).
       </p>
 
-      {/* Body preview */}
-      <Card className="mt-5 p-5">
-        <p className="text-hint font-bold uppercase tracking-wide text-emce-mid-muted">Message preview</p>
-        <div className="prose prose-sm mt-2 max-w-none rounded-md border border-emce-border bg-white p-3 text-sm" dangerouslySetInnerHTML={{ __html: campaign.bodyHtml }} />
-      </Card>
+      {/* Compose (DRAFT) or read-only preview (sent) */}
+      {campaign.status === "DRAFT" ? (
+        <Card className="mt-5 p-5">
+          <p className="text-section text-emce-text">Compose message</p>
+          <form action={updateCampaignMessage} className="mt-3 space-y-3">
+            <input type="hidden" name="campaignId" value={id} />
+            <div>
+              <label className="text-hint font-bold text-emce-text-sec">Subject</label>
+              <input name="subject" required minLength={2} maxLength={200} defaultValue={campaign.subject} className="mt-1 w-full rounded-md border border-emce-border p-2.5 text-sm" />
+            </div>
+            <div>
+              <label className="text-hint font-bold text-emce-text-sec">Body <span className="font-normal">(HTML supported)</span></label>
+              <textarea name="bodyHtml" required rows={10} defaultValue={campaign.bodyHtml} className="mt-1 w-full rounded-md border border-emce-border p-2.5 font-mono text-xs" />
+            </div>
+            <Button type="submit" variant="outline">Save message</Button>
+          </form>
+        </Card>
+      ) : (
+        <Card className="mt-5 p-5">
+          <p className="text-hint font-bold uppercase tracking-wide text-emce-mid-muted">Message</p>
+          <p className="mt-1 text-sm font-bold text-emce-text">{campaign.subject}</p>
+          <div className="prose prose-sm mt-2 max-w-none rounded-md border border-emce-border bg-white p-3 text-sm" dangerouslySetInnerHTML={{ __html: campaign.bodyHtml }} />
+        </Card>
+      )}
 
       {campaign.status === "DRAFT" && (
         <Card className="mt-4 p-5">

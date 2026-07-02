@@ -38,6 +38,21 @@ export async function createEmailCampaign(formData: FormData) {
   redirect(`/admin/recruitathon/emails/${c.id}`);
 }
 
+/** Edit a DRAFT campaign's subject / body (compose in place). */
+export async function updateCampaignMessage(formData: FormData) {
+  await requireAdmin();
+  const campaignId = z.string().parse(formData.get("campaignId"));
+  const back = `/admin/recruitathon/emails/${campaignId}`;
+  const parsed = createSchema.safeParse(Object.fromEntries(formData));
+  if (!parsed.success) redirect(`${back}?error=` + encodeURIComponent("Subject and body are required."));
+  const campaign = await db.recruitathonEmailCampaign.findUnique({ where: { id: campaignId }, select: { status: true } });
+  if (!campaign) redirect("/admin/recruitathon/emails");
+  if (campaign.status !== "DRAFT") redirect(`${back}?error=` + encodeURIComponent("This campaign has already been sent."));
+  await db.recruitathonEmailCampaign.update({ where: { id: campaignId }, data: { subject: parsed.data.subject, bodyHtml: parsed.data.bodyHtml } });
+  revalidatePath(back);
+  redirect(`${back}?notice=` + encodeURIComponent("Message saved."));
+}
+
 /** Parse an uploaded CSV, extract + dedupe every email in it, and add
  *  them as PENDING recipients (skipping any already on this campaign). */
 export async function importRecipients(formData: FormData) {
