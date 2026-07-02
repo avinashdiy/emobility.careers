@@ -139,7 +139,8 @@ export async function sendCampaign(formData: FormData) {
     where: { id: campaignId },
     data: { status: "SENDING", startedAt: new Date(), completedAt: null },
   });
-  await recruitathonEmailQueue.add("send", { campaignId }, { jobId: `campaign:${campaignId}` });
+  // BullMQ custom job ids cannot contain ":".
+  await recruitathonEmailQueue.add("send", { campaignId }, { jobId: `campaign-${campaignId}` });
   revalidatePath(back);
   redirect(`${back}?notice=` + encodeURIComponent("Sending started — refresh to watch progress."));
 }
