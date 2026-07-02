@@ -9,6 +9,7 @@ import { auth } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import { sendMail } from "@/lib/mail";
 import { recruitathonEmailQueue } from "@/lib/queues";
+import { RECRUITATHON_REPLY_TO } from "@/lib/recruitathon/exam-config";
 
 const EMAIL_RE = /[a-z0-9._%+\-]+@[a-z0-9.\-]+\.[a-z]{2,}/gi;
 const MAX_RECIPIENTS = 50_000;
@@ -113,7 +114,7 @@ export async function sendTestEmail(formData: FormData) {
   const campaign = await db.recruitathonEmailCampaign.findUnique({ where: { id: campaignId }, select: { subject: true, bodyHtml: true } });
   if (!campaign) redirect("/admin/recruitathon/emails");
   try {
-    await sendMail({ to: to!, subject: `[TEST] ${campaign.subject}`, html: campaign.bodyHtml, kind: "transactional" });
+    await sendMail({ to: to!, subject: `[TEST] ${campaign.subject}`, html: campaign.bodyHtml, kind: "transactional", replyTo: RECRUITATHON_REPLY_TO });
   } catch (err) {
     logger.error({ err, campaignId }, "[recruitathon-email] test send failed");
     redirect(`${back}?error=` + encodeURIComponent("Test send failed — check the SES configuration."));

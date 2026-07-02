@@ -3,6 +3,7 @@ import { redis } from "@/lib/redis";
 import { db } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { QueueNames, type RecruitathonEmailJob } from "@/lib/queues";
+import { RECRUITATHON_REPLY_TO } from "@/lib/recruitathon/exam-config";
 import { sendMail } from "@/lib/mail";
 
 /**
@@ -51,7 +52,7 @@ export function startRecruitathonEmailWorker() {
 
         for (const r of batch) {
           try {
-            const res = await sendMail({ to: r.email, subject: campaign.subject, html, kind: "bulk" });
+            const res = await sendMail({ to: r.email, subject: campaign.subject, html, kind: "bulk", replyTo: RECRUITATHON_REPLY_TO });
             await db.recruitathonEmailRecipient.update({
               where: { id: r.id },
               data: { status: "SENT", providerMessageId: res.providerMessageId ?? null, sentAt: new Date(), error: null },

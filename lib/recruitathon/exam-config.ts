@@ -19,3 +19,8 @@ export const MAX_JD_SELECTIONS = 3;
  *  pass through before their JD-specific tests unlock. Keyed via its
  *  SkillAssessmentMeta.slug, same as the JD banks. */
 export const GENERAL_EV_SLUG = "recruitathon-general-ev";
+
+/** Reply-To for Recruitathon bulk emails, so candidate replies reach the
+ *  hiring team rather than the no-reply sender. Scoped to Recruitathon
+ *  sends only (not a platform-wide reply-to). */
+export const RECRUITATHON_REPLY_TO = "hr@diyguru.org";
