@@ -177,10 +177,16 @@ export async function saveExamProgress(input: {
   if (Date.now() > deadline.getTime() + DEADLINE_GRACE_MS) return { ok: false, reason: "expired" };
 
   const answers = answersSchema.parse(input.answers);
-  await db.assessmentAttempt.update({
-    where: { id: attempt.id },
+  // Guard the write on submittedAt:null so a late/racing autosave that read
+  // the attempt BEFORE submit can't overwrite the answers AFTER the attempt
+  // was graded. That race desynced answers from score — the result page
+  // showed "57/60 correct" but a 5% score, because grade() ran on the early
+  // answers while a trailing autosave grew them to the full correct set.
+  const res = await db.assessmentAttempt.updateMany({
+    where: { id: attempt.id, submittedAt: null },
     data: { answers: answers as object },
   });
+  if (res.count === 0) return { ok: false, reason: "already_submitted" };
   return { ok: true };
 }
 
@@ -280,10 +286,15 @@ export async function finalizeRecruitathonAttempt(
   const resultUrl = `/recruitathon/exam/${attempt.id}/result`;
   if (attempt.submittedAt) return { ok: true, resultUrl };
 
+  // Grade the UNION of the server's last autosave and the client's submitted
+  // map, so a stale/empty answersJson can never grade FEWER answers than are
+  // already on file. Answers only grow (no de-select), so the union is always
+  // the most complete, correct set.
   let answers: Record<number, number> = (attempt.answers ?? {}) as Record<number, number>;
   if (answersJson) {
     try {
-      answers = answersSchema.parse(JSON.parse(answersJson));
+      const client = answersSchema.parse(JSON.parse(answersJson));
+      answers = { ...answers, ...client };
     } catch (err) {
       logger.warn({ err: err instanceof Error ? err.message : String(err) }, "[recruitathon-exam] bad answers JSON — grading last autosave");
     }
