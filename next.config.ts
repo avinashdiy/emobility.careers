@@ -30,6 +30,14 @@ const nextConfig: NextConfig = {
   // require so the full package (incl. js/data/*.afm) is traced into the
   // standalone output.
   serverExternalPackages: ["pdfkit"],
+  // Deterministically ship pdfkit's font-metric (.afm) files into the
+  // standalone build for the report route. Next's file tracer doesn't
+  // reliably follow pdfkit's dynamic fs.readFileSync of these data files,
+  // which 500'd the report on one deploy — this guarantees they're included
+  // on every future build.
+  outputFileTracingIncludes: {
+    "/api/recruitathon/report": ["./node_modules/**/pdfkit/js/data/*.afm"],
+  },
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",
