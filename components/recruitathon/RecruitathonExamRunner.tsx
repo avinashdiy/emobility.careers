@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { saveExamProgress, recordProctorEvent, submitExam } from "@/server/recruitathon/exam-actions";
+import { saveExamProgress, recordProctorEvent } from "@/server/recruitathon/exam-actions";
 import { CameraProctor } from "@/components/recruitathon/CameraProctor";
 
 /**
@@ -52,7 +52,7 @@ export function RecruitathonExamRunner({
   const [warning, setWarning] = useState<string | null>(null);
   const [terminated, setTerminated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  const formRef = useRef<HTMLFormElement>(null);
+  const [submitError, setSubmitError] = useState<string | null>(null);
   const answersRef = useRef(answers);
   answersRef.current = answers;
   const submittedRef = useRef(false);
@@ -78,16 +78,34 @@ export function RecruitathonExamRunner({
   const answered = Object.keys(answers).length;
 
   // ── Final submit (manual, deadline, or termination) ───────────────
-  const doSubmit = useCallback((reason: string) => {
+  // Posts to a STABLE API-route URL rather than invoking the submitExam
+  // server action via a hidden form: a build-hashed action id goes stale on
+  // deploy, so a student who loaded the exam on the old build then tapped
+  // Submit hit "Failed to find Server Action" → the global 500 page, losing
+  // their attempt. A URL survives deploys; on a hard failure we re-arm the
+  // button (answers are safe in localStorage) instead of dropping their work.
+  const doSubmit = useCallback(async (reason: string) => {
     if (submittedRef.current) return;
     submittedRef.current = true;
     setSubmitting(true);
-    const form = formRef.current;
-    if (!form) return;
-    (form.elements.namedItem("answersJson") as HTMLInputElement).value = JSON.stringify(answersRef.current);
-    (form.elements.namedItem("reason") as HTMLInputElement).value = reason;
-    form.requestSubmit();
-  }, []);
+    setSubmitError(null);
+    const answersJson = JSON.stringify(answersRef.current);
+    for (let n = 0; n < 3; n++) {
+      try {
+        const res = await fetch("/api/recruitathon/exam/submit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ attemptId, answersJson, reason }),
+        });
+        const data = (await res.json().catch(() => null)) as { ok?: boolean; resultUrl?: string } | null;
+        if (res.ok && data?.resultUrl) { router.push(data.resultUrl); return; }
+      } catch { /* network blip — fall through to retry */ }
+      await new Promise((r) => setTimeout(r, 800));
+    }
+    submittedRef.current = false;
+    setSubmitting(false);
+    setSubmitError("We couldn't submit just now — your answers are safe on this device. Check your connection and tap “Submit test” again.");
+  }, [attemptId, router]);
 
   // ── Server-authoritative countdown ────────────────────────────────
   useEffect(() => {
@@ -369,17 +387,15 @@ export function RecruitathonExamRunner({
             {submitting ? "Submitting…" : "Submit test"}
           </Button>
         </div>
+        {submitError && (
+          <p role="alert" className="mt-3 rounded-md bg-emce-red-light p-3 text-center text-sm font-semibold text-emce-red-deep">
+            {submitError}
+          </p>
+        )}
       </div>
 
       {/* Live camera self-view + face-presence proctoring (warn + log only) */}
       <CameraProctor attemptId={attemptId} />
-
-      {/* Hidden form → server submit (grading happens server-side) */}
-      <form ref={formRef} action={submitExam} className="hidden">
-        <input type="hidden" name="attemptId" value={attemptId} />
-        <input type="hidden" name="answersJson" defaultValue="" />
-        <input type="hidden" name="reason" defaultValue="manual" />
-      </form>
     </div>
   );
 }

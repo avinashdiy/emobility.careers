@@ -19,6 +19,8 @@ import { COMPLETENESS_THRESHOLDS } from "@/lib/profile-completeness";
  */
 const HIDE_ON_PATHS = [
   "/onboarding",
+  "/recruitathon", // the Recruitathon flow has NO 50% gate — the banner is
+                   // confusing there (and covers the test UI on mobile)
   "/signin",
   "/signup",
   "/forgot-password",

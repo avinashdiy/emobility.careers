@@ -261,22 +261,29 @@ export async function recordCameraEvent(input: {
 }
 
 /**
- * Finalise + grade the attempt. Called on manual submit AND on the
- * client's deadline auto-submit. Idempotent-ish: a second call after
- * submit just redirects to the result.
+ * Finalise + grade the attempt. Returns the result URL (does NOT redirect),
+ * so it can back BOTH the `submitExam` server action AND the stable
+ * `/api/recruitathon/exam/submit` route the runner posts to. The route
+ * matters: a plain URL survives deployments, whereas a build-hashed server-
+ * action id goes stale the moment we ship — and a student who loaded the
+ * exam on the old build then hit Submit got "Failed to find Server Action"
+ * → the global 500 page, losing their submission. Idempotent: a second call
+ * after submit just returns the same result URL.
  */
-export async function submitExam(formData: FormData) {
-  const attemptId = z.string().parse(formData.get("attemptId"));
-  const reason = (formData.get("reason") as string | null) ?? "manual";
+export async function finalizeRecruitathonAttempt(
+  attemptId: string,
+  answersJson: string,
+  reason: string,
+): Promise<{ ok: boolean; resultUrl?: string }> {
   const attempt = await loadOwnedAttempt(attemptId);
-  if (!attempt) redirect("/recruitathon/tests");
-  if (attempt.submittedAt) redirect(`/recruitathon/exam/${attempt.id}/result`);
+  if (!attempt) return { ok: false };
+  const resultUrl = `/recruitathon/exam/${attempt.id}/result`;
+  if (attempt.submittedAt) return { ok: true, resultUrl };
 
   let answers: Record<number, number> = (attempt.answers ?? {}) as Record<number, number>;
-  const raw = formData.get("answersJson");
-  if (typeof raw === "string" && raw.length) {
+  if (answersJson) {
     try {
-      answers = answersSchema.parse(JSON.parse(raw));
+      answers = answersSchema.parse(JSON.parse(answersJson));
     } catch (err) {
       logger.warn({ err: err instanceof Error ? err.message : String(err) }, "[recruitathon-exam] bad answers JSON — grading last autosave");
     }
@@ -287,8 +294,12 @@ export async function submitExam(formData: FormData) {
   const meta = readProctorMeta(attempt.proctorMeta);
   if (reason === "expired") meta.reason = "expired";
 
-  await db.assessmentAttempt.update({
-    where: { id: attempt.id },
+  // Compare-and-set: guard on `submittedAt: null` so only the FIRST finaliser
+  // writes. A concurrent deadline-auto-submit racing a manual tap can't
+  // double-grade or clobber the answers — the loser matches 0 rows and we
+  // still return the same result URL (idempotent).
+  await db.assessmentAttempt.updateMany({
+    where: { id: attempt.id, submittedAt: null },
     data: {
       submittedAt: new Date(),
       score: percent,
@@ -301,6 +312,19 @@ export async function submitExam(formData: FormData) {
   // Best-effort push of the final score to the team's Google Sheet.
   await syncAttemptScore(attempt.id);
 
-  revalidatePath(`/recruitathon/exam/${attempt.id}/result`);
-  redirect(`/recruitathon/exam/${attempt.id}/result`);
+  revalidatePath(resultUrl);
+  return { ok: true, resultUrl };
+}
+
+/**
+ * Server-action form submit (no-JS / progressive-enhancement fallback). The
+ * client runner submits through the stable API route instead; this stays for
+ * the hidden form so a scripted-off browser can still finalise.
+ */
+export async function submitExam(formData: FormData) {
+  const attemptId = z.string().parse(formData.get("attemptId"));
+  const reason = (formData.get("reason") as string | null) ?? "manual";
+  const raw = formData.get("answersJson");
+  const res = await finalizeRecruitathonAttempt(attemptId, typeof raw === "string" ? raw : "", reason);
+  redirect(res.resultUrl ?? "/recruitathon/tests");
 }
