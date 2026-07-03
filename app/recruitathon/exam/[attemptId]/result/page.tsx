@@ -129,10 +129,11 @@ export default async function RecruitathonExamResultPage({
             })}
           </ol>
 
-          <div className="mt-8">
+          <div className="mt-8 flex flex-wrap gap-3">
             <Button asChild size="lg"><Link href="/recruitathon/tests">← Back to your tests</Link></Button>
-            <p className="mt-2 text-hint text-emce-text-sec">Selected more than one role? Head back to take your remaining tests.</p>
+            <Button asChild size="lg" variant="outline"><a href="/api/recruitathon/report">📄 Download my report (PDF)</a></Button>
           </div>
+          <p className="mt-2 text-hint text-emce-text-sec">Selected more than one role? Head back to take your remaining tests.</p>
         </div>
       </main>
       <SiteFooter />

@@ -88,6 +88,13 @@ export default async function RecruitathonTestsPage({
             take them one at a time — each opens in full-screen.
             <Link href="/recruitathon/select" className="ml-1 font-bold text-emce-dark hover:underline">Change selection</Link>.
           </p>
+          {done > 0 && (
+            <div className="mt-4">
+              <Button asChild variant="outline" size="sm">
+                <a href="/api/recruitathon/report">📄 Download my report (PDF)</a>
+              </Button>
+            </div>
+          )}
 
           {sp.notice && (
             <p className="mt-4 rounded-md bg-emce-orange-light p-3 text-sm font-semibold text-emce-orange-deep">
@@ -171,7 +178,10 @@ export default async function RecruitathonTestsPage({
                 Thanks for completing your Recruitathon test{selections.length === 1 ? "" : "s"}. Shortlisted candidates
                 are contacted by the companies directly — keep your profile up to date so they can reach you.
               </p>
-              <Button asChild className="mt-3" variant="outline"><Link href="/me/profile">Review my profile →</Link></Button>
+              <div className="mt-3 flex flex-wrap justify-center gap-3">
+                <Button asChild><a href="/api/recruitathon/report">📄 Download my report (PDF)</a></Button>
+                <Button asChild variant="outline"><Link href="/me/profile">Review my profile →</Link></Button>
+              </div>
             </Card>
           )}
         </div>

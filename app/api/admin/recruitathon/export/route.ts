@@ -44,13 +44,13 @@ const CANDIDATE_SELECT = {
   skills: { select: { skill: { select: { name: true } } }, take: 40 },
 } satisfies Prisma.CandidateProfileSelect;
 
-const JD_SELECT = { id: true, company: true, role: true, level: true, slug: true } satisfies Prisma.RecruitathonJdSelect;
+const JD_SELECT = { id: true, company: true, role: true, level: true, slug: true, location: true, eligibility: true } satisfies Prisma.RecruitathonJdSelect;
 
 interface Cand {
   id: string; slug: string; name: string; email: string; phone: string;
   city: string; headline: string; expYears: string; education: string; skills: string;
 }
-interface Jd { id: string; company: string; role: string; level: string; slug: string }
+interface Jd { id: string; company: string; role: string; level: string; slug: string; location: string; eligibility: string }
 
 function normCand(c: Prisma.CandidateProfileGetPayload<{ select: typeof CANDIDATE_SELECT }>): Cand {
   const ed = c.education[0];
@@ -68,7 +68,7 @@ function normCand(c: Prisma.CandidateProfileGetPayload<{ select: typeof CANDIDAT
   };
 }
 function normJd(j: Prisma.RecruitathonJdGetPayload<{ select: typeof JD_SELECT }>): Jd {
-  return { id: j.id, company: j.company, role: j.role, level: j.level, slug: j.slug };
+  return { id: j.id, company: j.company, role: j.role, level: j.level, slug: j.slug, location: j.location ?? "", eligibility: j.eligibility ?? "" };
 }
 
 export async function GET(req: NextRequest) {
@@ -150,6 +150,7 @@ export async function GET(req: NextRequest) {
     "match_score_fitment", "priority", "selected", "attempted",
     "score", "result", "tab_switch_flags", "camera_flags", "terminated", "submitted_at",
     "general_ev_score", "general_ev_done",
+    "jd_location", "jd_eligibility",
   ];
 
   const out: string[][] = [];
@@ -179,6 +180,7 @@ export async function GET(req: NextRequest) {
       att?.submittedAt ? att.submittedAt.toISOString() : "",
       generalByCand.get(candidateId)?.score != null ? String(generalByCand.get(candidateId)!.score) : "",
       generalByCand.get(candidateId)?.done ? "Yes" : generalByCand.has(candidateId) ? "In progress" : "No",
+      jd.location, jd.eligibility,
     ]);
   }
 

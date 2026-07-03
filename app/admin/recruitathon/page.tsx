@@ -61,6 +61,17 @@ export default async function AdminRecruitathonIndex() {
           + export CSVs for the placement team.
         </p>
 
+        <div className="mt-4 rounded-lg border border-emce-border bg-emce-light-soft/50 p-4">
+          <Button asChild>
+            <a href="/api/admin/recruitathon/export">📊 Download detailed test-scores CSV</a>
+          </Button>
+          <p className="mt-2 text-hint text-emce-text-sec">
+            One row per candidate × role, across all drives: name · email · phone · education · skills ·
+            company · role · level · location · eligibility · AI match/fitment · priority · test score ·
+            pass/fail · tab-switch &amp; camera flags · general-EV score. Opens straight in Excel.
+          </p>
+        </div>
+
         {drives.length === 0 ? (
           <EmptyState
             icon="🎫"

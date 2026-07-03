@@ -24,6 +24,12 @@ const nextConfig: NextConfig = {
   output: "standalone",
   poweredByHeader: false,
   compress: true,
+  // pdfkit loads its standard-font .afm metric files from disk at runtime;
+  // webpack-bundling it (the default) drops those data files and the
+  // Recruitathon report route would ENOENT. Keep it an external runtime
+  // require so the full package (incl. js/data/*.afm) is traced into the
+  // standalone output.
+  serverExternalPackages: ["pdfkit"],
   experimental: {
     serverActions: {
       bodySizeLimit: "10mb",

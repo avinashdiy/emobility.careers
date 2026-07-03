@@ -293,6 +293,8 @@ export default async function RecruitathonReportPage({
           Numbers reflect the fair&apos;s current state — re-run after
           recruiters close out their outstanding pipelines for a
           final view. <Link href={`/admin/recruitathon/${drive.slug}/candidates.csv`} className="font-bold text-emce-dark hover:underline">Download per-candidate CSV →</Link>
+          {" · "}
+          <a href="/api/admin/recruitathon/export" className="font-bold text-emce-dark hover:underline">Download detailed test-scores CSV →</a>
         </p>
       </div>
     </AdminShell>
