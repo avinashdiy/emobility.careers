@@ -262,6 +262,37 @@ export async function uploadAndParseResume(formData: FormData) {
 // ─── Onboarding step 3: commit parsed draft ────────────────
 
 /**
+ * Resume-parse dates arrive as free-form strings — the AI parser usually
+ * emits "YYYY-MM", but also "YYYY", "Jun 2021", full ISO dates, "Present",
+ * etc. Naively doing `new Date(`${v}-01`)` yielded `Invalid Date` for
+ * anything but a clean "YYYY-MM", and Prisma then threw a
+ * PrismaClientValidationError that crashed the whole onboarding commit with
+ * a 500 ("Something went wrong"). Parse defensively to the first of the
+ * month, or null when unrecoverable.
+ */
+function toMonthStart(v: unknown): Date | null {
+  if (v == null) return null;
+  if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
+  const s = String(v).trim();
+  if (!s || /^(present|current|now|ongoing|till date|to date|todate)$/i.test(s)) return null;
+  const m = s.match(/(\d{4})(?:[-/.\s]+(\d{1,2}))?/);
+  if (m) {
+    const y = Number(m[1]);
+    const mo = m[2] ? Math.min(12, Math.max(1, Number(m[2]))) : 1;
+    if (y >= 1900 && y <= 2100) return new Date(Date.UTC(y, mo - 1, 1));
+  }
+  const d = new Date(s);
+  return Number.isNaN(d.getTime()) ? null : new Date(Date.UTC(d.getFullYear(), d.getMonth(), 1));
+}
+
+/** Coerce a parsed year to a valid Int or null — a stray string/garbage year
+ *  would otherwise throw a Prisma validation error like the date fields did. */
+function toYear(v: unknown): number | null {
+  const n = typeof v === "number" ? v : parseInt(String(v ?? ""), 10);
+  return Number.isFinite(n) && n >= 1900 && n <= 2100 ? Math.trunc(n) : null;
+}
+
+/**
  * Commit a candidate's stored resume parse draft into their live profile
  * (identity fields + experiences / education / certs / projects / skills /
  * EV domains). Returns false if there's no draft to apply. Does NOT
@@ -309,8 +340,8 @@ async function commitResumeDraft(
           title: String(e.title ?? "Role"),
           company: String(e.company ?? "Company"),
           location: (e.location as string) ?? null,
-          startDate: e.startDate ? new Date(`${e.startDate}-01`) : new Date(),
-          endDate: e.endDate ? new Date(`${e.endDate}-01`) : null,
+          startDate: toMonthStart(e.startDate) ?? new Date(),
+          endDate: Boolean(e.current) ? null : toMonthStart(e.endDate),
           current: Boolean(e.current),
           description: (e.description as string) ?? null,
         },
@@ -323,8 +354,8 @@ async function commitResumeDraft(
           institution: String(ed.institution ?? "Institution"),
           degree: (ed.degree as string) ?? null,
           field: (ed.field as string) ?? null,
-          startYear: (ed.startYear as number) ?? null,
-          endYear: (ed.endYear as number) ?? null,
+          startYear: toYear(ed.startYear),
+          endYear: toYear(ed.endYear),
           grade: (ed.grade as string) ?? null,
         },
       });
@@ -335,7 +366,7 @@ async function commitResumeDraft(
           candidateId: profileId,
           name: String(c.name ?? "Certification"),
           issuer: (c.issuer as string) ?? null,
-          issueDate: c.issueDate ? new Date(`${c.issueDate}-01`) : null,
+          issueDate: toMonthStart(c.issueDate),
           credentialId: (c.credentialId as string) ?? null,
           isDIYguru: Boolean(c.isDIYguru),
         },
@@ -481,7 +512,19 @@ export async function applyRecruitathonResumeReview(formData: FormData) {
   if (data.lastName != null) overrides.lastName = data.lastName || null;
   if (skills.length) overrides.skills = skills;
 
-  const applied = await commitResumeDraft(profile.id, { overrides, clearDraft: true });
+  let applied = false;
+  try {
+    applied = await commitResumeDraft(profile.id, { overrides, clearDraft: true });
+  } catch (err) {
+    if (isRouterControlError(err)) throw err;
+    // Defense-in-depth: any unexpected commit failure lands the candidate
+    // back on the review step with a message, never on the global 500 page.
+    logger.error({ err, profileId: profile.id }, "[applyRecruitathonResumeReview] commit failed");
+    redirect(
+      "/recruitathon/onboarding?error=" +
+        encodeURIComponent("We hit a snag saving your details. Please check your entries and tap continue again."),
+    );
+  }
   if (!applied) {
     redirect(
       "/recruitathon/onboarding?error=" +
