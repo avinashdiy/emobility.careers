@@ -61,6 +61,17 @@ export function RecruitathonExamRunner({
   const proctorPausedRef = useRef(false);
   const warnBtnRef = useRef<HTMLButtonElement>(null);
   const endedRef = useRef<HTMLHeadingElement>(null);
+  const restoredRef = useRef(false);
+
+  // Offline-proof local backup of answers. A flaky/dropped connection makes
+  // the fire-and-forget server autosave fail SILENTLY, so a refresh could
+  // return an attempt whose server-side answers are stale/empty. localStorage
+  // is synchronous and needs no network, so a refresh mid-disconnect can
+  // still recover the student's work (restored + re-pushed on mount / online).
+  const LS_KEY = `emce-rexam-${attemptId}`;
+  const writeLocal = useCallback((a: Record<number, number>) => {
+    try { window.localStorage.setItem(LS_KEY, JSON.stringify(a)); } catch { /* storage disabled/full */ }
+  }, [LS_KEY]);
 
   const hasQuestions = Array.isArray(questions) && questions.length > 0;
   const expired = remaining <= 0;
@@ -185,12 +196,43 @@ export function RecruitathonExamRunner({
   useEffect(() => { if (warning) warnBtnRef.current?.focus(); }, [warning]);
   useEffect(() => { if (terminated) endedRef.current?.focus(); }, [terminated]);
 
+  // ── Restore answers from the local backup on mount (once) ─────────
+  // Merge over whatever the server returned: any answer the server never
+  // received (lost during a disconnect) is restored and pushed back so a
+  // refresh after an internet drop no longer wipes progress.
+  useEffect(() => {
+    if (restoredRef.current) return;
+    restoredRef.current = true;
+    let local: Record<number, number> = {};
+    try {
+      const raw = window.localStorage.getItem(LS_KEY);
+      if (raw) { const p = JSON.parse(raw); if (p && typeof p === "object") local = p as Record<number, number>; }
+    } catch { /* ignore */ }
+    const server = initialAnswers ?? {};
+    const merged = { ...server, ...local };
+    if (Object.keys(merged).length > Object.keys(server).length) {
+      setAnswers(merged);
+      void saveExamProgress({ attemptId, answers: merged }).catch(() => {});
+    }
+    writeLocal(merged); // keep the backup current either way
+  }, [attemptId, initialAnswers, LS_KEY, writeLocal]);
+
+  // ── Re-flush the full answer map when connectivity returns ────────
+  useEffect(() => {
+    const onOnline = () => {
+      if (!submittedRef.current) void saveExamProgress({ attemptId, answers: answersRef.current }).catch(() => {});
+    };
+    window.addEventListener("online", onOnline);
+    return () => window.removeEventListener("online", onOnline);
+  }, [attemptId]);
+
   // ── Autosave (debounced) ──────────────────────────────────────────
   function pick(qi: number, oi: number) {
     if (submittedRef.current || expired) return;
     setAnswers((prev) => {
       const next = { ...prev, [qi]: oi };
-      // fire-and-forget autosave with the latest map
+      writeLocal(next); // instant, offline-proof local backup
+      // fire-and-forget server autosave with the latest map
       void saveExamProgress({ attemptId, answers: next }).catch(() => {});
       return next;
     });

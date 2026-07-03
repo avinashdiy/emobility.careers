@@ -44,6 +44,10 @@ export function CameraProctor({ attemptId }: { attemptId: string }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [status, setStatus] = useState<Status>("init");
   const [flags, setFlags] = useState(0);
+  // Bumped by the "retry camera" button so a student who re-enables a
+  // previously-denied/lost camera can recover WITHOUT reloading the page
+  // (a reload mid-exam risks their progress + burns their fullscreen).
+  const [retryKey, setRetryKey] = useState(0);
   const ep = useRef({ badSince: 0, kind: "", open: false });
 
   useEffect(() => {
@@ -76,6 +80,7 @@ export function CameraProctor({ attemptId }: { attemptId: string }) {
     };
 
     const start = async () => {
+      setStatus("init");
       try {
         stream = await navigator.mediaDevices.getUserMedia({
           video: { width: { ideal: 320 }, height: { ideal: 240 }, facingMode: "user" },
@@ -136,7 +141,7 @@ export function CameraProctor({ attemptId }: { attemptId: string }) {
       try { detector?.close?.(); } catch { /* noop */ }
       stream?.getTracks().forEach((t) => t.stop());
     };
-  }, [attemptId]);
+  }, [attemptId, retryKey]);
 
   const bad = status === "away" || status === "multi" || status === "nocam";
   const label =
@@ -156,6 +161,15 @@ export function CameraProctor({ attemptId }: { attemptId: string }) {
           {bad ? "⚠ " : status === "ok" ? "● " : ""}{label}
           {flags > 0 && <span className="ml-1 opacity-90">· {flags} look-away{flags === 1 ? "" : "s"}</span>}
         </p>
+        {status === "nocam" && (
+          <button
+            type="button"
+            onClick={() => setRetryKey((k) => k + 1)}
+            className="block w-full bg-white px-2 py-1 text-center text-[11px] font-bold text-emce-red underline"
+          >
+            Tap here after enabling the camera
+          </button>
+        )}
       </div>
     </div>
   );

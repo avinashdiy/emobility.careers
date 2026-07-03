@@ -1,4 +1,4 @@
-import { notFound, redirect } from "next/navigation";
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { db } from "@/lib/db";
 import { auth } from "@/lib/auth";
@@ -26,7 +26,10 @@ export default async function RecruitathonTestIntroPage({
     where: { skillMeta: { slug } },
     include: { skillMeta: true },
   });
-  if (!assessment) notFound();
+  // Fail SOFT: an unknown / not-yet-seeded slug (stale link, typo, or a
+  // JD whose bank isn't live on prod yet) must not 404 a candidate — send
+  // them to their test list, which self-heals to onboarding/sign-in.
+  if (!assessment) redirect("/recruitathon/tests");
 
   const session = await auth();
   const profile = session?.user
