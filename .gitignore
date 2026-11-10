@@ -63,3 +63,6 @@ uploads/
 node_modules
 .next
 .env
+
+# EV jobs this week list (uploaded weekly on the server; lib/ev-jobs-week)
+/data/

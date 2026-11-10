@@ -22,6 +22,7 @@ export async function GET() {
   const paths: { path: string; priority?: number; changefreq?: "hourly" | "daily" | "weekly" }[] = [
     { path: "", priority: 1, changefreq: "daily" },
     { path: "/jobs", priority: 0.9, changefreq: "hourly" },
+    { path: "/jobs/this-week", priority: 0.9, changefreq: "weekly" },
     { path: "/companies", priority: 0.9, changefreq: "daily" },
     // A–Z directory + every letter page. The 27 per-letter URLs
     // each carry their own canonical (see generateMetadata in
