@@ -137,7 +137,7 @@ export default async function EvJobsThisWeekPage() {
           <li>We never charge candidates and never ask for fees to apply. Report a suspicious listing to the employer directly.</li>
         </ul>
         <p className="mt-4 text-sm">
-          Want the full map of 2027 EV roles, skills and 400 companies&apos; careers pages?{" "}
+          Want the full map of 2027 EV roles, skills and the careers pages of 300+ Indian EV companies?{" "}
           <a href={GUIDE_URL} className="font-semibold text-primary underline">Get the free EV Jobs 2027 guidebook</a>.
         </p>
       </section>
