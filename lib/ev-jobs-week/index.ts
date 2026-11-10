@@ -45,13 +45,18 @@ export const MAX_AGE_DAYS = 21;
 const isHttp = (u: unknown): u is string => typeof u === "string" && /^https:\/\//.test(u);
 
 export async function loadWeeklyJobs(now: Date = new Date()): Promise<WeeklyJobsFile | null> {
-  const file = process.env.EV_JOBS_WEEK_FILE || path.join(process.cwd(), "data", "ev-jobs-week.json");
-  let raw: string;
-  try {
-    raw = await readFile(file, "utf8");
-  } catch {
-    return null;
+  // The standalone server chdirs into .next/standalone, so also look two levels up (the app dir).
+  const candidates = [
+    process.env.EV_JOBS_WEEK_FILE,
+    path.join(process.cwd(), "data", "ev-jobs-week.json"),
+    path.resolve(process.cwd(), "..", "..", "data", "ev-jobs-week.json"),
+  ].filter((f): f is string => Boolean(f));
+  let raw: string | null = null;
+  for (const file of candidates) {
+    raw = await readFile(file, "utf8").catch(() => null);
+    if (raw) break;
   }
+  if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as WeeklyJobsFile;
     const cutoff = now.getTime() - MAX_AGE_DAYS * 86_400_000;
